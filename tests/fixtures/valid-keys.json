@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "keys": [
+    {
+      "id": "k1",
+      "api_key": "sk-test-gigachat-12345",
+      "provider": "gigachat",
+      "baseUrl": "https://gigachat.example/api/v1",
+      "authUrl": "https://auth.example/oauth/token",
+      "mtls": {
+        "cert_path": "/tls/client.crt",
+        "key_path": "/tls/client.key",
+        "ca_path": "/tls/ca-chain.pem"
+      }
+    },
+    {
+      "id": "k2",
+      "api_key": "sk-test-openai-compat-67890",
+      "provider": "openai-compatible",
+      "baseUrl": "https://openai-compat.example/v1"
+    }
+  ]
+}
