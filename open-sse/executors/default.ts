@@ -53,9 +53,11 @@ export class DefaultExecutor extends BaseExecutor {
     }
 
     switch (this.provider) {
-      case "gigachat": {
+    case "gigachat": {
+        // Per-key baseUrl cascade (T20): providerSpecificData > registry default
         const baseUrl =
-          credentials?.providerSpecificData?.baseUrl || this.config.baseUrl;
+          (credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["baseUrl"] as string | undefined ??
+          this.config.baseUrl;
         return normalizeGigachatChatUrl(baseUrl);
       }
 
@@ -251,8 +253,11 @@ export class DefaultExecutor extends BaseExecutor {
     if (this.provider === "gigachat") {
       if (!credentials.apiKey) return null;
       try {
+        const authUrl =
+          (credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["authUrl"] as string | undefined;
         return await getGigachatAccessToken({
           credentials: credentials.apiKey,
+          authUrl,
         });
       } catch (error: any) {
         log?.error?.("TOKEN", `gigachat refresh error: ${error.message}`);
