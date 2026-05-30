@@ -1,17 +1,17 @@
 /**
- * Structured Logger — Pino-based logger for OmniRoute
+ * Structured Logger - Pino-based logger for OmniRoute
  *
  * Usage:
- *   import { logger } from "@/shared/utils/logger";
- *   const log = logger.child({ module: "proxy" });
- *   log.info({ model: "gpt-4o" }, "Request received");
- *   log.error({ err }, "Connection failed");
+ * import logger from "@/shared/utils/logger";
+ * const log = logger.child({ module: "proxy" });
+ * log.info({ model: "gpt-4o" }, "Request received");
+ * log.error({ err }, "Connection failed");
  *
  * In development, output is pretty-printed via pino-pretty.
  * In production, output is structured JSON for log aggregation.
  *
- * When APP_LOG_TO_FILE is enabled (default: true), logs are also written
- * as JSON lines to the file specified by APP_LOG_FILE_PATH.
+ * When APP_LOG_TO_FILE is enabled (default: true), logs are written as
+ * JSON lines to the file specified by APP_LOG_FILE_PATH.
  */
 import pino from "pino";
 import { resolve } from "path";
@@ -29,6 +29,27 @@ const baseConfig: pino.LoggerOptions = {
       return { level: label };
     },
   },
+  redact: {
+    paths: [
+      "cert_path",
+      "key_path",
+      "ca_path",
+      "mtls.cert_path",
+      "mtls.key_path",
+      "mtls.ca_path",
+      "*.cert_path",
+      "*.key_path",
+      "*.ca_path",
+      "api_key",
+      "*.api_key",
+    ],
+    censor: (value: unknown) => {
+      if (typeof value === "string" && value.length > 4) {
+        return `***${value.slice(-4)}`;
+      }
+      return "***";
+    },
+  },
 };
 
 function getTransportCompatibleConfig(): pino.LoggerOptions {
@@ -40,7 +61,14 @@ function getTransportCompatibleConfig(): pino.LoggerOptions {
 }
 
 /**
- * Build the logger with optional file transport.
+ * Redact PEM blocks from log strings.
+ */
+function redactPemContent(str: string): string {
+  return str.replace(/-----BEGIN [A-Z ]+-----[\s\S]*?-----END [A-Z ]+-----/g, "[redacted-pem]");
+}
+
+/**
+ * Build logger with optional file transport.
  * Uses pino transport targets for all destinations.
  */
 function buildLogger(): pino.Logger {
@@ -54,13 +82,21 @@ function buildLogger(): pino.Logger {
       // Initialize log directory and rotation
       initLogRotation();
 
-      // Resolve to absolute path for pino worker threads
+      // Resolve absolute path for pino worker threads
       const absLogPath = resolve(logConfig.logFilePath);
 
       if (isDev) {
-        // Dev: pino-pretty → stdout, JSON → file
+        // Dev: pino-pretty to stdout, JSON to file
         return pino({
           ...transportConfig,
+          serializers: {
+            msg: (msg: unknown) => {
+              if (typeof msg === "string") {
+                return redactPemContent(msg);
+              }
+              return msg;
+            },
+          },
           transport: {
             targets: [
               {
@@ -84,9 +120,17 @@ function buildLogger(): pino.Logger {
         });
       }
 
-      // Production: JSON → stdout + JSON → file
+      // Production: JSON to both stdout and file
       return pino({
         ...transportConfig,
+        serializers: {
+          msg: (msg: unknown) => {
+            if (typeof msg === "string") {
+              return redactPemContent(msg);
+            }
+            return msg;
+          },
+        },
         transport: {
           targets: [
             {
@@ -103,15 +147,17 @@ function buildLogger(): pino.Logger {
         },
       });
     } catch (err) {
-      // Log the actual error for diagnostics (issue #165)
+      // Log actual error diagnostics (issue #165)
       try {
         process.stderr.write(
-          `[logger] Failed to set up file transport, attempting sync fallback: ${(err as Error)?.message || err}\n`
+          `[logger] Failed to set file transport, attempting sync fallback: ${(err as Error)?.message || err}\n`
         );
-      } catch {}
+      } catch {
+        // Ignore stderr write errors
+      }
 
       // Fallback: use sync pino.destination() instead of worker-thread transport
-      // pino.transport() uses worker threads which can fail in Next.js production bundles
+      // pino.transport() uses worker threads which fail in Next.js production bundles
       try {
         const absLogPath = resolve(logConfig.logFilePath);
         const fileDestination = pino.destination({ dest: absLogPath, mkdir: true, sync: true });
@@ -127,9 +173,11 @@ function buildLogger(): pino.Logger {
       } catch (fallbackErr) {
         try {
           process.stderr.write(
-            `[logger] Sync fallback also failed, falling back to console only: ${(fallbackErr as Error)?.message || fallbackErr}\n`
+            `[logger] Sync fallback failed, falling back to console only: ${(fallbackErr as Error)?.message || fallbackErr}\n`
           );
-        } catch {}
+        } catch {
+          // Ignore stderr write errors
+        }
       }
     }
   }
@@ -138,6 +186,14 @@ function buildLogger(): pino.Logger {
   if (isDev) {
     return pino({
       ...baseConfig,
+      serializers: {
+        msg: (msg: unknown) => {
+          if (typeof msg === "string") {
+            return redactPemContent(msg);
+          }
+          return msg;
+        },
+      },
       transport: {
         target: "pino-pretty",
         options: {
@@ -156,7 +212,7 @@ function buildLogger(): pino.Logger {
 export const logger = buildLogger();
 
 /**
- * Create a child logger with a module tag.
+ * Create a child logger with module tag.
  * @param {string} module - Module name for log context (e.g., "proxy", "db", "sse")
  * @returns {pino.Logger}
  */
