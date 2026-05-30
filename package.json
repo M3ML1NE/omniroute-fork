@@ -202,7 +202,6 @@
     "zustand": "^5.0.13"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^12.10.0",
     "keytar": "^7.9.0",
     "tls-client-node": "^0.1.13",
     "wreq-js": "^2.3.1"
@@ -213,7 +212,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/bcryptjs": "^3.0.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/bun": "latest",
     "@types/keytar": "^4.4.2",
     "@types/node": "^25.9.1",
@@ -254,7 +252,6 @@
     "onlyBuiltDependencies": [
       "@parcel/watcher",
       "@swc/core",
-      "better-sqlite3",
       "esbuild",
       "omniroute",
       "sharp"

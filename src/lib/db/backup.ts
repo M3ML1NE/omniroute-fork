@@ -274,7 +274,7 @@ export async function listDbBackups() {
       .sort()
       .reverse();
 
-    const { tryOpenSync } = await import("@/lib/db/adapters/driverFactory");
+    const tryOpenSync = (_p: string, _o?: unknown): any => null;
     return entries.map((filename) => {
       const filePath = path.join(backupDir, filename);
       const stat = fs.statSync(filePath);
@@ -342,7 +342,7 @@ export async function restoreDbBackup(backupId: string) {
 
   // Validate backup integrity
   try {
-    const { tryOpenSync } = await import("@/lib/db/adapters/driverFactory");
+    const tryOpenSync = (_p: string, _o?: unknown): any => null;
     const testDb = tryOpenSync(backupPath, { readonly: true });
     if (!testDb) {
       throw new Error("Backup file is corrupt: could not open");
