@@ -52,8 +52,6 @@ import { registerEnv } from "./env.mjs";
 import { registerTestProvider } from "./test-provider.mjs";
 import { registerCompletion } from "./completion.mjs";
 import { registerRuntime } from "./runtime.mjs";
-import { registerTray } from "./tray.mjs";
-import { registerAutostart } from "./autostart.mjs";
 import { registerRepl } from "./repl.mjs";
 import { registerApiCommands } from "../api-commands/registry.mjs";
 import { registerPlugin } from "./plugin.mjs";
@@ -114,8 +112,6 @@ export function registerCommands(program) {
   registerTestProvider(program);
   registerCompletion(program);
   registerRuntime(program);
-  registerTray(program);
-  registerAutostart(program);
   registerRepl(program);
   registerApiCommands(program);
   registerPlugin(program);

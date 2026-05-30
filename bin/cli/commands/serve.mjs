@@ -27,8 +27,6 @@ export function registerServe(program) {
     .option("--log", t("serve.log"))
     .option("--no-recovery", t("serve.no_recovery"))
     .option("--max-restarts <n>", t("serve.max_restarts"), parseInt, 2)
-    .option("--tray", t("serve.tray") || "Show system tray icon (desktop only)")
-    .option("--no-tray", t("serve.no_tray") || "Disable system tray icon")
     .action(async (opts) => {
       await runServe(opts);
     });
@@ -131,7 +129,6 @@ export async function runServe(opts = {}) {
   };
 
   const isDaemon = opts.daemon === true;
-  const useTray = opts.tray === true;
 
   if (isDaemon) {
     return runDaemon(serverJs, env, memoryLimit, dashboardPort, apiPort);
@@ -149,8 +146,7 @@ export async function runServe(opts = {}) {
     apiPort,
     noOpen,
     opts.log === true,
-    opts.maxRestarts ?? 2,
-    useTray
+    opts.maxRestarts ?? 2
   );
 }
 
@@ -235,7 +231,6 @@ async function runWithSupervisor(
   noOpen,
   showLog,
   maxRestarts,
-  useTray = false
 ) {
   if (showLog) process.env.OMNIROUTE_SHOW_LOG = "1";
 
@@ -260,60 +255,23 @@ async function runWithSupervisor(
   supervisor.start();
 
   process.on("SIGINT", () => {
-    killTrayIfActive();
     supervisor.stop();
   });
   process.on("SIGTERM", () => {
-    killTrayIfActive();
     supervisor.stop();
   });
 
   if (!showLog) {
     waitForServer(dashboardPort, 60000).then(async (up) => {
       if (up) {
-        if (useTray) await maybeStartTray(dashboardPort, apiPort, supervisor);
+        if
         onReady(dashboardPort, apiPort, noOpen);
       }
     });
   }
 }
 
-let _killTray = null;
-function killTrayIfActive() {
-  if (_killTray) {
-    try {
-      _killTray();
-    } catch {}
-    _killTray = null;
-  }
-}
 
-async function maybeStartTray(port, apiPort, supervisor) {
-  try {
-    const { initTray, isTraySupported } = await import("../tray/index.mjs");
-    if (!isTraySupported()) return;
-    const { default: open } = await import("open").catch(() => ({ default: null }));
-    const dashboardUrl = `http://localhost:${port}`;
-    const tray = initTray({
-      port,
-      onQuit: () => {
-        killTrayIfActive();
-        supervisor.stop();
-      },
-      onOpenDashboard: () => open?.(dashboardUrl),
-      onShowLogs: () => {
-        // In-place: open logs stream (best-effort)
-        process.stdout.write(`[omniroute][tray] Logs at: ${dashboardUrl}/logs\n`);
-      },
-    });
-    if (tray) {
-      const { killTray } = await import("../tray/index.mjs");
-      _killTray = killTray;
-    }
-  } catch {
-    // tray is optional — do not fail the server
-  }
-}
 
 async function onReady(dashboardPort, apiPort, noOpen) {
   const dashboardUrl = `http://localhost:${dashboardPort}`;
