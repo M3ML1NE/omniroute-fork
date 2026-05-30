@@ -16,6 +16,8 @@ import { ensurePersistentManagementPasswordHash } from "./lib/auth/managementPas
 import { skillExecutor } from "./lib/skills/executor";
 import { registerBuiltinSkills } from "./lib/skills/builtins";
 import { createLogger } from "./shared/utils/logger";
+import { getKeyStore } from "@omniroute/open-sse/services/keyStore.ts";
+import { clearPool as clearMtlsPool } from "@omniroute/open-sse/services/mtlsAgent.ts";
 
 const startupLog = createLogger("server-init");
 
@@ -96,6 +98,40 @@ async function startServer() {
     startBudgetResetJob();
     startReasoningCacheCleanupJob();
     startRuntimeConfigHotReload();
+
+    if (process.env["OMNIROUTE_KEYSTORE_PATH"]) {
+      try {
+        const ks = getKeyStore();
+        await ks.load();
+        ks.watch();
+        startupLog.info(
+          { entries: ks.list().length, path: process.env["OMNIROUTE_KEYSTORE_PATH"] },
+          "[T25] keyStore loaded and watching for changes",
+        );
+      } catch (err) {
+        startupLog.warn(
+          { err: getErrorMessage(err) },
+          "[T25] keyStore load failed; continuing without mTLS support",
+        );
+      }
+    }
+
+    const shutdown = (signal: string) => {
+      try {
+        getKeyStore().stop();
+        clearMtlsPool();
+        startupLog.info({ signal }, "[T25] keyStore stopped and mTLS pool cleared");
+      } catch (err) {
+        startupLog.warn(
+          { err: getErrorMessage(err) },
+          "[T25] Error during keyStore/mTLS shutdown",
+        );
+      }
+      process.exit(0);
+    };
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
+    process.once("SIGINT", () => shutdown("SIGINT"));
+
     startupLog.info("Server started with cloud sync initialized");
 
     // Log server start event to audit log

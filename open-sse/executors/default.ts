@@ -5,6 +5,35 @@ import { getGigachatAccessToken } from "../services/gigachatAuth.ts";
 import { getRegistryEntry } from "../config/providerRegistry.ts";
 import { applyProviderRequestDefaults } from "../services/providerRequestDefaults.ts";
 import { detectFormat, getTargetFormat } from "../services/provider.ts";
+import { getKeyStore } from "../services/keyStore.ts";
+import { getAgent } from "../services/mtlsAgent.ts";
+import type { KeyStoreEntry } from "../types/keyStore.ts";
+
+/**
+ * T25: Resolve KeyStore entry from credentials.connection.keystore_entry_id
+ * (DB column added in T22). Returns undefined when:
+ *  - connection.keystore_entry_id is absent (legacy connections)
+ *  - keys.json was not loaded (no OMNIROUTE_KEYSTORE_PATH / load() never ran)
+ *  - referenced id is not present in the loaded store
+ *
+ * Caller falls back to existing providerSpecificData / registry behavior.
+ */
+function resolveKeyStoreEntry(credentials: any): KeyStoreEntry | undefined {
+  const connection =
+    (credentials?.connection as { keystore_entry_id?: string } | undefined) ||
+    undefined;
+  // Tolerate camelCase form too (rowToCamel may have been applied).
+  const id =
+    connection?.keystore_entry_id ||
+    (credentials?.keystoreEntryId as string | undefined) ||
+    (credentials?.keystore_entry_id as string | undefined);
+  if (typeof id !== "string" || id.length === 0) return undefined;
+  try {
+    return getKeyStore().get(id);
+  } catch {
+    return undefined;
+  }
+}
 
 function normalizeBaseUrl(baseUrl: string): string {
   return (baseUrl || "").trim().replace(/\/$/, "");
@@ -53,10 +82,12 @@ export class DefaultExecutor extends BaseExecutor {
     }
 
     switch (this.provider) {
-    case "gigachat": {
-        // Per-key baseUrl cascade (T20): providerSpecificData > registry default
+      case "gigachat": {
+        // T25 cascade (highest -> lowest): keyStoreEntry.baseUrl -> providerSpecificData.baseUrl -> registry default
+        const keystoreEntry = resolveKeyStoreEntry(credentials);
         const baseUrl =
-          (credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["baseUrl"] as string | undefined ??
+          keystoreEntry?.baseUrl ||
+          ((credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["baseUrl"] as string | undefined) ||
           this.config.baseUrl;
         return normalizeGigachatChatUrl(baseUrl);
       }
@@ -123,9 +154,22 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
+    // T25: For gigachat, prefer keyStore.api_key as outbound key (NEVER inbound client token).
+    // Falls back to existing rotator-resolved effectiveKey when no keystore entry is bound.
+    const t25Entry = resolveKeyStoreEntry(credentials);
+    if (this.provider === "gigachat" && t25Entry?.mtls) {
+      // Eagerly validate cert paths and warm LRU pool. Throws if files unreadable.
+      try {
+        getAgent(t25Entry.mtls);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[default.ts/gigachat] mTLS agent unavailable: ${msg}`);
+      }
+    }
+
     switch (this.provider) {
       case "gigachat":
-        headers["Authorization"] = `Bearer ${credentials.accessToken || effectiveKey}`;
+        headers["Authorization"] = `Bearer ${credentials.accessToken || t25Entry?.api_key || effectiveKey}`;
         break;
 
       case "openai-compatible":
@@ -277,10 +321,16 @@ export class DefaultExecutor extends BaseExecutor {
     if (this.provider === "gigachat") {
       if (!credentials.apiKey) return null;
       try {
+        const entry = resolveKeyStoreEntry(credentials);
+        // T25 cascade: keyStoreEntry.authUrl > providerSpecificData.authUrl > gigachatAuth default
         const authUrl =
-          (credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["authUrl"] as string | undefined;
+          entry?.authUrl ||
+          ((credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["authUrl"] as string | undefined);
+        // T25: when keyStore binds an outbound api_key, use it for OAuth token exchange
+        // instead of the (potentially inbound) credentials.apiKey.
+        const credsForExchange = entry?.api_key || credentials.apiKey;
         return await getGigachatAccessToken({
-          credentials: credentials.apiKey,
+          credentials: credsForExchange,
           authUrl,
         });
       } catch (error: any) {
