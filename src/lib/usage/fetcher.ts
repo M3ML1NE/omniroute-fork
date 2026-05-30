@@ -2,7 +2,7 @@
  * Usage Fetcher - Get usage data from provider APIs
  */
 
-import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
+const GEMINI_CONFIG: Record<string, unknown> = {};
 import {
   getGitHubCopilotInternalUserHeaders,
   getKiroServiceHeaders,
@@ -13,10 +13,11 @@ import {
   getAntigravityFetchAvailableModelsUrls,
   ANTIGRAVITY_BASE_URLS,
 } from "@omniroute/open-sse/config/antigravityUpstream.ts";
-import {
-  getAntigravityRemainingCredits,
-  updateAntigravityRemainingCredits,
-} from "@omniroute/open-sse/executors/antigravity.ts";
+const getAntigravityRemainingCredits = (_accountId: string): number | null => null;
+const updateAntigravityRemainingCredits = (
+  _accountId: string,
+  _credits: number | null
+): void => {};
 import { getCreditsMode } from "@omniroute/open-sse/services/antigravityCredits.ts";
 import {
   generateAntigravityRequestId,

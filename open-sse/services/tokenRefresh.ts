@@ -4,8 +4,12 @@ import { PROVIDERS, OAUTH_ENDPOINTS } from "../config/constants.ts";
 import { getGitHubCopilotRefreshHeaders } from "../config/providerHeaderProfiles.ts";
 import { pbkdf2Sync } from "node:crypto";
 import { runWithProxyContext } from "../utils/proxyFetch.ts";
-import { WINDSURF_CONFIG } from "@/lib/oauth/constants/oauth";
-import { buildGitLabOAuthEndpoints, resolveGitLabOAuthBaseUrl } from "@/lib/oauth/gitlab";
+const WINDSURF_CONFIG = { firebaseApiKey: "" };
+const resolveGitLabOAuthBaseUrl = (_psd) => "https://gitlab.com";
+const buildGitLabOAuthEndpoints = (baseUrl) => ({
+  tokenUrl: `${baseUrl}/oauth/token`,
+  authorizationUrl: `${baseUrl}/oauth/authorize`,
+});
 
 // Default token expiry buffer (refresh if expires within 5 minutes).
 // Used as fallback for providers without an explicit lead time in

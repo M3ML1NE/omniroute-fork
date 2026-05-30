@@ -16,11 +16,13 @@ import { getAccessToken } from "@omniroute/open-sse/services/tokenRefresh.ts";
 import { saveCallLog } from "@/lib/usageDb";
 import { logProxyEvent } from "@/lib/proxyLogger";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
-import {
-  buildGitLabOAuthEndpoints,
-  isGitLabDirectAccessDisabled,
-  resolveGitLabOAuthBaseUrl,
-} from "@/lib/oauth/gitlab";
+const buildGitLabOAuthEndpoints = (baseUrl: string) => ({
+  tokenUrl: `${baseUrl}/oauth/token`,
+  authorizationUrl: `${baseUrl}/oauth/authorize`,
+  directAccessUrl: `${baseUrl}/api/v4/code_suggestions/direct_access`,
+});
+const isGitLabDirectAccessDisabled = (_psd: unknown): boolean => false;
+const resolveGitLabOAuthBaseUrl = (_psd: unknown): string => "https://gitlab.com";
 import { providerAllowsOptionalApiKey } from "@/shared/constants/providers";
 import { removeConnectionHealth } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 

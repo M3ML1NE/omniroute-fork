@@ -1,7 +1,7 @@
 import https from "node:https";
 import fs from "node:fs";
 import crypto from "node:crypto";
-import type { MtlsConfig } from "../types/keyStore.js";
+import type { MtlsConfig } from "../types/keyStore.ts";
 
 /**
  * Compute fingerprint of MtlsConfig paths (not contents).

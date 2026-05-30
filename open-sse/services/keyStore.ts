@@ -5,7 +5,7 @@ import {
   type KeyStoreEntry,
   type KeyStoreFile,
   isKeyStoreFile,
-} from "../types/keyStore.js";
+} from "../types/keyStore.ts";
 
 /**
  * Redact sensitive fields entry safe logging.

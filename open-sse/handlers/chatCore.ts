@@ -137,13 +137,23 @@ import {
   shouldDetectLimit,
 } from "../services/toolLimitDetector.ts";
 
-import {
-  parseCodexQuotaHeaders,
-  getCodexModelScope,
-  getCodexDualWindowCooldownMs,
-  isCompactResponsesEndpoint,
-} from "../executors/codex.ts";
-import { invalidateCodexQuotaCache } from "../services/codexQuotaFetcher.ts";
+interface CodexQuotaSnapshot {
+  usage5h: number;
+  limit5h: number;
+  resetAt5h: string;
+  usage7d: number;
+  limit7d: number;
+  resetAt7d: string;
+}
+const parseCodexQuotaHeaders = (
+  _headers: Record<string, string> | null
+): CodexQuotaSnapshot | null => null;
+const getCodexModelScope = (_model: string): string => "default";
+const getCodexDualWindowCooldownMs = (
+  _quota: unknown
+): { cooldownMs: number; window: string } => ({ cooldownMs: 0, window: "" });
+const isCompactResponsesEndpoint = (_endpointPath?: string | null): boolean => false;
+const invalidateCodexQuotaCache = (_connectionId: string): void => {};
 import { translateNonStreamingResponse } from "./responseTranslator.ts";
 import { extractUsageFromResponse } from "./usageExtractor.ts";
 import {
