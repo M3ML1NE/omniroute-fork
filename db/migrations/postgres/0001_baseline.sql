@@ -1,0 +1,3 @@
+-- Baseline migration placeholder.
+-- Actual schema will be added in Task 22 (SQLite→Postgres migration).
+-- This file is intentionally left empty to establish migration tracking.

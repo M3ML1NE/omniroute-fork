@@ -134,7 +134,10 @@
     "uninstall:full": "node scripts/build/uninstall.mjs --full",
     "prepare": "husky",
     "system-info": "node scripts/dev/system-info.mjs",
-    "build:cli-api": "node --import tsx/esm scripts/cli/generate-api-commands.mjs"
+    "build:cli-api": "node --import tsx/esm scripts/cli/generate-api-commands.mjs",
+    "db:up": "docker run --name omniroute-postgres-test -d -e POSTGRES_USER=omniroute -e POSTGRES_PASSWORD=omniroute -e POSTGRES_DB=omniroute_test -p 5432:5432 --health-cmd=\"pg_isready -U omniroute -d omniroute_test\" --health-interval=5s --health-timeout=5s --health-retries=10 --health-start-period=10s postgres:16",
+    "db:down": "docker stop omniroute-postgres-test && docker rm omniroute-postgres-test",
+    "db:migrate": "node --import tsx/esm db/migrate-postgres.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1045.0",
@@ -217,8 +220,10 @@
     "@testing-library/react": "^16.3.2",
     "@types/bcryptjs": "^3.0.0",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "latest",
     "@types/keytar": "^4.4.2",
     "@types/node": "^25.9.1",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.0",
@@ -233,14 +238,14 @@
     "jsdom": "^29.1.1",
     "lint-staged": "^17.0.5",
     "node-loader": "^2.1.0",
+    "pg": "^8.21.0",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.4",
     "vitest": "^4.1.7",
     "wait-on": "^9.0.10",
-    "wtfnode": "^0.10.1",
-    "@types/bun": "latest"
+    "wtfnode": "^0.10.1"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs}": [
