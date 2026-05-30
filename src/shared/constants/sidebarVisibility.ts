@@ -12,10 +12,6 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "context-caveman",
   "context-rtk",
   "context-combos",
-  // OmniProxy > Tools
-  "cli-tools",
-  "agents",
-  "cloud-agents",
   // OmniProxy > Integrations
   "api-endpoints",
   "webhooks",
@@ -54,13 +50,8 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   // Agentic Features
   "memory",
   "skills",
-  "agent-skills",
   "mcp",
   "a2a",
-  // Gamification
-  "leaderboard",
-  "profile",
-  "tokens",
   // Other Features — flat
   "media",
   // Other Features > Batch
@@ -218,36 +209,6 @@ const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
       i18nKey: "contextCombos",
       subtitleKey: "contextCombosSubtitle",
       icon: "hub",
-    },
-  ],
-};
-
-const TOOLS_GROUP: SidebarItemGroup = {
-  type: "group",
-  id: "tools",
-  titleKey: "toolsGroup",
-  titleFallback: "Tools",
-  items: [
-    {
-      id: "cli-tools",
-      href: "/dashboard/cli-tools",
-      i18nKey: "cliTools",
-      subtitleKey: "cliToolsSubtitle",
-      icon: "terminal",
-    },
-    {
-      id: "agents",
-      href: "/dashboard/agents",
-      i18nKey: "agents",
-      subtitleKey: "agentsSubtitle",
-      icon: "smart_toy",
-    },
-    {
-      id: "cloud-agents",
-      href: "/dashboard/cloud-agents",
-      i18nKey: "cloudAgents",
-      subtitleKey: "cloudAgentsSubtitle",
-      icon: "cloud",
     },
   ],
 };
@@ -510,13 +471,6 @@ const AGENTIC_FEATURES_ITEMS: readonly SidebarSectionChild[] = [
     subtitleKey: "omniSkillsSubtitle",
     icon: "auto_fix_high",
   },
-  {
-    id: "agent-skills",
-    href: "/dashboard/agent-skills",
-    i18nKey: "agentSkills",
-    subtitleKey: "agentSkillsSubtitle",
-    icon: "share",
-  },
   MCP_GROUP,
   {
     id: "a2a",
@@ -526,36 +480,6 @@ const AGENTIC_FEATURES_ITEMS: readonly SidebarSectionChild[] = [
     icon: "device_hub",
   },
 ];
-
-const GAMIFICATION_GROUP: SidebarItemGroup = {
-  type: "group",
-  id: "gamification",
-  titleKey: "gamificationGroup",
-  titleFallback: "Gamification",
-  items: [
-    {
-      id: "leaderboard",
-      href: "/dashboard/leaderboard",
-      i18nKey: "leaderboard",
-      subtitleKey: "leaderboardSubtitle",
-      icon: "emoji_events",
-    },
-    {
-      id: "profile",
-      href: "/dashboard/profile",
-      i18nKey: "profile",
-      subtitleKey: "profileSubtitle",
-      icon: "person",
-    },
-    {
-      id: "tokens",
-      href: "/dashboard/tokens",
-      i18nKey: "tokens",
-      subtitleKey: "tokensSubtitle",
-      icon: "toll",
-    },
-  ],
-};
 
 const OTHER_FEATURES_ITEMS: readonly SidebarItemDefinition[] = [
   {
@@ -706,8 +630,7 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     children: [
       ...OMNI_PROXY_ITEMS,
       COMPRESSION_CONTEXT_GROUP,
-      TOOLS_GROUP,
-      INTEGRATIONS_GROUP,
+        INTEGRATIONS_GROUP,
       PROXY_GROUP,
     ],
     defaultPinned: true,
@@ -741,7 +664,7 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     id: "other-features",
     titleKey: "otherFeaturesSection",
     titleFallback: "Other Features",
-    children: [GAMIFICATION_GROUP, ...OTHER_FEATURES_ITEMS, BATCH_GROUP],
+    children: [...OTHER_FEATURES_ITEMS, BATCH_GROUP],
   },
   {
     id: "configuration",
@@ -801,8 +724,6 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "context-caveman",
   "context-rtk",
   "context-combos",
-  "cli-tools",
-  "agents",
   "api-endpoints",
   "analytics",
   "analytics-combo-health",
