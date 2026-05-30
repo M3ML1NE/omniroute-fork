@@ -7523,6 +7523,7 @@ function AddApiKeyModal({
   const [formData, setFormData] = useState({
     name: "",
     apiKey: "",
+    keystoreEntryId: "",
     priority: 1,
     baseUrl: defaultBaseUrl,
     cx: "",
@@ -7728,14 +7729,15 @@ function AddApiKeyModal({
         providerSpecificData.requestDefaults = { context1m: true };
       }
 
-      const payload = {
-        name: formData.name,
-        apiKey: credentialInput.trim() || undefined,
-        priority: formData.priority,
-        testStatus: "active",
-        providerSpecificData:
-          Object.keys(providerSpecificData).length > 0 ? providerSpecificData : undefined,
-      };
+    const payload = {
+      name: formData.name,
+      apiKey: credentialInput.trim() || undefined,
+      keystoreEntryId: formData.keystoreEntryId.trim() || undefined,
+      priority: formData.priority,
+      testStatus: "active",
+      providerSpecificData:
+        Object.keys(providerSpecificData).length > 0 ? providerSpecificData : undefined,
+    };
 
       const error = await onSave(payload);
       if (error) {
@@ -8055,6 +8057,15 @@ function AddApiKeyModal({
                 </div>
               </div>
             )}
+        <Input
+          label="Keystore Entry ID"
+          value={formData.keystoreEntryId}
+          onChange={(e) => setFormData({ ...formData, keystoreEntryId: e.target.value })}
+          placeholder="e.g. my-cert-entry"
+          hint="Optional: reference a keystore entry for mTLS credential lookup"
+          autoComplete="off"
+          spellCheck={false}
+        />
             {isGooglePse && (
               <Input
                 label={t("searchEngineIdLabel")}
