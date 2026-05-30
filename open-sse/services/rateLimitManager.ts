@@ -11,7 +11,8 @@
 import Bottleneck from "bottleneck";
 import { parseRetryAfterFromBody } from "./accountFallback.ts";
 import { getProviderCategory } from "../config/providerRegistry.ts";
-import { getCodexRateLimitKey } from "../executors/codex.ts";
+// Stripdown: codex executor removed; stub rate-limit key.
+const getCodexRateLimitKey = (connectionId: string, _model: string): string => connectionId;
 import {
   DEFAULT_RESILIENCE_SETTINGS,
   resolveResilienceSettings,

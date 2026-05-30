@@ -42,7 +42,8 @@ import {
   PROVIDER_ERROR_TYPES,
 } from "@omniroute/open-sse/services/errorClassifier.ts";
 import { looksLikeQuotaExhausted } from "@/shared/utils/classify429";
-import { getCodexModelScope } from "@omniroute/open-sse/executors/codex.ts";
+// Stripdown: codex executor removed; stub model-scope helper.
+const getCodexModelScope = (_model: string): string => "default";
 import {
   getProviderAlias,
   resolveProviderId,

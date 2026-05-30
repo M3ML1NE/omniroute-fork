@@ -27,12 +27,14 @@ import {
   getAntigravityHeaders,
   getAntigravityLoadCodeAssistMetadata,
 } from "./antigravityHeaders.ts";
-import {
-  getAntigravityRemainingCredits,
-  updateAntigravityRemainingCredits,
-} from "../executors/antigravity.ts";
+// Stripdown: antigravity / claudeIdentity executors removed; stub helpers locally.
+const getAntigravityRemainingCredits = (_accountId: string): number | null => null;
+const updateAntigravityRemainingCredits = (_accountId: string, _balance: number): void => {};
 import { getCreditsMode } from "./antigravityCredits.ts";
-import { CLAUDE_CODE_VERSION, fetchClaudeBootstrap } from "../executors/claudeIdentity.ts";
+const CLAUDE_CODE_VERSION = "0.0.0";
+const fetchClaudeBootstrap = async (
+  _accessToken: string,
+): Promise<{ organization_rate_limit_tier?: string } | null> => null;
 import { generateAntigravityRequestId, getAntigravitySessionId } from "./antigravityIdentity.ts";
 import {
   extractCodeAssistOnboardTierId,

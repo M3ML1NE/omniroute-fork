@@ -31,22 +31,25 @@ import {
   stripTrailingAssistantOrphanToolUse,
 } from "../services/contextManager.ts";
 import { randomUUID } from "node:crypto";
-import {
-  CLAUDE_CODE_VERSION,
-  CLAUDE_CODE_STAINLESS_VERSION,
-  buildHashFor,
-  buildUserIdJson,
-  getSessionId,
-  parseUpstreamMetadataUserId,
-  passthroughUpstreamSessionId,
-  resolveAccountUUID,
-  resolveCliUserID,
-  selectBetaFlags,
-  stainlessArch,
-  stainlessOS,
-  stainlessRuntimeVersion,
-  stripProxyToolPrefix,
-} from "./claudeIdentity.ts";
+// Stripdown: claudeIdentity executor removed; provide local no-op stubs for
+// claude/CC-compatible code paths that remain in this base class. These paths
+// are dead in the gigachat-only build but kept compiling for upstream parity.
+const CLAUDE_CODE_VERSION = "0.0.0";
+const CLAUDE_CODE_STAINLESS_VERSION = "0.0.0";
+const buildHashFor = (_version: string, _dayStamp: string): string => "0";
+const buildUserIdJson = (_input: unknown): string => "{}";
+const getSessionId = (_seed: unknown): string => randomUUID();
+const parseUpstreamMetadataUserId = (
+  _tb: unknown,
+): { session_id?: string; device_id?: string; account_uuid?: string } | null => null;
+const passthroughUpstreamSessionId = (..._args: unknown[]): string | null => null;
+const resolveAccountUUID = (..._args: unknown[]): string => randomUUID();
+const resolveCliUserID = (..._args: unknown[]): string => randomUUID();
+const selectBetaFlags = (_tb: unknown): string => "";
+const stainlessArch = (): string => process.arch;
+const stainlessOS = (): string => process.platform;
+const stainlessRuntimeVersion = (): string => process.version;
+const stripProxyToolPrefix = (_tb: unknown): void => {};
 
 /**
  * Sanitizes a custom API path to prevent path traversal attacks.
