@@ -23,8 +23,6 @@
     "open-sse/config/providerRegistry.ts",
     "open-sse/mcp-server/audit.ts",
     "open-sse/mcp-server/server.ts",
-    "open-sse/mcp-server/tools/advancedTools.ts",
-    "open-sse/mcp-server/scopeEnforcement.ts",
     "open-sse/translator/registry.ts",
     "open-sse/handlers/responseSanitizer.ts",
     "open-sse/handlers/responseTranslator.ts"
