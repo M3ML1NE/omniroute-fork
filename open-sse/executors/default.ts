@@ -243,6 +243,30 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
+
+    // GigaChat: translate OpenAI tools[] -> GigaChat functions[] (T24)
+    if (this.provider === "gigachat" && typeof withDefaults === "object" && withDefaults !== null) {
+      const requestBody = withDefaults as Record<string, unknown>;
+      if (Array.isArray(requestBody["tools"])) {
+        requestBody["functions"] = (requestBody["tools"] as Record<string, unknown>[]).map(
+          (tool: Record<string, unknown>) => {
+            const fn = tool["function"] as Record<string, unknown>;
+            return {
+              name: String(fn["name"]).replace(/-/g, "_"), // sanitize hyphens -> underscores
+              description: fn["description"],
+              parameters: fn["parameters"], // pass-through, no validation
+            };
+          },
+        );
+        delete requestBody["tools"];
+      }
+      // tool_choice: GigaChat has no direct equivalent, log warning and remove
+      if (requestBody["tool_choice"] !== undefined) {
+        console.warn("[gigachat] tool_choice not supported, ignoring");
+        delete requestBody["tool_choice"];
+      }
+    }
+
     return withDefaults;
   }
 

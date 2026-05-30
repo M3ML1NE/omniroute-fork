@@ -4966,7 +4966,34 @@ export async function handleChatCore({
       }
     }
 
-    // T18: Normalize finish_reason to 'tool_calls' if tool calls are present
+    // T24: GigaChat reverse translation - function_call -> tool_calls[]
+    if (provider === "gigachat" && translatedResponse?.choices) {
+      for (const choice of translatedResponse.choices) {
+        const msg = (choice as Record<string, unknown>).message as Record<string, unknown> | undefined;
+        if (msg?.["function_call"]) {
+          const fc = msg["function_call"] as { name: string; arguments: unknown };
+          msg["tool_calls"] = [
+            {
+              id: `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name: fc.name,
+                arguments:
+                  typeof fc.arguments === "string"
+                    ? fc.arguments
+                    : JSON.stringify(fc.arguments),
+              },
+            },
+          ];
+          delete msg["function_call"];
+        }
+        if ((choice as Record<string, unknown>)["finish_reason"] === "function_call") {
+          (choice as Record<string, unknown>)["finish_reason"] = "tool_calls";
+        }
+      }
+    }
+
+        // T18: Normalize finish_reason to 'tool_calls' if tool calls are present
     if (translatedResponse?.choices) {
       for (const choice of translatedResponse.choices) {
         if (
