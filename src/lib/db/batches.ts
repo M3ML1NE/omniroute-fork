@@ -1,5 +1,6 @@
 import { getDbInstance, rowToCamel, objToSnake } from "./core";
 import { deleteFile } from "./files";
+import { nonCriticalDbDisabled } from "./minimalDb";
 import { v4 as uuidv4 } from "uuid";
 
 function parseBatchRow(row: any): BatchRecord {
@@ -93,6 +94,7 @@ export function createBatch(
     | "status"
   > & { status?: BatchRecord["status"] }
 ): BatchRecord {
+  if (nonCriticalDbDisabled()) return { id: "", status: "validating", createdAt: 0, requestCountsTotal: 0, requestCountsCompleted: 0, requestCountsFailed: 0 } as unknown as BatchRecord;
   const db = getDbInstance();
   const id = "batch_" + uuidv4().replaceAll("-", "").substring(0, 24);
   const createdAt = Math.floor(Date.now() / 1000);
@@ -127,6 +129,7 @@ export function createBatch(
 }
 
 export function getBatch(id: string): BatchRecord | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM batches WHERE id = ?").get(id);
   if (!row) return null;
@@ -134,6 +137,7 @@ export function getBatch(id: string): BatchRecord | null {
 }
 
 export function updateBatch(id: string, updates: Partial<BatchRecord>): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const snakeUpdates = objToSnake(updates) as any;
   if (snakeUpdates.metadata && typeof snakeUpdates.metadata !== "string") {
@@ -157,6 +161,7 @@ export function updateBatch(id: string, updates: Partial<BatchRecord>): boolean 
 }
 
 export function listBatches(apiKeyId?: string, limit: number = 20, after?: string): BatchRecord[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const afterBatch = after ? getBatch(after) : null;
   let rows: any[];
@@ -187,6 +192,7 @@ export function listBatches(apiKeyId?: string, limit: number = 20, after?: strin
 }
 
 export function countBatches(apiKeyId?: string): number {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   if (apiKeyId) {
     const row = db
@@ -200,6 +206,7 @@ export function countBatches(apiKeyId?: string): number {
 }
 
 export function getPendingBatches(): BatchRecord[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db
     .prepare(
@@ -210,6 +217,7 @@ export function getPendingBatches(): BatchRecord[] {
 }
 
 export function getTerminalBatches(): BatchRecord[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db
     .prepare(
@@ -220,6 +228,7 @@ export function getTerminalBatches(): BatchRecord[] {
 }
 
 export function deleteBatch(id: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const batch = getBatch(id);
   if (!batch) return false;
@@ -252,6 +261,7 @@ export function deleteBatch(id: string): boolean {
 }
 
 export function deleteCompletedBatches(): { deletedBatches: number; deletedFiles: number } {
+  if (nonCriticalDbDisabled()) return { deletedBatches: 0, deletedFiles: 0 };
   const db = getDbInstance();
 
   // Collect unique file IDs from all completed batches

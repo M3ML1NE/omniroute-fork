@@ -7,6 +7,7 @@
  */
 import { v4 as uuidv4 } from "uuid";
 import { getDbInstance } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 import { getSettings } from "./settings";
 import { isNoLog } from "../compliance/noLog";
 import {
@@ -49,11 +50,13 @@ function requestDetailLogsTableExists(): boolean {
 }
 
 export function resetRequestDetailLogsTableExistsCache(): void {
+  if (nonCriticalDbDisabled()) return;
   requestDetailLogsTableExistsCache = undefined;
 }
 
 /** Returns true if detailed logging is enabled in settings */
 export async function isDetailedLoggingEnabled(): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   try {
     const settings = await getSettings();
     const val = settings.call_log_pipeline_enabled;
@@ -65,6 +68,7 @@ export async function isDetailedLoggingEnabled(): Promise<boolean> {
 
 /** Save a detailed log entry — caller must verify isDetailedLoggingEnabled() first */
 export function saveRequestDetailLog(entry: RequestDetailLog): void {
+  if (nonCriticalDbDisabled()) return;
   const noLogEnabled =
     Boolean(entry.no_log) || (entry.api_key_id ? isNoLog(entry.api_key_id) : false);
   if (noLogEnabled || !requestDetailLogsTableExists()) return;
@@ -100,6 +104,7 @@ export function saveRequestDetailLog(entry: RequestDetailLog): void {
 
 /** Fetch detailed logs (latest first) */
 export function getRequestDetailLogs(limit = 50, offset = 0): RequestDetailLog[] {
+  if (nonCriticalDbDisabled()) return [];
   if (!requestDetailLogsTableExists()) return [];
   const db = getDbInstance();
   const rows = db
@@ -117,6 +122,7 @@ export function getRequestDetailLogs(limit = 50, offset = 0): RequestDetailLog[]
 
 /** Get a single detailed log by ID */
 export function getRequestDetailLogById(id: string): RequestDetailLog | null {
+  if (nonCriticalDbDisabled()) return null;
   if (!requestDetailLogsTableExists()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM request_detail_logs WHERE id = ?").get(id) as
@@ -127,6 +133,7 @@ export function getRequestDetailLogById(id: string): RequestDetailLog | null {
 
 /** Get the most recent detailed log for a call log ID */
 export function getRequestDetailLogByCallLogId(callLogId: string): RequestDetailLog | null {
+  if (nonCriticalDbDisabled()) return null;
   if (!requestDetailLogsTableExists()) return null;
   const db = getDbInstance();
   const row = db
@@ -144,6 +151,7 @@ export function getRequestDetailLogByCallLogId(callLogId: string): RequestDetail
 
 /** Get total count of detailed logs */
 export function getRequestDetailLogCount(): number {
+  if (nonCriticalDbDisabled()) return 0;
   if (!requestDetailLogsTableExists()) return 0;
   const db = getDbInstance();
   const row = db.prepare("SELECT COUNT(*) as cnt FROM request_detail_logs").get() as {

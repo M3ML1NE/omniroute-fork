@@ -1,5 +1,6 @@
 /** Upstream proxy config persistence for upstream_proxy_config table. */
 import { getDbInstance } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 interface UpstreamProxyConfig {
   id: number;
@@ -97,6 +98,7 @@ function rowToConfig(record: Record<string, unknown>): UpstreamProxyConfig {
 }
 
 export async function getUpstreamProxyConfigs() {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db
     .prepare("SELECT * FROM upstream_proxy_config ORDER BY provider_id")
@@ -105,6 +107,7 @@ export async function getUpstreamProxyConfigs() {
 }
 
 export async function getUpstreamProxyConfig(providerId: string) {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db
     .prepare("SELECT * FROM upstream_proxy_config WHERE provider_id = ?")
@@ -121,6 +124,7 @@ export async function upsertUpstreamProxyConfig(data: {
   cliproxyapiPriority?: number;
   enabled?: boolean;
 }) {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const mode = data.mode ?? "native";
   const cliproxyapiModelMapping =
@@ -158,6 +162,7 @@ export async function updateUpstreamProxyConfig(
   providerId: string,
   updates: Record<string, unknown>
 ) {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const current = await getUpstreamProxyConfig(providerId);
   if (!current) {
@@ -201,6 +206,7 @@ export async function updateUpstreamProxyConfig(
 }
 
 export async function deleteUpstreamProxyConfig(providerId: string) {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db
     .prepare("DELETE FROM upstream_proxy_config WHERE provider_id = ?")
@@ -209,6 +215,7 @@ export async function deleteUpstreamProxyConfig(providerId: string) {
 }
 
 export async function getProvidersByMode(mode: string) {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db
     .prepare(
@@ -219,6 +226,7 @@ export async function getProvidersByMode(mode: string) {
 }
 
 export async function getFallbackChainForProvider(providerId: string) {
+  if (nonCriticalDbDisabled()) return [];
   const config = await getUpstreamProxyConfig(providerId);
   if (!config) return [];
 

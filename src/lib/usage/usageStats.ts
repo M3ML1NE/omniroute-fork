@@ -8,6 +8,7 @@
  */
 
 import { getDbInstance } from "../db/core";
+import { nonCriticalDbDisabled } from "../db/minimalDb";
 import { getApiKeys } from "../db/apiKeys";
 import { getPendingRequests } from "./usageHistory";
 import { getAccountDisplayName } from "@/lib/display/names";
@@ -193,6 +194,7 @@ function getApiKeyStatsKey(apiKeyId: string | null, apiKeyName: string | null): 
  * Uses UNION of recent raw data and older aggregated data when aggregation is enabled.
  */
 export async function getUsageStats() {
+  if (nonCriticalDbDisabled()) return { totalRequests: 0, totalPromptTokens: 0, totalCompletionTokens: 0, totalCost: 0, byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, last10Minutes: [], pending: { byModel: {}, byAccount: {}, details: {} }, activeRequests: [] };
   const db = getDbInstance();
   const aggregationEnabled = await isAggregationEnabled();
   const cutoffDate = aggregationEnabled ? await getRawDataCutoffDate() : null;

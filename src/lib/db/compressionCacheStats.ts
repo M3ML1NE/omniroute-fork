@@ -1,4 +1,5 @@
 import { getDbInstance } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 export interface CacheStatsEntry {
   provider: string;
@@ -19,6 +20,7 @@ export interface CacheStatsSummary {
 }
 
 export function recordCacheStats(entry: CacheStatsEntry): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
 
   const sql = `INSERT INTO compression_cache_stats (
@@ -45,6 +47,7 @@ export function recordCacheStats(entry: CacheStatsEntry): void {
 }
 
 export function getCacheStatsSummary(since?: Date): CacheStatsSummary {
+  if (nonCriticalDbDisabled()) return { totalRequests: 0, avgNetSavings: 0, cacheHitRate: 0, byProvider: {} };
   const db = getDbInstance();
   const whereClause = since ? "WHERE created_at >= ?" : "";
   const params = since ? [since.toISOString()] : [];

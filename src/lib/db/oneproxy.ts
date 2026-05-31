@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { getDbInstance } from "./core";
 import { backupDbFile } from "./backup";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -92,6 +93,7 @@ export async function listOneproxyProxies(options?: {
   minQuality?: number;
   limit?: number;
 }): Promise<OneproxyProxyRecord[]> {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
 
   let sql = "SELECT * FROM proxy_registry WHERE source = 'oneproxy' AND status = 'active'";
@@ -122,6 +124,7 @@ export async function listOneproxyProxies(options?: {
 }
 
 export async function getOneproxyStats(): Promise<OneproxyStats> {
+  if (nonCriticalDbDisabled()) return { total: 0, active: 0, avgQuality: null, lastValidated: null, byProtocol: [], byCountry: [] };
   const db = getDbInstance();
 
   const statsRow = db
@@ -165,6 +168,7 @@ export async function getOneproxyStats(): Promise<OneproxyStats> {
 export async function upsertOneproxyProxy(
   input: OneproxyUpsertInput
 ): Promise<{ proxy: OneproxyProxyRecord | null; action: "created" | "updated" }> {
+  if (nonCriticalDbDisabled()) return { proxy: null, action: "created" };
   const db = getDbInstance();
   const now = new Date().toISOString();
 
@@ -228,6 +232,7 @@ export async function upsertOneproxyProxy(
 }
 
 export async function getOneproxyProxyById(id: string): Promise<OneproxyProxyRecord | null> {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db
     .prepare("SELECT * FROM proxy_registry WHERE id = ? AND source = 'oneproxy'")
@@ -237,6 +242,7 @@ export async function getOneproxyProxyById(id: string): Promise<OneproxyProxyRec
 }
 
 export async function deleteOneproxyProxy(id: string): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db
     .prepare("DELETE FROM proxy_registry WHERE id = ? AND source = 'oneproxy'")
@@ -246,6 +252,7 @@ export async function deleteOneproxyProxy(id: string): Promise<boolean> {
 }
 
 export async function clearAllOneproxyProxies(): Promise<number> {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   const result = db.prepare("DELETE FROM proxy_registry WHERE source = 'oneproxy'").run();
   backupDbFile("pre-write");
@@ -255,6 +262,7 @@ export async function clearAllOneproxyProxies(): Promise<number> {
 export async function getOneproxyProxyForRotation(options?: {
   strategy?: "random" | "quality" | "sequential";
 }): Promise<OneproxyProxyRecord | null> {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const strategy = options?.strategy || "quality";
 
@@ -278,6 +286,7 @@ export async function getOneproxyProxyForRotation(options?: {
 }
 
 export async function markOneproxyProxyFailed(host: string, port: number): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db
     .prepare(

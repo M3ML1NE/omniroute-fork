@@ -7,6 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { getDbInstance } from "./core";
 import { rowToCamel } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ function hashToken(token: string): string {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export function createRelayToken(input: CreateRelayTokenInput): RelayTokenWithSecret {
+  if (nonCriticalDbDisabled()) return { id: "", name: "", tokenHash: "", tokenPrefix: "", description: "", comboId: null, allowedModels: "[]", maxTokensPerRequest: 0, maxRequestsPerMinute: 0, maxRequestsPerDay: 0, maxCostPerDay: 0, enabled: false, createdAt: 0, updatedAt: 0, expiresAt: null, lastUsedAt: null, metadata: "{}", rawToken: "" };
   const db = getDbInstance();
   const id = generateId();
   const rawToken = generateToken();
@@ -140,6 +142,7 @@ export function createRelayToken(input: CreateRelayTokenInput): RelayTokenWithSe
 }
 
 export function getRelayTokens(): RelayToken[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db
     .prepare("SELECT * FROM relay_tokens ORDER BY created_at DESC")
@@ -151,6 +154,7 @@ export function getRelayTokens(): RelayToken[] {
 }
 
 export function getRelayToken(id: string): RelayToken | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM relay_tokens WHERE id = ?").get(id) as
     | RelayTokenRow
@@ -162,6 +166,7 @@ export function getRelayToken(id: string): RelayToken | null {
 export function getRelayTokenByHash(
   tokenHash: string
 ): (RelayToken & { rawToken?: string }) | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db
     .prepare("SELECT * FROM relay_tokens WHERE token_hash = ? AND enabled = 1")
@@ -174,6 +179,7 @@ export function updateRelayToken(
   id: string,
   updates: Partial<CreateRelayTokenInput>
 ): RelayToken | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const now = Math.floor(Date.now() / 1000);
   const sets: string[] = ["updated_at = ?"];
@@ -218,11 +224,13 @@ export function updateRelayToken(
 }
 
 export function deleteRelayToken(id: string): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   db.prepare("DELETE FROM relay_tokens WHERE id = ?").run(id);
 }
 
 export function toggleRelayToken(id: string, enabled: boolean): RelayToken | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const now = Math.floor(Date.now() / 1000);
   db.prepare("UPDATE relay_tokens SET enabled = ?, updated_at = ? WHERE id = ?").run(
@@ -240,6 +248,7 @@ export function checkRateLimit(tokenId: string): {
   remaining: number;
   resetIn: number;
 } {
+  if (nonCriticalDbDisabled()) return { allowed: false, remaining: 0, resetIn: 0 };
   const db = getDbInstance();
   const token = db.prepare("SELECT * FROM relay_tokens WHERE id = ?").get(tokenId) as
     | RelayTokenRow
@@ -297,6 +306,7 @@ export function recordRelayUsage(
     userAgent?: string;
   }
 ): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   const now = Math.floor(Date.now() / 1000);
   const minuteWindow = Math.floor(now / 60) * 60;
@@ -342,6 +352,7 @@ export function getRelayUsage(
   tokenId: string,
   since: number
 ): { requestCount: number; totalCost: number } {
+  if (nonCriticalDbDisabled()) return { requestCount: 0, totalCost: 0 };
   const db = getDbInstance();
   const row = db
     .prepare(
@@ -352,6 +363,7 @@ export function getRelayUsage(
 }
 
 export function getRelayLogs(tokenId?: string, limit = 50): RelayLogRow[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   if (tokenId) {
     return db

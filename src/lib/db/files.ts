@@ -1,4 +1,5 @@
 import { getDbInstance, rowToCamel, objToSnake } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 import { v4 as uuidv4 } from "uuid";
 import { DEFAULT_BATCH_EXPIRATION_SECONDS } from "@/shared/constants/batch";
 
@@ -19,6 +20,7 @@ const FILE_METADATA_COLUMNS =
   "id, bytes, created_at, filename, purpose, mime_type, api_key_id, expires_at, deleted_at";
 
 export function createFile(file: Omit<FileRecord, "id" | "createdAt">): FileRecord {
+  if (nonCriticalDbDisabled()) return { id: "", createdAt: 0 } as unknown as FileRecord;
   const db = getDbInstance();
   const id = "file-" + uuidv4().replaceAll("-", "").substring(0, 24);
   const createdAt = Math.floor(Date.now() / 1000);
@@ -64,6 +66,7 @@ export function createFile(file: Omit<FileRecord, "id" | "createdAt">): FileReco
 }
 
 export function getFile(id: string): FileRecord | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db
     .prepare(`SELECT ${FILE_METADATA_COLUMNS} FROM files WHERE id = ? AND deleted_at IS NULL`)
@@ -72,6 +75,7 @@ export function getFile(id: string): FileRecord | null {
 }
 
 export function getFileContent(id: string): Buffer | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db
     .prepare("SELECT content FROM files WHERE id = ? AND deleted_at IS NULL")
@@ -89,6 +93,7 @@ export function listFiles(
     order?: "asc" | "desc";
   } = {}
 ): FileRecord[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const { apiKeyId, purpose, limit = 20, after, order = "desc" } = options;
 
@@ -127,6 +132,7 @@ export function listFiles(
 }
 
 export function countFiles(options: { apiKeyId?: string; purpose?: string } = {}): number {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   const { apiKeyId, purpose } = options;
   let query = "SELECT COUNT(*) as c FROM files WHERE deleted_at IS NULL";
@@ -162,6 +168,7 @@ export function formatFileResponse(file: FileRecord) {
 }
 
 export function deleteFile(id: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db
     .prepare("UPDATE files SET deleted_at = ?, content = NULL WHERE id = ?")

@@ -10,6 +10,7 @@
  */
 
 import { getDbInstance } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 // ──────────────── Types ────────────────
 
@@ -81,6 +82,7 @@ export function setReasoningCache(
   reasoning: string,
   ttlMs: number = DEFAULT_TTL_MS
 ): void {
+  if (nonCriticalDbDisabled()) return;
   if (reasoning.length > MAX_ENTRY_BYTES) {
     reasoning = reasoning.slice(0, MAX_ENTRY_BYTES);
   }
@@ -102,6 +104,7 @@ export function setReasoningCache(
 export function getReasoningCache(
   toolCallId: string
 ): { reasoning: string; provider: string; model: string } | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db
     .prepare(
@@ -117,6 +120,7 @@ export function getReasoningCache(
  * Delete a specific reasoning cache entry.
  */
 export function deleteReasoningCache(toolCallId: string): number {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   const result = db.prepare(`DELETE FROM reasoning_cache WHERE tool_call_id = ?`).run(toolCallId);
   return result.changes;
@@ -126,6 +130,7 @@ export function deleteReasoningCache(toolCallId: string): number {
  * Delete all expired entries. Returns count of rows removed.
  */
 export function cleanupExpiredReasoning(): number {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   const result = db
     .prepare(`DELETE FROM reasoning_cache WHERE ${EXPIRES_AT_EPOCH_SQL} <= unixepoch('now')`)
@@ -138,6 +143,7 @@ export function cleanupExpiredReasoning(): number {
  * Returns count of rows removed.
  */
 export function clearAllReasoningCache(provider?: string): number {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   if (provider) {
     const result = db.prepare(`DELETE FROM reasoning_cache WHERE provider = ?`).run(provider);
@@ -153,6 +159,7 @@ export function clearAllReasoningCache(provider?: string): number {
  * Get aggregate statistics for the reasoning cache.
  */
 export function getReasoningCacheStats(): ReasoningCacheStats {
+  if (nonCriticalDbDisabled()) return { totalEntries: 0, totalChars: 0, byProvider: {}, byModel: {}, oldestEntry: null, newestEntry: null };
   const db = getDbInstance();
 
   // Total counts
@@ -229,6 +236,7 @@ export function getReasoningCacheEntries(
     model?: string;
   } = {}
 ): ReasoningCacheEntry[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const limit = Math.min(opts.limit ?? 50, 200);
   const offset = opts.offset ?? 0;

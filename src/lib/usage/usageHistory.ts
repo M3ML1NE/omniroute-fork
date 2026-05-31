@@ -8,6 +8,7 @@
  */
 
 import { getDbInstance } from "../db/core";
+import { nonCriticalDbDisabled } from "../db/minimalDb";
 import { protectPayloadForLog } from "../logPayloads";
 import { shouldPersistToDisk } from "./migrations";
 import {
@@ -286,6 +287,7 @@ const MAX_ROWS = 10000;
  * @param cursor - Timestamp cursor for pagination (exclusive, for next page)
  */
 export async function getUsageDb(sinceIso?: string | null, limit?: number, cursor?: string | null) {
+  if (nonCriticalDbDisabled()) return { data: { history: [], nextCursor: null } };
   const db = getDbInstance();
   const maxRows = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : MAX_ROWS;
 
@@ -349,6 +351,7 @@ export async function getUsageDb(sinceIso?: string | null, limit?: number, curso
  * Save request usage entry to SQLite.
  */
 export async function saveRequestUsage(entry: any) {
+  if (nonCriticalDbDisabled()) return;
   if (!shouldPersistToDisk) return;
 
   try {
@@ -398,6 +401,7 @@ export async function saveRequestUsage(entry: any) {
  * Get usage history with optional filters.
  */
 export async function getUsageHistory(filter: any = {}) {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   let sql = "SELECT * FROM usage_history";
   const conditions: string[] = [];
@@ -474,6 +478,7 @@ export interface ModelLatencyStatsEntry {
 export async function getModelLatencyStats(
   options: { windowHours?: number; minSamples?: number; maxRows?: number } = {}
 ): Promise<Record<string, ModelLatencyStatsEntry>> {
+  if (nonCriticalDbDisabled()) return {};
   const windowHours =
     Number.isFinite(Number(options.windowHours)) && Number(options.windowHours) > 0
       ? Number(options.windowHours)
@@ -613,6 +618,7 @@ export async function appendRequestLog({
  * Return recent request summaries generated from SQLite call_logs rows.
  */
 export async function getRecentLogs(limit = 200) {
+  if (nonCriticalDbDisabled()) return [];
   try {
     const db = getDbInstance();
     const rows = db

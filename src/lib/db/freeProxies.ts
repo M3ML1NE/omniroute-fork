@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { getDbInstance } from "./core";
 import { backupDbFile } from "./backup";
 import type { FreeProxyItem, FreeProxySourceId } from "@/lib/freeProxyProviders/types";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 export interface FreeProxyRecord {
   id: string;
@@ -53,6 +54,7 @@ function mapRow(row: unknown): FreeProxyRecord {
 export async function upsertFreeProxy(
   item: FreeProxyItem
 ): Promise<{ id: string; action: "created" | "updated" }> {
+  if (nonCriticalDbDisabled()) return { id: "", action: "created" };
   const db = getDbInstance();
   const now = new Date().toISOString();
 
@@ -112,6 +114,7 @@ export async function listFreeProxies(options?: {
   limit?: number;
   offset?: number;
 }): Promise<FreeProxyRecord[]> {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const params: unknown[] = [];
   let sql = "SELECT * FROM free_proxies WHERE 1=1";
@@ -163,6 +166,7 @@ export async function listFreeProxiesBySource(
     limit?: number;
   }
 ): Promise<FreeProxyItem[]> {
+  if (nonCriticalDbDisabled()) return [];
   const records = await listFreeProxies({
     sources: [source],
     protocol: filters.protocol,
@@ -184,12 +188,14 @@ export async function listFreeProxiesBySource(
 }
 
 export async function getFreeProxyById(id: string): Promise<FreeProxyRecord | null> {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM free_proxies WHERE id = ?").get(id);
   return row ? mapRow(row) : null;
 }
 
 export async function markFreeProxyInPool(id: string, poolProxyId: string): Promise<void> {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   const now = new Date().toISOString();
   db.prepare(
@@ -218,6 +224,7 @@ export async function promoteFreeProxyToPool(
     source: string;
   }
 ): Promise<string | null> {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const now = new Date().toISOString();
   const newRegistryId = randomUUID();
@@ -255,6 +262,7 @@ export async function promoteFreeProxyToPool(
 }
 
 export async function deleteFreeProxy(id: string): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db.prepare("DELETE FROM free_proxies WHERE id = ?").run(id);
   backupDbFile("pre-write");
@@ -262,6 +270,7 @@ export async function deleteFreeProxy(id: string): Promise<boolean> {
 }
 
 export async function clearFreeProxiesBySource(source: FreeProxySourceId): Promise<number> {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   const result = db
     .prepare("DELETE FROM free_proxies WHERE source = ? AND in_pool = 0")
@@ -271,6 +280,7 @@ export async function clearFreeProxiesBySource(source: FreeProxySourceId): Promi
 }
 
 export async function getFreeProxyStats(): Promise<FreeProxyStats> {
+  if (nonCriticalDbDisabled()) return { total: 0, inPool: 0, avgQuality: null, bySource: [], lastSyncAt: null };
   const db = getDbInstance();
   const totals = db
     .prepare(

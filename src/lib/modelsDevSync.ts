@@ -18,6 +18,7 @@
  */
 
 import { getDbInstance } from "./db/core";
+import { nonCriticalDbDisabled } from "./db/minimalDb";
 import { invalidateDbCache } from "./db/readCache";
 import { backupDbFile } from "./db/backup";
 
@@ -430,6 +431,7 @@ function mapCapabilityRecord(record: Record<string, unknown>): ModelCapabilityEn
  * Read synced pricing from `models_dev_pricing` namespace.
  */
 export function getModelsDevPricing(): PricingByProvider {
+  if (nonCriticalDbDisabled()) return {};
   const db = getDbInstance();
   const rows = db
     .prepare("SELECT key, value FROM key_value WHERE namespace = 'models_dev_pricing'")
@@ -453,6 +455,7 @@ export function getModelsDevPricing(): PricingByProvider {
  * Save synced pricing to `models_dev_pricing` namespace (full replace).
  */
 export function saveModelsDevPricing(data: PricingByProvider): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   const del = db.prepare("DELETE FROM key_value WHERE namespace = 'models_dev_pricing'");
   const insert = db.prepare(
@@ -473,6 +476,7 @@ export function saveModelsDevPricing(data: PricingByProvider): void {
  * Clear all models.dev synced pricing data.
  */
 export function clearModelsDevPricing(): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   db.prepare("DELETE FROM key_value WHERE namespace = 'models_dev_pricing'").run();
   backupDbFile("pre-write");
@@ -486,6 +490,7 @@ export function clearModelsDevPricing(): void {
  * Call this before any capability operations.
  */
 export function ensureCapabilitiesTable(): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   db.exec(`
     CREATE TABLE IF NOT EXISTS model_capabilities (
@@ -518,6 +523,7 @@ export function ensureCapabilitiesTable(): void {
  * Read synced capabilities from `model_capabilities` table.
  */
 export function getSyncedCapabilities(provider?: string, modelId?: string): CapabilitiesByProvider {
+  if (nonCriticalDbDisabled()) return {};
   if (cachedCapabilitiesLoadedAll) {
     if (!provider) {
       return cachedCapabilities || {};
@@ -571,6 +577,7 @@ export function getSyncedCapability(
   provider: string,
   modelId: string
 ): ModelCapabilityEntry | null {
+  if (nonCriticalDbDisabled()) return null;
   if (!provider || !modelId) return null;
 
   if (cachedCapabilitiesLoadedAll) {
@@ -590,6 +597,7 @@ export function getSyncedCapability(
  * Save synced capabilities to `model_capabilities` table (full replace).
  */
 export function saveModelsDevCapabilities(data: CapabilitiesByProvider): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   ensureCapabilitiesTable();
 
@@ -643,6 +651,7 @@ export function saveModelsDevCapabilities(data: CapabilitiesByProvider): void {
  * Clear all synced capability data.
  */
 export function clearModelsDevCapabilities(): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   ensureCapabilitiesTable();
   db.prepare("DELETE FROM model_capabilities").run();
@@ -876,6 +885,7 @@ export async function initModelsDevSync(): Promise<void> {
  * Returns null if not available.
  */
 export function getModelContextLimit(provider: string, modelId: string): number | null {
+  if (nonCriticalDbDisabled()) return null;
   const caps = getSyncedCapabilities(provider, modelId);
   return caps[provider]?.[modelId]?.limit_context ?? null;
 }

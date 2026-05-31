@@ -3,6 +3,7 @@ import type { CompressionPipelineStep } from "@omniroute/open-sse/services/compr
 
 import { backupDbFile } from "./backup";
 import { getDbInstance, rowToCamel } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 export interface CompressionCombo {
   id: string;
@@ -214,6 +215,7 @@ function buildComboPayload(data: Partial<CompressionCombo>, existing?: Compressi
 }
 
 export function listCompressionCombos(): CompressionCombo[] {
+  if (nonCriticalDbDisabled()) return [];
   ensureCompressionComboTables();
   const db = getDbInstance();
   return db
@@ -224,12 +226,14 @@ export function listCompressionCombos(): CompressionCombo[] {
 }
 
 export function getCompressionCombo(id: string): CompressionCombo | null {
+  if (nonCriticalDbDisabled()) return null;
   ensureCompressionComboTables();
   const row = getDbInstance().prepare("SELECT * FROM compression_combos WHERE id = ?").get(id);
   return rowToCompressionCombo(row);
 }
 
 export function getDefaultCompressionCombo(): CompressionCombo | null {
+  if (nonCriticalDbDisabled()) return null;
   ensureCompressionComboTables();
   const row = getDbInstance()
     .prepare(
@@ -240,6 +244,7 @@ export function getDefaultCompressionCombo(): CompressionCombo | null {
 }
 
 export function createCompressionCombo(data: Partial<CompressionCombo>): CompressionCombo {
+  if (nonCriticalDbDisabled()) return { id: "", name: "", description: "", pipeline: [], languagePacks: [], outputMode: false, outputModeIntensity: "standard", isDefault: false, createdAt: "", updatedAt: "" };
   ensureCompressionComboTables();
   const db = getDbInstance();
   const combo = buildComboPayload(data);
@@ -275,6 +280,7 @@ export function updateCompressionCombo(
   id: string,
   data: Partial<CompressionCombo>
 ): CompressionCombo | null {
+  if (nonCriticalDbDisabled()) return null;
   ensureCompressionComboTables();
   const existing = getCompressionCombo(id);
   if (!existing) return null;
@@ -307,6 +313,7 @@ export function updateCompressionCombo(
 }
 
 export function deleteCompressionCombo(id: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   ensureCompressionComboTables();
   const existing = getCompressionCombo(id);
   if (!existing || existing.isDefault) return false;
@@ -316,6 +323,7 @@ export function deleteCompressionCombo(id: string): boolean {
 }
 
 export function setDefaultCompressionCombo(id: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   ensureCompressionComboTables();
   if (!getCompressionCombo(id)) return false;
   const db = getDbInstance();
@@ -332,6 +340,7 @@ export function setDefaultCompressionCombo(id: string): boolean {
 }
 
 export function getAssignmentsForCompressionCombo(id: string): CompressionComboAssignment[] {
+  if (nonCriticalDbDisabled()) return [];
   ensureCompressionComboTables();
   return getDbInstance()
     .prepare(
@@ -345,6 +354,7 @@ export function getAssignmentsForCompressionCombo(id: string): CompressionComboA
 export function getCompressionComboForRoutingCombo(
   routingComboId: string
 ): CompressionCombo | null {
+  if (nonCriticalDbDisabled()) return null;
   ensureCompressionComboTables();
   const row = getDbInstance()
     .prepare(
@@ -361,6 +371,7 @@ export function getCompressionComboForRoutingCombo(
 }
 
 export function assignRoutingCombo(compressionComboId: string, routingComboId: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   ensureCompressionComboTables();
   if (!getCompressionCombo(compressionComboId) || !routingComboId.trim()) return false;
   getDbInstance()
@@ -378,6 +389,7 @@ export function assignRoutingCombo(compressionComboId: string, routingComboId: s
 }
 
 export function unassignRoutingCombo(compressionComboId: string, routingComboId: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   ensureCompressionComboTables();
   const result = getDbInstance()
     .prepare(
@@ -389,6 +401,7 @@ export function unassignRoutingCombo(compressionComboId: string, routingComboId:
 }
 
 export function updateAssignments(compressionComboId: string, routingComboIds: string[]): boolean {
+  if (nonCriticalDbDisabled()) return false;
   ensureCompressionComboTables();
   if (!getCompressionCombo(compressionComboId)) return false;
   const cleanedIds = [...new Set(routingComboIds.map((id) => id.trim()).filter(Boolean))];

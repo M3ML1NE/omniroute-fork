@@ -5,6 +5,7 @@
 
 import { getDbInstance } from "./core";
 import crypto from "crypto";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 export type WebhookKind = "slack" | "telegram" | "discord" | "custom";
 
@@ -48,18 +49,21 @@ function rowToWebhook(row: WebhookRow): Webhook {
 }
 
 export function getWebhooks(): Webhook[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db.prepare("SELECT * FROM webhooks ORDER BY created_at DESC").all() as WebhookRow[];
   return rows.map(rowToWebhook);
 }
 
 export function getWebhook(id: string): Webhook | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM webhooks WHERE id = ?").get(id) as WebhookRow | undefined;
   return row ? rowToWebhook(row) : null;
 }
 
 export function getEnabledWebhooks(): Webhook[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db.prepare("SELECT * FROM webhooks WHERE enabled = 1").all() as WebhookRow[];
   return rows.map(rowToWebhook);
@@ -73,6 +77,7 @@ export function createWebhook(data: {
   kind?: WebhookKind;
   metadataEncrypted?: string | null;
 }): Webhook {
+  if (nonCriticalDbDisabled()) return { id: "", url: "", events: [], enabled: false, createdAt: "" } as unknown as Webhook;
   const db = getDbInstance();
   const id = crypto.randomUUID();
   const secret = data.secret || `whsec_${crypto.randomBytes(24).toString("hex")}`;
@@ -106,6 +111,7 @@ export function updateWebhook(
     metadataEncrypted: string | null;
   }>
 ): Webhook | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const existing = getWebhook(id);
   if (!existing) return null;
@@ -151,12 +157,14 @@ export function updateWebhook(
 }
 
 export function deleteWebhook(id: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db.prepare("DELETE FROM webhooks WHERE id = ?").run(id);
   return (result as any).changes > 0;
 }
 
 export function recordWebhookDelivery(id: string, status: number, success: boolean): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   if (success) {
     db.prepare(
@@ -170,6 +178,7 @@ export function recordWebhookDelivery(id: string, status: number, success: boole
 }
 
 export function disableWebhooksWithHighFailures(threshold = 10): number {
+  if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   const result = db
     .prepare(`UPDATE webhooks SET enabled = 0 WHERE failure_count >= ? AND enabled = 1`)

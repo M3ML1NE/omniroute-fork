@@ -1,4 +1,5 @@
 import { getDbInstance } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 export interface CompressionAnalyticsRow {
   id?: number;
@@ -132,6 +133,7 @@ function ensureCompressionAnalyticsColumns(): void {
 }
 
 export function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   ensureCompressionAnalyticsColumns();
   db.prepare(
@@ -181,6 +183,7 @@ export function attachCompressionUsageReceipt(
   usage: Record<string, unknown> | null | undefined,
   source: "provider" | "estimated" | "stream" = "provider"
 ): void {
+  if (nonCriticalDbDisabled()) return;
   if (!requestId || !usage || typeof usage !== "object") return;
   const promptTokens = toFiniteInt(usage.prompt_tokens);
   const completionTokens = toFiniteInt(usage.completion_tokens);
@@ -243,6 +246,7 @@ function appendCondition(whereClause: string, condition: string): string {
 }
 
 export function getCompressionAnalyticsSummary(since?: string): CompressionAnalyticsSummary {
+  if (nonCriticalDbDisabled()) return { totalRequests: 0, totalTokensSaved: 0, avgSavingsPct: 0, avgDurationMs: 0, byMode: {}, byEngine: {}, byCompressionCombo: {}, byProvider: {}, last24h: [], validationFallbacks: 0, realUsage: { requestsWithReceipts: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedUsdSaved: 0, bySource: {} }, mcpDescriptionCompression: { snapshots: 0, estimatedTokensSaved: 0 } };
   const db = getDbInstance();
   ensureCompressionAnalyticsColumns();
 

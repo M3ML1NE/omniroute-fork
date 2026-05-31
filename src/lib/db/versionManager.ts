@@ -1,6 +1,7 @@
 /** Version manager tool state persistence. */
 
 import { getDbInstance } from "./core";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 interface VersionManagerRow {
   id?: unknown;
@@ -162,12 +163,14 @@ function rowToVersionManager(row: VersionManagerRow): VersionManagerTool {
 }
 
 export async function getVersionManagerStatus(): Promise<VersionManagerTool[]> {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = db.prepare("SELECT * FROM version_manager").all() as VersionManagerRow[];
   return rows.map(rowToVersionManager);
 }
 
 export async function getVersionManagerTool(tool: string): Promise<VersionManagerTool | null> {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM version_manager WHERE tool = ?").get(tool) as
     | VersionManagerRow
@@ -193,6 +196,7 @@ export async function upsertVersionManagerTool(data: {
   configOverrides?: Record<string, unknown> | null;
   errorMessage?: string | null;
 }): Promise<VersionManagerTool> {
+  if (nonCriticalDbDisabled()) return { tool: data.tool, status: "not_installed" } as VersionManagerTool;
   const db = getDbInstance();
   db.prepare(
     `
@@ -244,6 +248,7 @@ export async function updateVersionManagerTool(
   tool: string,
   updates: Record<string, unknown>
 ): Promise<VersionManagerTool | null> {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const existing = await getVersionManagerTool(tool);
   if (!existing) return null;
@@ -294,12 +299,14 @@ export async function updateVersionManagerTool(
 }
 
 export async function deleteVersionManagerTool(tool: string): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db.prepare("DELETE FROM version_manager WHERE tool = ?").run(tool);
   return result.changes > 0;
 }
 
 export async function updateToolHealth(tool: string, healthStatus: string): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db
     .prepare(
@@ -314,6 +321,7 @@ export async function updateToolVersion(
   field: "current_version" | "installed_version",
   version: string
 ): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db
     .prepare(`UPDATE version_manager SET ${field} = ?, updated_at = datetime('now') WHERE tool = ?`)
@@ -327,6 +335,7 @@ export async function setToolStatus(
   pid?: number,
   errorMessage?: string
 ): Promise<boolean> {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db
     .prepare(

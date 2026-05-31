@@ -7,6 +7,7 @@
 
 import { getDbInstance } from "./core";
 import { calculateLevel } from "../gamification/xp";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 // ──────────────── Types ────────────────
 
@@ -110,6 +111,7 @@ function db(): DbLike {
 // ──────────────── Leaderboard ────────────────
 
 export function updateScore(apiKeyId: string, scope: string, points: number): void {
+  if (nonCriticalDbDisabled()) return;
   db()
     .prepare(
       `INSERT INTO leaderboard (api_key_id, scope, score, updated_at)
@@ -121,6 +123,7 @@ export function updateScore(apiKeyId: string, scope: string, points: number): vo
 }
 
 export function getRank(apiKeyId: string, scope: string): number {
+  if (nonCriticalDbDisabled()) return 0;
   const row = db()
     .prepare(`SELECT score FROM leaderboard WHERE api_key_id = ? AND scope = ?`)
     .get(apiKeyId, scope) as { score: number } | undefined;
@@ -132,6 +135,7 @@ export function getRank(apiKeyId: string, scope: string): number {
 }
 
 export function getTopN(scope: string, limit: number, offset: number = 0): LeaderboardRow[] {
+  if (nonCriticalDbDisabled()) return [];
   const rows = db()
     .prepare(
       `SELECT api_key_id, scope, score, updated_at FROM leaderboard
@@ -154,6 +158,7 @@ export function getTopN(scope: string, limit: number, offset: number = 0): Leade
 // ──────────────── XP & Levels ────────────────
 
 export function addXp(apiKeyId: string, action: string, amount: number, metadata?: string): void {
+  if (nonCriticalDbDisabled()) return;
   db()
     .prepare(
       `INSERT INTO xp_audit_log (api_key_id, action, xp_earned, metadata)
@@ -172,6 +177,7 @@ export function addXp(apiKeyId: string, action: string, amount: number, metadata
 }
 
 export function getXp(apiKeyId: string): UserLevelRow | null {
+  if (nonCriticalDbDisabled()) return null;
   const row = db()
     .prepare(
       `SELECT api_key_id, total_xp, current_level, updated_at FROM user_levels WHERE api_key_id = ?`
@@ -194,6 +200,7 @@ export function getXp(apiKeyId: string): UserLevelRow | null {
 }
 
 export function updateLevel(apiKeyId: string, level: number): void {
+  if (nonCriticalDbDisabled()) return;
   db()
     .prepare(
       `INSERT INTO user_levels (api_key_id, total_xp, current_level, updated_at)
@@ -207,12 +214,14 @@ export function updateLevel(apiKeyId: string, level: number): void {
 // ──────────────── Badges ────────────────
 
 export function unlockBadge(apiKeyId: string, badgeId: string): void {
+  if (nonCriticalDbDisabled()) return;
   db()
     .prepare(`INSERT OR IGNORE INTO user_badges (api_key_id, badge_id) VALUES (?, ?)`)
     .run(apiKeyId, badgeId);
 }
 
 export function getBadges(apiKeyId: string): UserBadge[] {
+  if (nonCriticalDbDisabled()) return [];
   const rows = db()
     .prepare(
       `SELECT ub.api_key_id, ub.badge_id, ub.unlocked_at,
@@ -244,6 +253,7 @@ export function getBadges(apiKeyId: string): UserBadge[] {
 }
 
 export function getBadgeDefinitions(category?: string): BadgeDefinition[] {
+  if (nonCriticalDbDisabled()) return [];
   const sql = category
     ? `SELECT * FROM badge_definitions WHERE category = ?`
     : `SELECT * FROM badge_definitions`;
@@ -280,6 +290,7 @@ export function transferTokens(
   reason: string,
   idempotencyKey: string
 ): { success: boolean; error?: string } {
+  if (nonCriticalDbDisabled()) return { success: false, error: "db_disabled" };
   // Atomic transaction: balance check + insert
   const instance = getDbInstance();
   const txn = instance.transaction(() => {
@@ -309,6 +320,7 @@ export function transferTokens(
 }
 
 export function getBalance(apiKeyId: string): number {
+  if (nonCriticalDbDisabled()) return 0;
   const received = db()
     .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM token_ledger WHERE to_api_key_id = ?`)
     .get(apiKeyId) as { total: number };
@@ -319,6 +331,7 @@ export function getBalance(apiKeyId: string): number {
 }
 
 export function getHistory(apiKeyId: string, limit: number): TokenLedgerEntry[] {
+  if (nonCriticalDbDisabled()) return [];
   const rows = db()
     .prepare(
       `SELECT * FROM token_ledger
@@ -355,6 +368,7 @@ export function createInviteToken(
   serverUrl?: string,
   maxUses?: number
 ): void {
+  if (nonCriticalDbDisabled()) return;
   db()
     .prepare(
       `INSERT INTO invite_tokens (id, code, token_hash, created_by, server_url, max_uses)
@@ -364,6 +378,7 @@ export function createInviteToken(
 }
 
 export function getInviteByCode(code: string): InviteToken | null {
+  if (nonCriticalDbDisabled()) return null;
   const row = db().prepare(`SELECT * FROM invite_tokens WHERE code = ?`).get(code) as
     | {
         id: string;
@@ -396,6 +411,7 @@ export function getInviteByCode(code: string): InviteToken | null {
 }
 
 export function redeemInvite(code: string, usedBy: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const result = db()
     .prepare(
       `UPDATE invite_tokens
@@ -409,12 +425,14 @@ export function redeemInvite(code: string, usedBy: string): boolean {
 }
 
 export function revokeInvite(id: string): void {
+  if (nonCriticalDbDisabled()) return;
   db().prepare(`UPDATE invite_tokens SET revoked_at = datetime('now') WHERE id = ?`).run(id);
 }
 
 // ──────────────── Community Servers ────────────────
 
 export function connectServer(id: string, name: string, url: string, apiKeyHash: string): void {
+  if (nonCriticalDbDisabled()) return;
   db()
     .prepare(
       `INSERT OR REPLACE INTO community_servers (id, name, url, api_key_hash)
@@ -424,11 +442,13 @@ export function connectServer(id: string, name: string, url: string, apiKeyHash:
 }
 
 export function disconnectServer(id: string): void {
+  if (nonCriticalDbDisabled()) return;
   db().prepare(`UPDATE community_servers SET status = 'disconnected' WHERE id = ?`).run(id);
 }
 
 /** List community servers (excludes api_key_hash for security). */
 export function listServers(): Omit<CommunityServer, "apiKeyHash">[] {
+  if (nonCriticalDbDisabled()) return [];
   const rows = db()
     .prepare(
       `SELECT id, name, url, connected_at, last_sync_at, status, error_message FROM community_servers`
@@ -464,6 +484,7 @@ export function getLeaderboardNeighbors(
   above: Array<{ apiKeyId: string; score: number }>;
   below: Array<{ apiKeyId: string; score: number }>;
 } {
+  if (nonCriticalDbDisabled()) return { above: [], below: [] };
   const d = db();
 
   const scoreRow = d
@@ -500,6 +521,7 @@ export function getLeaderboardNeighbors(
  * Skips if archive scope already has data for this period (double-run protection).
  */
 export function rotateLeaderboardScope(scope: "weekly" | "monthly"): void {
+  if (nonCriticalDbDisabled()) return;
   const d = db();
   const archiveSuffix =
     scope === "weekly"

@@ -6,6 +6,7 @@
 
 import { getDbInstance } from "./core";
 import { logger } from "../../../open-sse/utils/logger.ts";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 const log = logger("DB_PLUGINS");
 
@@ -86,6 +87,7 @@ function rowToPlugin(row: any): PluginRow {
 // ── CRUD ──
 
 export function insertPlugin(input: PluginCreateInput): PluginRow {
+  if (nonCriticalDbDisabled()) return { id: "", name: input.name ?? "", displayName: "", description: "", version: "", status: "disabled", config: "{}", createdAt: "", updatedAt: "" } as unknown as PluginRow;
   const db = getDbInstance();
   const now = new Date().toISOString();
 
@@ -126,18 +128,21 @@ export function insertPlugin(input: PluginCreateInput): PluginRow {
 }
 
 export function getPluginById(id: string): PluginRow | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM plugins WHERE id = ?").get(id);
   return row ? rowToPlugin(row) : null;
 }
 
 export function getPluginByName(name: string): PluginRow | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db.prepare("SELECT * FROM plugins WHERE name = ?").get(name);
   return row ? rowToPlugin(row) : null;
 }
 
 export function listPlugins(status?: PluginRow["status"]): PluginRow[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const rows = status
     ? db.prepare("SELECT * FROM plugins WHERE status = ? ORDER BY name").all(status)
@@ -150,6 +155,7 @@ export function updatePluginStatus(
   status: PluginRow["status"],
   errorMessage?: string
 ): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const now = new Date().toISOString();
   const activatedAt = status === "active" ? now : null;
@@ -169,6 +175,7 @@ export function updatePluginStatus(
 }
 
 export function updatePluginConfig(name: string, config: Record<string, unknown>): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const now = new Date().toISOString();
 
@@ -180,6 +187,7 @@ export function updatePluginConfig(name: string, config: Record<string, unknown>
 }
 
 export function deletePlugin(name: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const result = db.prepare("DELETE FROM plugins WHERE name = ?").run(name);
   if (result.changes > 0) {
@@ -189,6 +197,7 @@ export function deletePlugin(name: string): boolean {
 }
 
 export function pluginExists(name: string): boolean {
+  if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
   const row = db.prepare("SELECT 1 FROM plugins WHERE name = ?").get(name);
   return !!row;

@@ -11,6 +11,7 @@
  */
 
 import { getDbInstance } from "./db/core";
+import { nonCriticalDbDisabled } from "./db/minimalDb";
 import { invalidateDbCache } from "./db/readCache";
 import { backupDbFile } from "./db/backup";
 
@@ -181,6 +182,7 @@ function toRecord(value: unknown): Record<string, unknown> {
  * Read synced pricing from `pricing_synced` namespace.
  */
 export function getSyncedPricing(): PricingByProvider {
+  if (nonCriticalDbDisabled()) return {};
   const db = getDbInstance();
   const rows = db
     .prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing_synced'")
@@ -204,6 +206,7 @@ export function getSyncedPricing(): PricingByProvider {
  * Save synced pricing to `pricing_synced` namespace (full replace).
  */
 export function saveSyncedPricing(data: PricingByProvider): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   const del = db.prepare("DELETE FROM key_value WHERE namespace = 'pricing_synced'");
   const insert = db.prepare(
@@ -224,6 +227,7 @@ export function saveSyncedPricing(data: PricingByProvider): void {
  * Clear all synced pricing data.
  */
 export function clearSyncedPricing(): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   db.prepare("DELETE FROM key_value WHERE namespace = 'pricing_synced'").run();
   backupDbFile("pre-write");

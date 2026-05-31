@@ -1,5 +1,6 @@
 import { getDbInstance } from "./core";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 export interface WebhookDelivery {
   id: number;
@@ -28,6 +29,7 @@ export function insertDelivery(opts: {
   error?: string | null;
   payloadSnapshot?: string | null;
 }): void {
+  if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
   const insertStmt = db.prepare(
     `INSERT INTO webhook_deliveries
@@ -64,6 +66,7 @@ export function insertDelivery(opts: {
 
 /** List recent deliveries excluding `payload_snapshot` (default — used by UI). */
 export function getDeliveries(webhookId: string, limit: number): WebhookDeliverySafe[] {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   return db
     .prepare(
@@ -78,6 +81,7 @@ export function getDeliveries(webhookId: string, limit: number): WebhookDelivery
 
 /** Fetch one delivery including `payload_snapshot` — used for opt-in detail view. */
 export function getDeliveryDetail(webhookId: string, deliveryId: number): WebhookDelivery | null {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const row = db
     .prepare(`SELECT * FROM webhook_deliveries WHERE webhook_id = ? AND id = ? LIMIT 1`)

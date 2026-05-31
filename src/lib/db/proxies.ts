@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { getDbInstance } from "./core";
 import { backupDbFile } from "./backup";
 import { decrypt } from "./encryption";
+import { nonCriticalDbDisabled } from "./minimalDb";
 
 type JsonRecord = Record<string, unknown>;
 type ProxyScope = "global" | "provider" | "account" | "combo";
@@ -408,6 +409,7 @@ export function redactProxySecrets(proxy: ProxyRegistryRecord): ProxyRegistryRec
 }
 
 export async function listProxies(options?: { includeSecrets?: boolean }) {
+  if (nonCriticalDbDisabled()) return [];
   const includeSecrets = options?.includeSecrets === true;
   const db = getDbInstance();
   const rows = db
@@ -421,6 +423,7 @@ export async function listProxies(options?: { includeSecrets?: boolean }) {
 }
 
 export async function getProxyById(id: string, options?: { includeSecrets?: boolean }) {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   return getProxyRowById(db, id, options);
 }
@@ -454,6 +457,7 @@ function getProxyRowByIdOrThrow(
 }
 
 export async function createProxy(payload: ProxyPayload) {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -474,6 +478,7 @@ export async function upsertProxy(payload: ProxyPayload): Promise<{
   proxy: ProxyRegistryRecord | null;
   action: "created" | "updated";
 }> {
+  if (nonCriticalDbDisabled()) return { proxy: null, action: "created" };
   const db = getDbInstance();
   const host = (payload.host || "").trim();
   const port = Number(payload.port);
@@ -492,6 +497,7 @@ export async function upsertProxy(payload: ProxyPayload): Promise<{
 }
 
 export async function updateProxy(id: string, payload: Partial<ProxyPayload>) {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const existing = await getProxyById(id, { includeSecrets: true });
   if (!existing) return null;
@@ -507,6 +513,7 @@ export async function createProxyAndAssign(
   payload: ProxyPayload,
   assignment: ProxyAssignmentPayload
 ): Promise<ProxyMutationResult> {
+  if (nonCriticalDbDisabled()) return { proxy: null as unknown as ProxyRegistryRecord, assignment: null };
   const db = getDbInstance();
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -542,6 +549,7 @@ export async function updateProxyAndAssign(
   payload: Partial<ProxyPayload>,
   assignment: ProxyAssignmentPayload
 ): Promise<ProxyMutationResult | null> {
+  if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
   const now = new Date().toISOString();
 
@@ -576,6 +584,7 @@ export async function updateProxyAndAssign(
 }
 
 export async function getProxyAssignments(filters?: { proxyId?: string; scope?: string }) {
+  if (nonCriticalDbDisabled()) return [];
   try {
     const db = getDbInstance();
 
@@ -613,6 +622,7 @@ export async function getProxyAssignments(filters?: { proxyId?: string; scope?: 
 }
 
 export async function getProxyWhereUsed(proxyId: string) {
+  if (nonCriticalDbDisabled()) return { count: 0, assignments: [] };
   const db = getDbInstance();
   const rows = db
     .prepare(
@@ -632,6 +642,7 @@ export async function assignProxyToScope(
   scopeId: string | null,
   proxyId: string | null
 ): Promise<ProxyAssignmentRecord | null> {
+  if (nonCriticalDbDisabled()) return null;
   const normalizedScope = normalizeScope(scope);
   const normalizedScopeId = normalizeAssignmentScopeId(normalizedScope, scopeId);
   const db = getDbInstance();
@@ -668,6 +679,7 @@ export async function assignProxyToScope(
 }
 
 export async function deleteProxyById(id: string, options?: { force?: boolean }) {
+  if (nonCriticalDbDisabled()) return false;
   const force = options?.force === true;
   const db = getDbInstance();
   const usage = await getProxyWhereUsed(id);
@@ -695,6 +707,7 @@ export async function deleteProxyById(id: string, options?: { force?: boolean })
 }
 
 export async function resolveProxyForConnectionFromRegistry(connectionId: string) {
+  if (nonCriticalDbDisabled()) return null;
   try {
     const db = getDbInstance();
 
@@ -782,6 +795,7 @@ export async function resolveProxyForConnectionFromRegistry(connectionId: string
 }
 
 export async function resolveProxyForScopeFromRegistry(scope: string, scopeId?: string | null) {
+  if (nonCriticalDbDisabled()) return null;
   try {
     const db = getDbInstance();
     const normalizedScope = normalizeScope(scope);
@@ -815,6 +829,7 @@ export async function resolveProxyForScopeFromRegistry(scope: string, scopeId?: 
 }
 
 export async function migrateLegacyProxyConfigToRegistry(options?: { force?: boolean }) {
+  if (nonCriticalDbDisabled()) return { migrated: 0, skipped: true, reason: "registry_not_empty" as const };
   const force = options?.force === true;
   const db = getDbInstance();
 
@@ -887,6 +902,7 @@ export async function migrateLegacyProxyConfigToRegistry(options?: { force?: boo
 }
 
 export async function getProxyHealthStats(options?: { hours?: number }) {
+  if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const hours = Math.max(1, Math.min(24 * 30, Number(options?.hours || 24)));
   const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
@@ -948,6 +964,7 @@ export async function bulkAssignProxyToScope(
   scopeIds: string[],
   proxyId: string | null
 ): Promise<{ updated: number; failed: Array<{ scopeId: string; reason: string }> }> {
+  if (nonCriticalDbDisabled()) return { updated: 0, failed: [] };
   const uniqueScopeIds = [
     ...new Set((scopeIds || []).map((id) => String(id).trim()).filter(Boolean)),
   ];
@@ -980,6 +997,7 @@ export async function bulkAssignProxyToScope(
  * Priority: provider-level → global → null
  */
 export async function resolveProxyForProvider(providerId: string) {
+  if (nonCriticalDbDisabled()) return null;
   try {
     // Resolve by specificity across both storage backends. The GUI Custom tab
     // still writes provider/global proxies to the legacy config, while Saved
