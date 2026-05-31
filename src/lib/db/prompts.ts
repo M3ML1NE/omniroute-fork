@@ -199,7 +199,7 @@ export async function listPrompts(): Promise<
   const rows = (await db
     .prepare(
       `SELECT slug,
-              MAX(CASE WHEN is_active = true THEN version ELSE 0 END) as active_version,
+              MAX(CASE WHEN is_active = 1 THEN version ELSE 0 END) as active_version,
               COUNT(*) as total_versions
        FROM prompt_templates
        GROUP BY slug
@@ -233,16 +233,16 @@ export async function rollbackPrompt(
 
   await withTransaction(async (client) => {
     await client.query(
-      "UPDATE prompt_templates SET is_active = false WHERE slug = $1",
+      "UPDATE prompt_templates SET is_active = 0 WHERE slug = $1",
       [slug]
     );
     await client.query(
-      "UPDATE prompt_templates SET is_active = true WHERE slug = $1 AND version = $2",
+      "UPDATE prompt_templates SET is_active = 1 WHERE slug = $1 AND version = $2",
       [slug, version]
     );
   });
 
-  return rowToPrompt({ ...target, is_active: true } as PromptRow);
+  return rowToPrompt({ ...target, is_active: 1 } as PromptRow);
 }
 
 /**
