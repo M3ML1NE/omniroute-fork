@@ -42,6 +42,12 @@ const baseConfig: pino.LoggerOptions = {
       "*.ca_path",
       "api_key",
       "*.api_key",
+      "password",
+      "*.password",
+      "auth.password",
+      "Authorization",
+      "basic_auth",
+      "*.basic_auth",
     ],
     censor: (value: unknown) => {
       if (typeof value === "string" && value.length > 4) {
