@@ -43,11 +43,6 @@ const EXAMPLE_BODIES: Record<string, string> = {
     null,
     2
   ),
-  "/api/v1/responses": JSON.stringify(
-    { model: "openai/gpt-4o-mini", input: "What is OmniRoute?" },
-    null,
-    2
-  ),
   "/api/v1/messages": JSON.stringify(
     {
       model: "anthropic/claude-3-5-sonnet",

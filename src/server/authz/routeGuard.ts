@@ -27,30 +27,28 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 export const LOCAL_ONLY_API_PREFIXES: ReadonlyArray<string> = [
   "/api/mcp/",
-  "/api/cli-tools/runtime/",
   "/api/services/", // T-10: embedded service lifecycle (spawn child processes)
-  "/dashboard/providers/services/", // T-07: reverse proxy to embedded service UIs
-  "/api/copilot/", // unauthenticated LLM driver — CLI-only by default; admins can opt-in to remote access via manage-scope bypass
+  "/dashboard/providers/services/", // T-07: reverse proxy embedded service UIs
+  "/api/copilot/", // unauthenticated LLM driver CLI-only default; admins opt-in remote access manage-scope bypass
 ];
 
 /**
- * Compile-time deny-list: route prefixes that can spawn arbitrary local
- * subprocesses on behalf of the caller. These MUST NEVER appear in the
- * manage-scope bypass list — regardless of DB state — because reaching them
- * from non-loopback would re-introduce the GHSA-fhh6-4qxv-rpqj surface that
- * the LOCAL_ONLY tier exists to close.
- *
- * Enforced at two layers:
- *   1. zod schema (`settingsSchemas.ts`): rejects `PATCH /api/settings` with
- *      error code `BYPASS_PREFIX_NOT_ALLOWED` if any entry in
- *      `localOnlyManageScopeBypassPrefixes` falls inside this set.
- *   2. runtime (`isLocalOnlyBypassableByManageScope` below): even if a
- *      malformed DB row somehow claims a spawn-capable path is bypassable,
- *      the policy still refuses to honour it.
- */
+ Compile-time deny-list: route prefixes spawn arbitrary local
+ subprocesses behalf caller. MUST appear
+ manage-scope bypass list regardless state because reaching
+ non-loopback re-introduce GHSA-fhh6-4qxv-rpqj surface
+ LOCAL_ONLY tier exists close.
+
+ Enforced two layers:
+ 1. zod schema (`settingsSchemas.ts`): rejects `PATCH /api/settings`
+ error code `BYPASS_PREFIX_NOT_ALLOWED` any entry
+ `localOnlyManageScopeBypassPrefixes` falls inside set.
+ 2. runtime (`isLocalOnlyBypassableByManageScope` below):
+ malformed row somehow claims spawn-capable path bypassable,
+ policy refuses honour it.
+*/
 export const SPAWN_CAPABLE_PREFIXES: ReadonlyArray<string> = [
-  "/api/cli-tools/runtime/",
-  "/api/services/", // T-10: can run npm install + spawn node processes
+  "/api/services/", // T-10: run npm install spawn node processes
 ];
 
 /**
@@ -105,12 +103,12 @@ export function isLocalOnlyBypassableByManageScope(path: string): boolean {
   const snapshot = getAuthzBypassSnapshot();
   if (!snapshot.enabled) return false;
   return snapshot.prefixes.some((p) => {
-    // Defence-in-depth: reject a bypass prefix that is the same as, child of,
-    // OR PARENT of any spawn-capable prefix. The parent case catches e.g.
-    // `/api/cli-tools/` (parent of `/api/cli-tools/runtime/`) — a request to
-    // `/api/cli-tools/runtime/foo` would otherwise satisfy `path.startsWith(p)`
-    // and reach the spawn-capable surface without a loopback check.
-    if (
+      // Defence-in-depth: reject bypass prefix same as, child of,
+      // or PARENT of any spawn-capable prefix. The parent case catches
+      // a `/api/services/` parent that would otherwise allow
+      // requests to `/api/services/foo` to satisfy `path.startsWith(p)`
+      // and reach the spawn-capable surface without loopback check.
+      if (
       SPAWN_CAPABLE_PREFIXES.some(
         (spawn) => p === spawn || p.startsWith(spawn) || spawn.startsWith(p)
       )

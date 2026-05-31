@@ -191,16 +191,6 @@ export const OPENAPI_ENDPOINTS: OpenApiEndpoint[] = [
     hasRequestBody: true,
   },
   {
-    path: "/api/v1/responses",
-    method: "POST",
-    summary: "Create response (OpenAI Responses API)",
-    description: "OpenAI Responses API endpoint.",
-    tag: "Responses",
-    tags: ["Responses"],
-    requiresAuth: true,
-    hasRequestBody: true,
-  },
-  {
     path: "/api/v1beta/models",
     method: "GET",
     summary: "List models (Gemini format)",

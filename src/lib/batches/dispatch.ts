@@ -3,7 +3,6 @@ import type { SupportedBatchEndpoint } from "@/shared/constants/batchEndpoints";
 type BatchRouteHandler = (request: Request) => Promise<Response> | Response;
 
 const handlerLoaders: Record<SupportedBatchEndpoint, () => Promise<BatchRouteHandler>> = {
-  "/v1/responses": async () => (await import("@/app/api/v1/responses/route")).POST,
   "/v1/chat/completions": async () => (await import("@/app/api/v1/chat/completions/route")).POST,
   "/v1/embeddings": async () => (await import("@/app/api/v1/embeddings/route")).POST,
   "/v1/completions": async () => (await import("@/app/api/v1/completions/route")).POST,

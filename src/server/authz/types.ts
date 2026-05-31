@@ -32,7 +32,6 @@ export type ClassificationReason =
   | "client_api_v1"
   | "client_api_mcp"
   | "client_api_alias"
-  | "client_api_codex_alias"
   | "client_api_double_prefix"
   | "management_api"
   | "root_redirect"
@@ -42,11 +41,11 @@ export interface RouteClassification {
   routeClass: RouteClass;
   reason: ClassificationReason;
   /**
-   * The normalized internal pathname after rewrites. For example
-   * "/v1/chat/completions" or "/codex/foo" is normalized to
-   * "/api/v1/chat/completions" / "/api/v1/responses" so policy code does
-   * not have to know about every alias.
-   */
+   normalized internal pathname after rewrites. example
+   "/v1/chat/completions" normalized to
+   "/api/v1/chat/completions" so policy code does not need
+   to know every alias.
+  */
   normalizedPath: string;
 }
 

@@ -65,7 +65,7 @@ export const managementPolicy: RoutePolicy = {
     //     (/api/mcp/status, /api/mcp/tools) from a public hostname.
     //
     // The strict-loopback default still applies to everything else (notably
-    // the subprocess-spawning /api/cli-tools/runtime/* surface, which is NOT
+    // the subprocess-spawning service surfaces (e.g. /api/services/), which are NOT
     // in the bypass list).
     //
     // Anonymous (no Bearer / invalid key / wrong scope / no session) requests

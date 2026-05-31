@@ -7,7 +7,6 @@ import type { ClassificationReason, RouteClass, RouteClassification } from "./ty
 
 const CLIENT_API_ALIAS_PREFIXES: ReadonlyArray<{ alias: string; canonical: string }> = [
   { alias: "/chat/completions", canonical: "/api/v1/chat/completions" },
-  { alias: "/responses", canonical: "/api/v1/responses" },
   { alias: "/models", canonical: "/api/v1/models" },
 ];
 
@@ -15,10 +14,6 @@ function normalizePathname(rawPath: string): { path: string; reason?: Classifica
   let path = rawPath || "/";
   if (!path.startsWith("/")) path = "/" + path;
   if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
-
-  if (path === "/codex" || path.startsWith("/codex/")) {
-    return { path: "/api/v1/responses", reason: "client_api_codex_alias" };
-  }
 
   if (path === "/v1/v1" || path.startsWith("/v1/v1/")) {
     const tail = path.slice("/v1/v1".length) || "";
