@@ -48,9 +48,13 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
 
 /** Close the pool. Tests and graceful-shutdown paths call this. */
 export async function closePool(): Promise<void> {
-  if (_pool) {
-    await _pool.end();
-    _pool = undefined;
+  // Detach the singleton synchronously so a concurrent getPool() (e.g. a test's
+  // synchronous reset-then-reacquire) builds a fresh pool instead of handing out
+  // the one being ended ("Cannot use a pool after calling end on the pool").
+  const pool = _pool;
+  _pool = undefined;
+  if (pool) {
+    await pool.end();
   }
 }
 
