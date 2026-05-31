@@ -70,6 +70,7 @@ const SQLITE_PATTERNS = [
   { label: "AUTOINCREMENT", re: /\bAUTOINCREMENT\b/i },
   { label: "sqlite_master", re: /\bsqlite_master\b/i },
   { label: "ROWID", re: /\bROWID\b/i },
+  { label: "json_extract() (use ->/->> on ::jsonb)", re: /\bjson_extract\s*\(/i },
   { label: "better-sqlite3 db.transaction()", re: /\.transaction\s*\(\s*(\(|function|async)/ },
 ];
 
@@ -143,6 +144,7 @@ if (process.argv.includes("--self-test")) {
     "SELECT strftime('%s', created_at) FROM call_logs",
     "id INTEGER PRIMARY KEY AUTOINCREMENT",
     "SELECT name FROM sqlite_master WHERE type='table'",
+    "WHERE json_extract(provider_specific_data, '$.workspaceId') = ?",
     "const tx = db.transaction(() => {});",
   ];
   let allDetected = true;

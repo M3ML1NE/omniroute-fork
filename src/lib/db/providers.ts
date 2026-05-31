@@ -160,7 +160,7 @@ export async function createProviderConnection(data: JsonRecord) {
       existing =
         ((await db
           .prepare(
-            "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND email = ?"
+            "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND NULLIF(provider_specific_data, '')::jsonb ->> 'workspaceId' = ? AND email = ?"
           )
           .get(data.provider, workspaceId, data.email)) as JsonRecord | undefined) || null;
 
@@ -170,7 +170,7 @@ export async function createProviderConnection(data: JsonRecord) {
         existing =
           ((await db
             .prepare(
-              "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND (email IS NULL OR email = '')"
+              "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND NULLIF(provider_specific_data, '')::jsonb ->> 'workspaceId' = ? AND (email IS NULL OR email = '')"
             )
             .get(data.provider, workspaceId)) as JsonRecord | undefined) || null;
       }
