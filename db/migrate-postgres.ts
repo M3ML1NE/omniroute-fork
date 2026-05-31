@@ -1,69 +1,43 @@
 /**
- * Simple Postgres migration runner.
- * Reads SQL files from db/migrations/postgres/ in alphabetical order.
- * Tracks applied migrations in the `_migrations` table.
- * Placeholder until Task 22 replaces the full SQLite layer.
+ * Postgres migration entrypoint (`npm run db:migrate`).
+ *
+ * This is a thin CLI wrapper around the canonical applier in
+ * `src/lib/db/migrationRunner.ts`. Both the boot path and this script now share
+ * the SAME Postgres-aware logic: apply `db/migrations/postgres/*.sql` (the
+ * consolidated 77-table baseline) idempotently, tracking applied files in the
+ * Postgres `_omniroute_migrations` table. There is no SQLite logic anywhere in
+ * the path — no PRAGMA, no `datetime('now')`, no synchronous `db.exec()`.
+ *
+ * The runner connects through the shared `pg` pool in `src/lib/db/postgres.ts`,
+ * which resolves `DATABASE_URL` (required in production).
  */
-import { Client } from "pg";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = path.join(__dirname, "migrations", "postgres");
+import { runMigrations, getMigrationStatus } from "../src/lib/db/migrationRunner";
+import { closePool } from "../src/lib/db/postgres";
 
 async function migrate(): Promise<void> {
   const url = process.env.DATABASE_URL;
-  if (!url) {
+  if (!url || url.trim().length === 0) {
     throw new Error("DATABASE_URL environment variable required");
   }
 
-  const client = new Client({ connectionString: url });
-  await client.connect();
+  const before = await getMigrationStatus();
+  if (before.pending.length === 0) {
+    console.log("No pending migrations; database is up to date.");
+  }
 
-  try {
-    // Create migrations tracking table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS _migrations (
-        id SERIAL PRIMARY KEY,
-        filename TEXT NOT NULL UNIQUE,
-        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
+  const applied = await runMigrations();
 
-    // Get already-applied migrations
-    const { rows } = await client.query<{ filename: string }>(
-      "SELECT filename FROM _migrations ORDER BY filename",
-    );
-    const applied = new Set(rows.map((r) => r.filename));
-
-    // Read and apply pending migrations
-    const files = fs
-      .readdirSync(MIGRATIONS_DIR)
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
-
-    for (const file of files) {
-      if (applied.has(file)) {
-        console.log(`  skip: ${file} (already applied)`);
-        continue;
-      }
-
-      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8").trim();
-      if (sql) {
-        await client.query(sql);
-      }
-      await client.query("INSERT INTO _migrations (filename) VALUES ($1)", [file]);
-      console.log(`  applied: ${file}`);
-    }
-
-    console.log("Migrations complete.");
-  } finally {
-    await client.end();
+  if (applied === 0) {
+    console.log("Migrations complete (no changes).");
+  } else {
+    console.log(`Migrations complete (${applied} applied).`);
   }
 }
 
-migrate().catch((err) => {
-  console.error("Migration failed:", err.message);
-  process.exit(1);
-});
+migrate()
+  .then(() => closePool())
+  .catch(async (err) => {
+    console.error("Migration failed:", err instanceof Error ? err.message : String(err));
+    await closePool().catch(() => {});
+    process.exit(1);
+  });
