@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "jira": {
+    "enabled": true,
+    "base_url": "https://jira.company.local",
+    "username": "svc-omniroute",
+    "password": "REPLACE_ME",
+    "timeout_ms": 30000
+  },
+  "bitbucket": {
+    "enabled": true,
+    "base_url": "https://bitbucket.company.local",
+    "username": "svc-omniroute",
+    "password": "REPLACE_ME",
+    "timeout_ms": 30000
+  },
+  "confluence": {
+    "enabled": true,
+    "base_url": "https://confluence.company.local",
+    "username": "svc-omniroute",
+    "password": "REPLACE_ME",
+    "timeout_ms": 30000
+  }
+}
