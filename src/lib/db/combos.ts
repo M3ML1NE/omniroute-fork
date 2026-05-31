@@ -3,7 +3,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { getDbInstance } from "./core";
+import { getDbInstance, withTransaction } from "./core";
 import { backupDbFile } from "./backup";
 import { normalizeComboRecord } from "@/lib/combos/steps";
 
@@ -31,11 +31,11 @@ function withSortOrder(payload: string, sortOrder: number | null): JsonRecord {
   return parsed;
 }
 
-function getComboNameSet(
+async function getComboNameSet(
   db: ReturnType<typeof getDbInstance>,
   extraNames: string[] = []
-): Set<string> {
-  const rows = db.prepare("SELECT name FROM combos").all();
+): Promise<Set<string>> {
+  const rows = await db.prepare("SELECT name FROM combos").all();
   const names = new Set<string>();
 
   for (const row of rows) {
@@ -54,13 +54,13 @@ function getComboNameSet(
   return names;
 }
 
-function normalizeStoredCombo(
+async function normalizeStoredCombo(
   combo: JsonRecord,
   db: ReturnType<typeof getDbInstance>,
   extraNames: string[] = []
-): JsonRecord {
+): Promise<JsonRecord> {
   return normalizeComboRecord(combo, {
-    allCombos: getComboNameSet(db, extraNames),
+    allCombos: await getComboNameSet(db, extraNames),
   }) as JsonRecord;
 }
 
@@ -70,18 +70,22 @@ function parseComboRow(row: unknown): JsonRecord | null {
   return withSortOrder(payload, getSortOrder(row));
 }
 
-function getNextSortOrder() {
+async function getNextSortOrder(): Promise<number> {
   const db = getDbInstance();
-  const row = db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS sort_order FROM combos").get();
+  const row = await db
+    .prepare("SELECT COALESCE(MAX(sort_order), 0) AS sort_order FROM combos")
+    .get();
   const sortOrder = getSortOrder(row);
   return (sortOrder ?? 0) + 1;
 }
 
 export async function getCombos() {
   const db = getDbInstance();
-  const rawCombos = db
-    .prepare("SELECT data, sort_order FROM combos ORDER BY sort_order ASC, name COLLATE NOCASE ASC")
-    .all()
+  const rawCombos = (
+    await db
+      .prepare("SELECT data, sort_order FROM combos ORDER BY sort_order ASC, name ASC")
+      .all()
+  )
     .map((row) => parseComboRow(row))
     .filter((row): row is JsonRecord => row !== null);
 
@@ -98,7 +102,7 @@ export async function getCombos() {
 
 export async function getComboById(id: string) {
   const db = getDbInstance();
-  const row = db.prepare("SELECT data, sort_order FROM combos WHERE id = ?").get(id);
+  const row = await db.prepare("SELECT data, sort_order FROM combos WHERE id = ?").get(id);
   const combo = parseComboRow(row);
   if (!combo) return null;
   return normalizeStoredCombo(combo, db, typeof combo.name === "string" ? [combo.name] : []);
@@ -106,7 +110,7 @@ export async function getComboById(id: string) {
 
 export async function getComboByName(name: string) {
   const db = getDbInstance();
-  const row = db.prepare("SELECT data, sort_order FROM combos WHERE name = ?").get(name);
+  const row = await db.prepare("SELECT data, sort_order FROM combos WHERE name = ?").get(name);
   const combo = parseComboRow(row);
   if (!combo) return null;
   return normalizeStoredCombo(combo, db, [name]);
@@ -115,9 +119,9 @@ export async function getComboByName(name: string) {
 export async function createCombo(data: JsonRecord) {
   const db = getDbInstance();
   const now = new Date().toISOString();
-  const sortOrder = typeof data.sortOrder === "number" ? data.sortOrder : getNextSortOrder();
+  const sortOrder = typeof data.sortOrder === "number" ? data.sortOrder : await getNextSortOrder();
   const comboId = typeof data.id === "string" && data.id.trim().length > 0 ? data.id : uuidv4();
-  const combo = normalizeStoredCombo(
+  const combo = await normalizeStoredCombo(
     {
       ...data,
       id: comboId,
@@ -134,9 +138,11 @@ export async function createCombo(data: JsonRecord) {
     typeof data.name === "string" ? [data.name] : []
   );
 
-  db.prepare(
-    "INSERT INTO combos (id, name, data, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(combo.id, combo.name, JSON.stringify(combo), sortOrder, now, now);
+  await db
+    .prepare(
+      "INSERT INTO combos (id, name, data, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    )
+    .run(combo.id, combo.name, JSON.stringify(combo), sortOrder, now, now);
 
   backupDbFile("pre-write");
   return combo;
@@ -144,7 +150,9 @@ export async function createCombo(data: JsonRecord) {
 
 export async function updateCombo(id: string, data: JsonRecord) {
   const db = getDbInstance();
-  const existing = db.prepare("SELECT data, sort_order FROM combos WHERE id = ?").get(id);
+  const existing = await db
+    .prepare("SELECT data, sort_order FROM combos WHERE id = ?")
+    .get(id);
   if (!existing) return null;
 
   const current = parseComboRow(existing);
@@ -154,7 +162,7 @@ export async function updateCombo(id: string, data: JsonRecord) {
       ? data.sortOrder
       : typeof current.sortOrder === "number"
         ? current.sortOrder
-        : getNextSortOrder();
+        : await getNextSortOrder();
   const merged: JsonRecord = {
     ...current,
     ...data,
@@ -172,11 +180,15 @@ export async function updateCombo(id: string, data: JsonRecord) {
     typeof merged["name"] === "string" && merged["name"].trim().length > 0
       ? merged["name"]
       : currentName;
-  const normalizedMerged = normalizeStoredCombo({ ...merged, name: nextName }, db, [nextName]);
+  const normalizedMerged = await normalizeStoredCombo({ ...merged, name: nextName }, db, [
+    nextName,
+  ]);
 
-  db.prepare(
-    "UPDATE combos SET name = ?, data = ?, sort_order = ?, updated_at = ? WHERE id = ?"
-  ).run(nextName, JSON.stringify(normalizedMerged), sortOrder, normalizedMerged.updatedAt, id);
+  await db
+    .prepare(
+      "UPDATE combos SET name = ?, data = ?, sort_order = ?, updated_at = ? WHERE id = ?"
+    )
+    .run(nextName, JSON.stringify(normalizedMerged), sortOrder, normalizedMerged.updatedAt, id);
 
   backupDbFile("pre-write");
   return normalizedMerged;
@@ -184,9 +196,9 @@ export async function updateCombo(id: string, data: JsonRecord) {
 
 export async function reorderCombos(comboIds: string[]) {
   const db = getDbInstance();
-  const rows = db
+  const rows = await db
     .prepare(
-      "SELECT id, name, data, sort_order FROM combos ORDER BY sort_order ASC, name COLLATE NOCASE ASC"
+      "SELECT id, name, data, sort_order FROM combos ORDER BY sort_order ASC, name ASC"
     )
     .all();
   if (rows.length === 0) return [];
@@ -217,9 +229,6 @@ export async function reorderCombos(comboIds: string[]) {
       .filter((id): id is string => id !== null && !seen.has(id)),
   ];
 
-  const update = db.prepare(
-    "UPDATE combos SET data = ?, sort_order = ?, updated_at = ? WHERE id = ?"
-  );
   const now = new Date().toISOString();
   const rowById = new Map(
     rows.map((row) => {
@@ -234,41 +243,32 @@ export async function reorderCombos(comboIds: string[]) {
     })
     .filter((name): name is string => name.length > 0);
 
-  const reorderTransaction = db.transaction(() => {
-    orderedIds.forEach((id, index) => {
+  await withTransaction(async (client) => {
+    for (let index = 0; index < orderedIds.length; index++) {
+      const id = orderedIds[index];
       const row = rowById.get(id);
       const combo = row ? parseComboRow(row) : null;
-      if (!combo) return;
+      if (!combo) continue;
       const sortOrder = index + 1;
       const updatedCombo = normalizeComboRecord(
         { ...combo, sortOrder, updatedAt: now },
         { allCombos: comboNames }
       );
-      update.run(JSON.stringify(updatedCombo), sortOrder, now, id);
-    });
+      await client.query(
+        "UPDATE combos SET data = $1, sort_order = $2, updated_at = $3 WHERE id = $4",
+        [JSON.stringify(updatedCombo), sortOrder, now, id]
+      );
+    }
   });
 
-  reorderTransaction();
   backupDbFile("pre-write");
   return getCombos();
 }
 
 export async function deleteCombo(id: string) {
   const db = getDbInstance();
-  const result = db.prepare("DELETE FROM combos WHERE id = ?").run(id);
+  const result = await db.prepare("DELETE FROM combos WHERE id = ?").run(id);
   if (result.changes === 0) return false;
   backupDbFile("pre-write");
   return true;
-}
-
-export async function deleteComboByName(name: string) {
-  const combo = await getComboByName(name);
-  if (!combo || typeof combo.id !== "string") return false;
-  return deleteCombo(combo.id);
-}
-
-export function setActiveCombo(name: string, db = getDbInstance()) {
-  db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', 'activeCombo', ?)"
-  ).run(JSON.stringify(name));
 }
