@@ -16,13 +16,40 @@ const eslintConfig = [
           paths: [
             {
               name: "prop-types",
-              message: "PropTypes are deprecated. Use TypeScript types/interfaces instead.",
+              message: "PropTypes is deprecated. Use TypeScript types/interfaces instead.",
             },
           ],
         },
       ],
     },
   },
+
+  // FASE-03: Async migration lint rules (type-aware, scoped to db/usage callers)
+  // Enables no-floating-promises and no-misused-promises for the async conversion worklist.
+  // Scope: src/lib/db/, src/lib/usage/, open-sse/services/, open-sse/handlers/
+  // Wave 2 will convert CRITICAL modules async; Wave T6 will stub NON-CRITICAL behind feature flag.
+  {
+    files: [
+      "src/lib/db/**/*.ts",
+      "src/lib/usage/**/*.ts",
+      "open-sse/services/**/*.ts",
+      "open-sse/handlers/**/*.ts",
+    ],
+    plugins: {
+      "@typescript-eslint": tseslint.plugin,
+    },
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.typecheck-core.json",
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+    },
+  },
+
   // Relaxed rules for open-sse and tests (incremental adoption)
   {
     files: ["open-sse/**/*.ts", "tests/**/*.mjs", "tests/**/*.ts"],
@@ -35,6 +62,7 @@ const eslintConfig = [
       "react-hooks/rules-of-hooks": "off",
     },
   },
+
   // Global ignores — keep ESLint scoped to source files only
   {
     ignores: [
@@ -52,7 +80,7 @@ const eslintConfig = [
       "node_modules/**",
       ".worktrees/**",
       ".omnivscodeagent/**",
-      // VS Code extension and its large test fixtures
+      // Code extension large test fixtures
       "vscode-extension/**",
       "_references/**",
       "_mono_repo/**",
