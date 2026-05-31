@@ -81,7 +81,7 @@ class SkillRegistry {
     const id = randomUUID();
     const now = new Date();
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO skills (id, api_key_id, name, version, description, schema, handler, enabled, mode, source_provider, tags, install_count, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
@@ -136,14 +136,14 @@ class SkillRegistry {
           (!apiKeyId || candidate.apiKeyId === apiKeyId)
       );
       if (skill && (!apiKeyId || skill.apiKeyId === apiKeyId)) {
-        db.prepare("DELETE FROM skills WHERE id = ?").run(skill.id);
+        await db.prepare("DELETE FROM skills WHERE id = ?").run(skill.id);
         this.registeredSkills.delete(this.cacheKey(skill));
         this.rebuildVersionCache(name);
         this.invalidateCache();
         return true;
       }
     } else {
-      const deleted = db
+      const deleted = await db
         .prepare("DELETE FROM skills WHERE name = ? AND (? IS NULL OR api_key_id = ?)")
         .run(name, apiKeyId || null, apiKeyId || null);
 
@@ -161,7 +161,7 @@ class SkillRegistry {
 
   async unregisterById(id: string): Promise<boolean> {
     const db = getDbInstance();
-    const deleted = db.prepare("DELETE FROM skills WHERE id = ?").run(id);
+    const deleted = await db.prepare("DELETE FROM skills WHERE id = ?").run(id);
     if (deleted.changes > 0) {
       const affectedNames = new Set<string>();
       const keysToDelete = Array.from(this.registeredSkills.entries())
@@ -305,8 +305,8 @@ class SkillRegistry {
         log.debug("skills.registry.loadFromDatabase", { cached: false });
         const db = getDbInstance();
         const rows = apiKeyId
-          ? db.prepare("SELECT * FROM skills WHERE api_key_id = ?").all(apiKeyId)
-          : db.prepare("SELECT * FROM skills").all();
+          ? await db.prepare("SELECT * FROM skills WHERE api_key_id = ?").all(apiKeyId)
+          : await db.prepare("SELECT * FROM skills").all();
 
         if (apiKeyId) {
           this.removeCachedSkills((skill) => skill.apiKeyId === apiKeyId);
@@ -373,7 +373,7 @@ class SkillRegistry {
   async setEnabledById(id: string, apiKeyId: string, enabled: boolean): Promise<Skill | undefined> {
     const db = getDbInstance();
     const now = new Date();
-    const updated = db
+    const updated = await db
       .prepare(
         "UPDATE skills SET enabled = ?, mode = ?, updated_at = ? WHERE id = ? AND api_key_id = ?"
       )
