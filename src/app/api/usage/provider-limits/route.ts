@@ -13,7 +13,7 @@ import {
 export async function GET() {
   try {
     return NextResponse.json({
-      caches: getCachedProviderLimitsMap(),
+      caches: await getCachedProviderLimitsMap(),
       intervalMinutes: getProviderLimitsSyncIntervalMinutes(),
       lastAutoSyncAt: await getLastProviderLimitsAutoSyncTime(),
     });
@@ -30,7 +30,7 @@ export async function GET() {
 export async function POST() {
   try {
     const result = await syncAllProviderLimits({ source: "manual" });
-    const caches = getCachedProviderLimitsMap();
+    const caches = await getCachedProviderLimitsMap();
     return NextResponse.json({
       ...result,
       caches,

@@ -1,17 +1,7 @@
 import { getDbInstance, isBuildPhase, isCloud } from "./core";
+import { withTransaction } from "./postgres";
 
 type JsonRecord = Record<string, unknown>;
-
-interface StatementLike<TRow = unknown> {
-  all: (...params: unknown[]) => TRow[];
-  get: (...params: unknown[]) => TRow | undefined;
-  run: (...params: unknown[]) => { changes?: number };
-}
-
-interface DbLike {
-  prepare: <TRow = unknown>(sql: string) => StatementLike<TRow>;
-  transaction: <T extends (...args: any[]) => unknown>(fn: T) => T;
-}
 
 interface KeyValueRow {
   key: string;
@@ -57,22 +47,24 @@ function normalizeCacheEntry(value: unknown): ProviderLimitsCacheEntry | null {
   };
 }
 
-export function getProviderLimitsCache(connectionId: string): ProviderLimitsCacheEntry | null {
+export async function getProviderLimitsCache(
+  connectionId: string
+): Promise<ProviderLimitsCacheEntry | null> {
   if (isBuildPhase || isCloud) return null;
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db
-    .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-    .get(PROVIDER_LIMITS_CACHE_NAMESPACE, connectionId) as KeyValueRow | undefined;
+  const db = getDbInstance();
+  const row = await db
+    .prepare("SELECT value FROM key_value WHERE namespace = $1 AND key = $2")
+    .get<KeyValueRow>(PROVIDER_LIMITS_CACHE_NAMESPACE, connectionId);
   if (!row?.value) return null;
   return normalizeCacheEntry(parseJson(row.value));
 }
 
-export function getAllProviderLimitsCache(): Record<string, ProviderLimitsCacheEntry> {
+export async function getAllProviderLimitsCache(): Promise<Record<string, ProviderLimitsCacheEntry>> {
   if (isBuildPhase || isCloud) return {};
-  const db = getDbInstance() as unknown as DbLike;
-  const rows = db
-    .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
-    .all(PROVIDER_LIMITS_CACHE_NAMESPACE) as KeyValueRow[];
+  const db = getDbInstance();
+  const rows = await db
+    .prepare("SELECT key, value FROM key_value WHERE namespace = $1")
+    .all<KeyValueRow>(PROVIDER_LIMITS_CACHE_NAMESPACE);
 
   const result: Record<string, ProviderLimitsCacheEntry> = {};
   for (const row of rows) {
@@ -84,44 +76,39 @@ export function getAllProviderLimitsCache(): Record<string, ProviderLimitsCacheE
   return result;
 }
 
-export function setProviderLimitsCache(
+export async function setProviderLimitsCache(
   connectionId: string,
   entry: ProviderLimitsCacheEntry
-): ProviderLimitsCacheEntry {
+): Promise<ProviderLimitsCacheEntry> {
   if (isBuildPhase || isCloud) return entry;
-  const db = getDbInstance() as unknown as DbLike;
-  db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    PROVIDER_LIMITS_CACHE_NAMESPACE,
-    connectionId,
-    JSON.stringify(entry)
-  );
+  const db = getDbInstance();
+  await db
+    .prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ($1, $2, $3) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+    )
+    .run(PROVIDER_LIMITS_CACHE_NAMESPACE, connectionId, JSON.stringify(entry));
   return entry;
 }
 
-export function setProviderLimitsCacheBatch(
+export async function setProviderLimitsCacheBatch(
   entries: Array<{ connectionId: string; entry: ProviderLimitsCacheEntry }>
-): number {
+): Promise<number> {
   if (isBuildPhase || isCloud || entries.length === 0) return 0;
-  const db = getDbInstance() as unknown as DbLike;
-  const insert = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)"
-  );
-  const tx = db.transaction(
-    (items: Array<{ connectionId: string; entry: ProviderLimitsCacheEntry }>) => {
-      for (const item of items) {
-        insert.run(PROVIDER_LIMITS_CACHE_NAMESPACE, item.connectionId, JSON.stringify(item.entry));
-      }
+  await withTransaction(async (client) => {
+    for (const item of entries) {
+      await client.query(
+        "INSERT INTO key_value (namespace, key, value) VALUES ($1, $2, $3) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value",
+        [PROVIDER_LIMITS_CACHE_NAMESPACE, item.connectionId, JSON.stringify(item.entry)]
+      );
     }
-  );
-  tx(entries);
+  });
   return entries.length;
 }
 
-export function deleteProviderLimitsCache(connectionId: string): void {
+export async function deleteProviderLimitsCache(connectionId: string): Promise<void> {
   if (isBuildPhase || isCloud) return;
-  const db = getDbInstance() as unknown as DbLike;
-  db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(
-    PROVIDER_LIMITS_CACHE_NAMESPACE,
-    connectionId
-  );
+  const db = getDbInstance();
+  await db
+    .prepare("DELETE FROM key_value WHERE namespace = $1 AND key = $2")
+    .run(PROVIDER_LIMITS_CACHE_NAMESPACE, connectionId);
 }

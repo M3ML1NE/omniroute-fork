@@ -15,6 +15,7 @@
  */
 
 import { getDbInstance } from "./core";
+import { withTransaction } from "./postgres";
 
 type JsonRecord = Record<string, unknown>;
 type BudgetResetInterval = "daily" | "weekly" | "monthly";
@@ -355,19 +356,14 @@ export async function batchSaveCostEntries(
 ) {
   if (!Array.isArray(entries) || entries.length === 0) return;
 
-  const db = getDbInstance();
-  const stmt = db.prepare(
-    "INSERT INTO domain_cost_history (api_key_id, cost, timestamp) VALUES (?, ?, ?)"
-  );
-  const tx = db.transaction(
-    async (rows: Array<{ apiKeyId: string; cost: number; timestamp: number }>) => {
-      for (const entry of rows) {
-        await stmt.run(entry.apiKeyId, entry.cost, entry.timestamp);
-      }
+  await withTransaction(async (client) => {
+    for (const entry of entries) {
+      await client.query(
+        "INSERT INTO domain_cost_history (api_key_id, cost, timestamp) VALUES ($1, $2, $3)",
+        [entry.apiKeyId, entry.cost, entry.timestamp]
+      );
     }
-  );
-
-  await tx(entries);
+  });
 }
 
 export async function loadCostTotal(apiKeyId: string, sinceTimestamp: number) {
