@@ -38,29 +38,29 @@ export async function runServe(opts = {}) {
   const { getNodeRuntimeSupport, getNodeRuntimeWarning } =
     await import("../../nodeRuntimeSupport.mjs");
 
-  const port = parsePort(opts.port ?? process.env.PORT ?? "20128", 20128);
-  const apiPort = parsePort(process.env.API_PORT ?? String(port), port);
-  const dashboardPort = parsePort(process.env.DASHBOARD_PORT ?? String(port), port);
+  const port = parsePort(opts.port || process.env.PORT || "20128", 20128);
+  const apiPort = parsePort(process.env.API_PORT || String(port), port);
+  const dashboardPort = parsePort(process.env.DASHBOARD_PORT || String(port), port);
   const noOpen = opts.open === false;
 
   console.log(`
-\x1b[36m   ____                  _ ____              _
-   / __ \\                (_) __ \\            | |
-  | |  | |_ __ ___  _ __ _| |__) |___  _   _| |_ ___
-  | |  | | '_ \` _ \\| '_ \\ |  _  // _ \\| | | | __/ _ \\
-  | |__| | | | | | | | | | | | \\ \\ (_) | |_| | ||  __/
-   \\____/|_| |_| |_|_| |_|_|_|  \\_\\___/ \\__,_|\\__\\___|
+\x1b[36m  ____  _       _____             _
+ / __ \\(_)     |  __ \\           | |
+| |  | |_ _ __ | |__) |___  _   _| |_ ___
+| |  | | | '_ \\|  _  // _ \\| | | | __/ _ \\
+| |__| | | | | | | \\ \\ (_) | |_| | ||  __/
+ \\____/|_|_| |_|_|  \\_\\___/ \\__,_|\\__\\___|
 \x1b[0m`);
 
   const nodeSupport = getNodeRuntimeSupport();
   if (!nodeSupport.nodeCompatible) {
     const runtimeWarning = getNodeRuntimeWarning() || "Unsupported Node.js runtime detected.";
-    console.warn(`\x1b[33m  ⚠  Warning: You are running Node.js ${process.versions.node}.
-     ${runtimeWarning}
+    console.warn(`\x1b[33m⚠ Warning: running Node.js ${process.versions.node}.
+${runtimeWarning}
 
-     Supported secure runtimes: ${nodeSupport.supportedDisplay}
-     Recommended: use Node.js ${nodeSupport.recommendedVersion} or newer on the 22.x LTS line.
-     Workaround:  npm rebuild better-sqlite3\x1b[0m
+Supported secure runtimes: ${nodeSupport.supportedDisplay}
+Recommended: use Node.js ${nodeSupport.recommendedVersion} or newer 22.x LTS line.
+Workaround: npm rebuild better-sqlite3\x1b[0m
 `);
   }
 
@@ -69,25 +69,25 @@ export async function runServe(opts = {}) {
 
   if (!existsSync(serverJs)) {
     console.error("\x1b[31m✖ Server not found at:\x1b[0m", serverJs);
-    console.error("  The package may not have been built correctly.");
+    console.error("  The package was not built correctly.");
     console.error("");
     const nodeExec = process.execPath || "";
     const isMise = nodeExec.includes("mise") || nodeExec.includes(".local/share/mise");
     const isNvm = nodeExec.includes(".nvm") || nodeExec.includes("nvm");
     if (isMise) {
       console.error(
-        "  \x1b[33m⚠ mise detected:\x1b[0m If you installed via `npm install -g omniroute`,"
+        `\x1b[33m⚠ mise detected:\x1b[0m If you installed via \`npm install omniroute\`,`
       );
-      console.error("    try: \x1b[36mnpx omniroute@latest\x1b[0m  (downloads a fresh copy)");
-      console.error("    or:  \x1b[36mmise exec -- npx omniroute\x1b[0m");
+      console.error("  try: \x1b[36mnpx omniroute@latest\x1b[0m (downloads a fresh copy)");
+      console.error("  or: \x1b[36mmise exec -- npx omniroute\x1b[0m");
     } else if (isNvm) {
       console.error(
-        "  \x1b[33m⚠ nvm detected:\x1b[0m Try reinstalling after loading the correct Node version:"
+        `\x1b[33m⚠ nvm detected:\x1b[0m Try reinstalling after loading the correct Node version:`
       );
-      console.error("    \x1b[36mnvm use --lts && npm install -g omniroute\x1b[0m");
+      console.error("  \x1b[36mnvm use --lts && npm install omniroute\x1b[0m");
     } else {
-      console.error("  Try: \x1b[36mnpm install -g omniroute\x1b[0m  (reinstall)");
-      console.error("  Or:  \x1b[36mnpx omniroute@latest\x1b[0m");
+      console.error("  Try: \x1b[36mnpm install omniroute\x1b[0m (reinstall)");
+      console.error("  Or: \x1b[36mnpx omniroute@latest\x1b[0m");
     }
     process.exit(1);
   }
@@ -146,7 +146,7 @@ export async function runServe(opts = {}) {
     apiPort,
     noOpen,
     opts.log === true,
-    opts.maxRestarts ?? 2
+    opts.maxRestarts || 2
   );
 }
 
@@ -160,8 +160,8 @@ function runDaemon(serverJs, env, memoryLimit, dashboardPort, apiPort) {
   writePidFile("server", server.pid);
   server.unref();
   console.log(`\x1b[32m✔ OmniRoute started in background (PID: ${server.pid})\x1b[0m`);
-  console.log(`  \x1b[1mDashboard:\x1b[0m  http://localhost:${dashboardPort}`);
-  console.log(`  \x1b[1mAPI Base:\x1b[0m   http://localhost:${apiPort}/v1`);
+  console.log(`  \x1b[1mDashboard:\x1b[0m http://localhost:${dashboardPort}`);
+  console.log(`  \x1b[1mAPI Base:\x1b[0m http://localhost:${apiPort}/v1`);
 }
 
 function runWithoutRecovery(serverJs, env, memoryLimit, dashboardPort, apiPort, noOpen) {
@@ -178,6 +178,7 @@ function runWithoutRecovery(serverJs, env, memoryLimit, dashboardPort, apiPort, 
   server.stdout.on("data", (data) => {
     const text = data.toString();
     process.stdout.write(text);
+
     if (
       !started &&
       (text.includes("Ready") || text.includes("started") || text.includes("listening"))
@@ -198,7 +199,7 @@ function runWithoutRecovery(serverJs, env, memoryLimit, dashboardPort, apiPort, 
     if (code !== 0 && code !== null) {
       console.error(`\x1b[31m✖ Server exited with code ${code}\x1b[0m`);
     }
-    process.exit(code ?? 0);
+    process.exit(code || 0);
   });
 
   const shutdown = () => {
@@ -230,7 +231,7 @@ async function runWithSupervisor(
   apiPort,
   noOpen,
   showLog,
-  maxRestarts,
+  maxRestarts
 ) {
   if (showLog) process.env.OMNIROUTE_SHOW_LOG = "1";
 
@@ -245,7 +246,9 @@ async function runWithSupervisor(
           const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
           const { updateSettings } = await import(`${PROJECT_ROOT}/src/lib/db/settings.ts`);
           updateSettings({ mitmEnabled: false });
-        } catch {}
+        } catch {
+          // ignore
+        }
         return "disable-mitm-and-retry";
       }
       return null;
@@ -264,30 +267,27 @@ async function runWithSupervisor(
   if (!showLog) {
     waitForServer(dashboardPort, 60000).then(async (up) => {
       if (up) {
-        if
         onReady(dashboardPort, apiPort, noOpen);
       }
     });
   }
 }
 
-
-
 async function onReady(dashboardPort, apiPort, noOpen) {
   const dashboardUrl = `http://localhost:${dashboardPort}`;
   const apiUrl = `http://localhost:${apiPort}`;
 
   console.log(`
-  \x1b[32m✔ OmniRoute is running!\x1b[0m
+\x1b[32m✔ OmniRoute is running!\x1b[0m
 
-  \x1b[1m  Dashboard:\x1b[0m  ${dashboardUrl}
-  \x1b[1m  API Base:\x1b[0m   ${apiUrl}/v1
+  \x1b[1m Dashboard:\x1b[0m ${dashboardUrl}
+  \x1b[1m API Base:\x1b[0m ${apiUrl}/v1
 
-  \x1b[2m  Point your CLI tool (Cursor, Cline, Codex) to:\x1b[0m
+  \x1b[2m Point your CLI tool (Cursor, Cline, Codex) to:\x1b[0m
   \x1b[33m  ${apiUrl}/v1\x1b[0m
 
-  \x1b[2m  Press Ctrl+C to stop\x1b[0m
-  `);
+  \x1b[2m Press Ctrl+C to stop\x1b[0m
+`);
 
   if (!noOpen && !isTermux()) {
     try {
