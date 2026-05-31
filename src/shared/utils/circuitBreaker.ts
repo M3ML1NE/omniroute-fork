@@ -141,9 +141,9 @@ export class CircuitBreaker {
   }
 
   _restoreFromDb() {
-    try {
-      const saved = loadCircuitBreakerState(this.name);
-      if (saved) {
+    loadCircuitBreakerState(this.name)
+      .then((saved) => {
+        if (!saved) return;
         if (
           saved.state === STATE.CLOSED ||
           saved.state === STATE.DEGRADED ||
@@ -168,30 +168,28 @@ export class CircuitBreaker {
         if (this.state === STATE.HALF_OPEN) {
           this.halfOpenAllowed = this.halfOpenRequests;
         }
-      }
-    } catch {
-      // DB may not be ready yet (build phase)
-    }
+      })
+      .catch(() => {
+        // DB may not be ready yet (build phase)
+      });
   }
 
   _persistToDb() {
-    try {
-      saveCircuitBreakerState(this.name, {
-        state: this.state,
-        failureCount: this.failureCount,
-        lastFailureTime: this.lastFailureTime,
-        options: {
-          failureThreshold: this.failureThreshold,
-          resetTimeout: this.resetTimeout,
-          halfOpenRequests: this.halfOpenRequests,
-          lastFailureKind: this.lastFailureKind,
-          openCycleCount: this.openCycleCount,
-          kindFailureCounts: this.kindFailureCounts,
-        },
-      });
-    } catch {
+    saveCircuitBreakerState(this.name, {
+      state: this.state,
+      failureCount: this.failureCount,
+      lastFailureTime: this.lastFailureTime,
+      options: {
+        failureThreshold: this.failureThreshold,
+        resetTimeout: this.resetTimeout,
+        halfOpenRequests: this.halfOpenRequests,
+        lastFailureKind: this.lastFailureKind,
+        openCycleCount: this.openCycleCount,
+        kindFailureCounts: this.kindFailureCounts,
+      },
+    }).catch(() => {
       // Non-critical
-    }
+    });
   }
 
   /**
@@ -528,9 +526,9 @@ export function getCircuitBreaker(name: string, options?: CircuitBreakerOptions)
   return breaker;
 }
 
-export function getAllCircuitBreakerStatuses() {
+export async function getAllCircuitBreakerStatuses() {
   try {
-    const persisted = loadAllCircuitBreakerStates();
+    const persisted = await loadAllCircuitBreakerStates();
     for (const cb of persisted) {
       if (!registry.has(cb.name)) {
         getCircuitBreaker(cb.name);
