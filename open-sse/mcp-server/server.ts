@@ -10,6 +10,24 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import {
+  getAtlassianConfig,
+  type AtlassianConfig,
+} from "../services/atlassianConfig.ts";
+import {
+  jiraTools,
+  type AnyJiraMcpTool,
+} from "./tools/atlassian/jira.ts";
+import {
+  bitbucketTools,
+  type AnyBitbucketMcpTool,
+} from "./tools/atlassian/bitbucket.ts";
+import {
+  confluenceTools,
+  type AnyConfluenceMcpTool,
+} from "./tools/atlassian/confluence.ts";
+import type { AtlassianService } from "../types/atlassianConfig.ts";
+
 // ============ Configuration ============
 
 const MCP_ENFORCE_SCOPES = process.env.OMNIROUTE_MCP_ENFORCE_SCOPES === "true";
@@ -20,11 +38,52 @@ const MCP_ALLOWED_SCOPES = new Set(
     .filter(Boolean)
 );
 
+// ============ Atlassian tool registration ============
+
+type AnyAtlassianMcpTool =
+  | AnyJiraMcpTool
+  | AnyBitbucketMcpTool
+  | AnyConfluenceMcpTool;
+
+const ATLASSIAN_TOOLS: Record<AtlassianService, AnyAtlassianMcpTool[]> = {
+  jira: jiraTools,
+  bitbucket: bitbucketTools,
+  confluence: confluenceTools,
+};
+
+/**
+ * Register Atlassian tools for every service that is configured AND enabled
+ * (per {@link AtlassianConfig.list}). Disabled, absent, or unloaded config all
+ * yield zero tools for that service – the server still starts cleanly.
+ * Returns the number of tools registered.
+ */
+export function registerAtlassianTools(
+  server: McpServer,
+  config: AtlassianConfig = getAtlassianConfig(),
+): number {
+  let count = 0;
+  for (const service of config.list()) {
+    for (const tool of ATLASSIAN_TOOLS[service]) {
+      server.registerTool(
+        tool.name,
+        {
+          description: tool.description,
+          // SDK registerTool expects the raw Zod shape, not the schema object.
+          inputSchema: tool.inputSchema.shape,
+        },
+        async (args: unknown) => tool.handler(tool.inputSchema.parse(args)),
+      );
+      count++;
+    }
+  }
+  return count;
+}
+
 // ============ Server Factory ============
 
 /**
- * Create and configure the OmniRoute MCP Server (no tools registered).
- * Tool registration removed in stripdown/v1 T10.
+ * Create and configure the OmniRoute MCP Server, registering Atlassian tools
+ * for every enabled service. Unloaded config registers no tools.
  */
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -32,8 +91,7 @@ export function createMcpServer(): McpServer {
     version: process.env.npm_package_version ?? "1.8.1",
   });
 
-  // No tools registered – skeleton only.
-  // Re-add tool sets in T24/T29 as needed.
+  registerAtlassianTools(server);
 
   return server;
 }
@@ -45,6 +103,15 @@ export function createMcpServer(): McpServer {
  * Called when `omniroute --mcp` is used.
  */
 export async function startMcpStdio(): Promise<void> {
+  const config = getAtlassianConfig();
+  try {
+    await config.load();
+    config.watch();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[MCP] Atlassian config not loaded (starting with 0 tools): ${msg}`);
+  }
+
   const server = createMcpServer();
   const transport = new StdioServerTransport();
 
