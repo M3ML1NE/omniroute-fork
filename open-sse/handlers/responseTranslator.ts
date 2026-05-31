@@ -395,7 +395,7 @@ export function translateNonStreamingResponse(
                     const sig = partThoughtSig || pendingThoughtSignature;
                     if (sig) {
                       const sigKey = buildGeminiThoughtSignatureKey(null, toolCallId);
-                      storeGeminiThoughtSignature(sigKey, sig);
+                      void storeGeminiThoughtSignature(sigKey, sig).catch(() => {});
                     }
 
                     toolCalls.push({
