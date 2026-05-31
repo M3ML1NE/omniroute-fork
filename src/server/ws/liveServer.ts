@@ -108,7 +108,7 @@ async function authorizeConnection(request: import("http").IncomingMessage): Pro
     const { extractApiKey, isValidApiKey } = await import("../services/auth");
     const apiKey = extractApiKey({ headers: { authorization: `Bearer ${token}` } } as any);
 
-    if (!apiKey || !isValidApiKey(apiKey)) {
+    if (!apiKey || !(await isValidApiKey(apiKey))) {
       return { authorized: false, sessionId, error: "Invalid API key" };
     }
 

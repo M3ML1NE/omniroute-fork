@@ -373,7 +373,7 @@ export async function enforceApiKeyPolicy(
   // ── Check 4: Budget limit ──
   if (apiKeyInfo.id) {
     try {
-      const budgetOk = checkBudget(apiKeyInfo.id);
+      const budgetOk = await checkBudget(apiKeyInfo.id);
       if (!budgetOk.allowed) {
         return {
           apiKey,
@@ -398,7 +398,7 @@ export async function enforceApiKeyPolicy(
   // ── Check 4.5: Per-model / per-provider token limits (Tier 1) ──
   if (apiKeyInfo.id) {
     try {
-      const breach = checkTokenLimits(apiKeyInfo.id, undefined, modelStr ?? undefined);
+      const breach = await checkTokenLimits(apiKeyInfo.id, undefined, modelStr ?? undefined);
       if (breach) {
         const scopeLabel =
           breach.scopeType === "global"
