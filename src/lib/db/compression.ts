@@ -349,7 +349,9 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
   }
   compressionSettingsCache = null;
 
-  const rows = db.prepare("SELECT key, value FROM key_value WHERE namespace = ?").all(NAMESPACE);
+  const rows = await db
+    .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
+    .all(NAMESPACE);
 
   const config: CompressionConfig = {
     ...DEFAULT_COMPRESSION_CONFIG,
@@ -458,17 +460,15 @@ export async function updateCompressionSettings(
 ): Promise<CompressionConfig> {
   const db = getDbInstance();
   const insert = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)"
+    "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) " +
+      "ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value"
   );
 
-  const tx = db.transaction(() => {
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === undefined) continue;
-      insert.run(NAMESPACE, key, JSON.stringify(value));
-    }
-  });
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) continue;
+    await insert.run(NAMESPACE, key, JSON.stringify(value));
+  }
 
-  tx();
   backupDbFile("pre-write");
   compressionSettingsCache = null;
   invalidateDbCache();
@@ -522,9 +522,9 @@ function normalizeMcpAccessibilityConfig(value: unknown): McpAccessibilityConfig
 
 export async function getMcpAccessibilityConfig(): Promise<McpAccessibilityConfig> {
   const db = getDbInstance();
-  const row = db
+  const row = (await db
     .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-    .get(NAMESPACE, "mcpAccessibility") as { value: string } | undefined;
+    .get(NAMESPACE, "mcpAccessibility")) as { value: string } | undefined;
   return normalizeMcpAccessibilityConfig(parseJsonSafe(row?.value ?? null));
 }
 
@@ -533,11 +533,12 @@ export async function setMcpAccessibilityConfig(
 ): Promise<void> {
   const next = normalizeMcpAccessibilityConfig({ ...DEFAULT_MCP_ACCESSIBILITY_CONFIG, ...value });
   const db = getDbInstance();
-  db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    NAMESPACE,
-    "mcpAccessibility",
-    JSON.stringify(next)
-  );
+  await db
+    .prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) " +
+        "ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value"
+    )
+    .run(NAMESPACE, "mcpAccessibility", JSON.stringify(next));
   compressionSettingsCache = null;
   invalidateDbCache();
 }

@@ -23,16 +23,6 @@ export interface StreakData {
   streakStartDate: string;
 }
 
-interface StatementLike<TRow = unknown> {
-  get: (...params: unknown[]) => TRow | undefined;
-  run: (...params: unknown[]) => { changes?: number };
-  all: (...params: unknown[]) => TRow[];
-}
-
-interface DbLike {
-  prepare: <TRow = unknown>(sql: string) => StatementLike<TRow>;
-}
-
 interface KeyValueRow {
   value: string;
 }
@@ -98,10 +88,10 @@ function parseStreakJson(raw: string): StreakData {
 export async function getStreak(apiKeyId: string): Promise<StreakData> {
   if (isBuildPhase || isCloud) return emptyStreak();
 
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db
+  const db = getDbInstance();
+  const row = (await db
     .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-    .get(NAMESPACE, apiKeyId) as KeyValueRow | undefined;
+    .get(NAMESPACE, apiKeyId)) as KeyValueRow | undefined;
 
   if (!row?.value) return emptyStreak();
   return parseStreakJson(row.value);
@@ -127,7 +117,7 @@ export async function getStreak(apiKeyId: string): Promise<StreakData> {
 export async function updateStreak(apiKeyId: string): Promise<number> {
   if (isBuildPhase || isCloud) return 0;
 
-  const db = getDbInstance() as unknown as DbLike;
+  const db = getDbInstance();
   const today = todayUtc();
   const streak = await getStreak(apiKeyId);
 
@@ -154,11 +144,10 @@ export async function updateStreak(apiKeyId: string): Promise<number> {
     streakStartDate: newStreak === 1 ? today : streak.streakStartDate,
   };
 
-  db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    NAMESPACE,
-    apiKeyId,
-    JSON.stringify(newData)
-  );
+  await db.prepare(
+    "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) " +
+      "ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value"
+  ).run(NAMESPACE, apiKeyId, JSON.stringify(newData));
 
   return newStreak;
 }
@@ -189,6 +178,6 @@ export async function isStreakActive(apiKeyId: string): Promise<boolean> {
 export async function resetStreak(apiKeyId: string): Promise<void> {
   if (isBuildPhase || isCloud) return;
 
-  const db = getDbInstance() as unknown as DbLike;
-  db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(NAMESPACE, apiKeyId);
+  const db = getDbInstance();
+  await db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(NAMESPACE, apiKeyId);
 }

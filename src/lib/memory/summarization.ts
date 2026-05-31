@@ -19,9 +19,9 @@ export async function summarizeMemories(
     : "WHERE api_key_id = ?";
   const params = sessionId ? [apiKeyId, sessionId] : [apiKeyId];
 
-  const memories = db
+  const memories = (await db
     .prepare(`SELECT * FROM memories ${whereClause} ORDER BY created_at DESC`)
-    .all(...params) as any[];
+    .all(...params)) as any[];
 
   if (memories.length === 0) {
     return { originalCount: 0, summarizedCount: 0, tokensSaved: 0 };
@@ -72,7 +72,7 @@ export async function summarizeMemories(
     const newTokens = estimateTokens(summary);
     tokensSaved += oldTokens - newTokens;
 
-    db.prepare("UPDATE memories SET content = ?, updated_at = ? WHERE id = ?").run(
+    await db.prepare("UPDATE memories SET content = ?, updated_at = ? WHERE id = ?").run(
       summary,
       new Date().toISOString(),
       mem.id

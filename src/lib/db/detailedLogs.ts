@@ -36,15 +36,17 @@ export interface RequestDetailLog {
 
 let requestDetailLogsTableExistsCache: boolean | undefined;
 
-function requestDetailLogsTableExists(): boolean {
+async function requestDetailLogsTableExists(): Promise<boolean> {
   if (requestDetailLogsTableExistsCache !== undefined) {
     return requestDetailLogsTableExistsCache;
   }
 
   const db = getDbInstance();
-  const row = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'request_detail_logs'")
-    .get() as { name?: string } | undefined;
+  const row = (await db
+    .prepare(
+      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'request_detail_logs'"
+    )
+    .get()) as { name?: string } | undefined;
   requestDetailLogsTableExistsCache = Boolean(row?.name);
   return requestDetailLogsTableExistsCache;
 }
@@ -67,11 +69,11 @@ export async function isDetailedLoggingEnabled(): Promise<boolean> {
 }
 
 /** Save a detailed log entry — caller must verify isDetailedLoggingEnabled() first */
-export function saveRequestDetailLog(entry: RequestDetailLog): void {
+export async function saveRequestDetailLog(entry: RequestDetailLog): Promise<void> {
   if (nonCriticalDbDisabled()) return;
   const noLogEnabled =
     Boolean(entry.no_log) || (entry.api_key_id ? isNoLog(entry.api_key_id) : false);
-  if (noLogEnabled || !requestDetailLogsTableExists()) return;
+  if (noLogEnabled || !(await requestDetailLogsTableExists())) return;
 
   const db = getDbInstance();
   const id = entry.id ?? uuidv4();
@@ -79,35 +81,37 @@ export function saveRequestDetailLog(entry: RequestDetailLog): void {
   const compactProviderResponse = compactStructuredStreamPayload(entry.provider_response);
   const compactClientResponse = compactStructuredStreamPayload(entry.client_response);
 
-  db.prepare(
-    `
+  await db
+    .prepare(
+      `
     INSERT INTO request_detail_logs
       (id, call_log_id, timestamp, client_request, translated_request,
        provider_response, client_response, provider, model, source_format, target_format, duration_ms)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(
-    id,
-    entry.call_log_id ?? null,
-    timestamp,
-    serializePayloadForStorage(protectPayloadForLog(entry.client_request)),
-    serializePayloadForStorage(protectPayloadForLog(entry.translated_request)),
-    serializePayloadForStorage(protectPayloadForLog(compactProviderResponse)),
-    serializePayloadForStorage(protectPayloadForLog(compactClientResponse)),
-    entry.provider ?? null,
-    entry.model ?? null,
-    entry.source_format ?? null,
-    entry.target_format ?? null,
-    entry.duration_ms ?? 0
-  );
+    )
+    .run(
+      id,
+      entry.call_log_id ?? null,
+      timestamp,
+      serializePayloadForStorage(protectPayloadForLog(entry.client_request)),
+      serializePayloadForStorage(protectPayloadForLog(entry.translated_request)),
+      serializePayloadForStorage(protectPayloadForLog(compactProviderResponse)),
+      serializePayloadForStorage(protectPayloadForLog(compactClientResponse)),
+      entry.provider ?? null,
+      entry.model ?? null,
+      entry.source_format ?? null,
+      entry.target_format ?? null,
+      entry.duration_ms ?? 0
+    );
 }
 
 /** Fetch detailed logs (latest first) */
-export function getRequestDetailLogs(limit = 50, offset = 0): RequestDetailLog[] {
+export async function getRequestDetailLogs(limit = 50, offset = 0): Promise<RequestDetailLog[]> {
   if (nonCriticalDbDisabled()) return [];
-  if (!requestDetailLogsTableExists()) return [];
+  if (!(await requestDetailLogsTableExists())) return [];
   const db = getDbInstance();
-  const rows = db
+  const rows = (await db
     .prepare(
       `
       SELECT * FROM request_detail_logs
@@ -115,28 +119,30 @@ export function getRequestDetailLogs(limit = 50, offset = 0): RequestDetailLog[]
       LIMIT ? OFFSET ?
     `
     )
-    .all(limit, offset) as Array<Record<string, unknown>>;
+    .all(limit, offset)) as Array<Record<string, unknown>>;
 
   return rows.map(mapDetailedLogRow);
 }
 
 /** Get a single detailed log by ID */
-export function getRequestDetailLogById(id: string): RequestDetailLog | null {
+export async function getRequestDetailLogById(id: string): Promise<RequestDetailLog | null> {
   if (nonCriticalDbDisabled()) return null;
-  if (!requestDetailLogsTableExists()) return null;
+  if (!(await requestDetailLogsTableExists())) return null;
   const db = getDbInstance();
-  const row = db.prepare("SELECT * FROM request_detail_logs WHERE id = ?").get(id) as
+  const row = (await db.prepare("SELECT * FROM request_detail_logs WHERE id = ?").get(id)) as
     | Record<string, unknown>
     | undefined;
   return row ? mapDetailedLogRow(row) : null;
 }
 
 /** Get the most recent detailed log for a call log ID */
-export function getRequestDetailLogByCallLogId(callLogId: string): RequestDetailLog | null {
+export async function getRequestDetailLogByCallLogId(
+  callLogId: string
+): Promise<RequestDetailLog | null> {
   if (nonCriticalDbDisabled()) return null;
-  if (!requestDetailLogsTableExists()) return null;
+  if (!(await requestDetailLogsTableExists())) return null;
   const db = getDbInstance();
-  const row = db
+  const row = (await db
     .prepare(
       `
       SELECT * FROM request_detail_logs
@@ -145,19 +151,19 @@ export function getRequestDetailLogByCallLogId(callLogId: string): RequestDetail
       LIMIT 1
     `
     )
-    .get(callLogId) as Record<string, unknown> | undefined;
+    .get(callLogId)) as Record<string, unknown> | undefined;
   return row ? mapDetailedLogRow(row) : null;
 }
 
 /** Get total count of detailed logs */
-export function getRequestDetailLogCount(): number {
+export async function getRequestDetailLogCount(): Promise<number> {
   if (nonCriticalDbDisabled()) return 0;
-  if (!requestDetailLogsTableExists()) return 0;
+  if (!(await requestDetailLogsTableExists())) return 0;
   const db = getDbInstance();
-  const row = db.prepare("SELECT COUNT(*) as cnt FROM request_detail_logs").get() as {
-    cnt: number;
+  const row = (await db.prepare("SELECT COUNT(*) as cnt FROM request_detail_logs").get()) as {
+    cnt: number | string;
   };
-  return row?.cnt ?? 0;
+  return Number(row?.cnt ?? 0);
 }
 
 function mapDetailedLogRow(row: Record<string, unknown>): RequestDetailLog {

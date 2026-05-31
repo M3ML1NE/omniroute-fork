@@ -36,11 +36,13 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function hasTable(tableName: string): boolean {
+async function hasTable(tableName: string): Promise<boolean> {
   const db = getDbInstance();
-  const row = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-    .get(tableName) as { name?: string } | undefined;
+  const row = (await db
+    .prepare(
+      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?"
+    )
+    .get(tableName)) as { name?: string } | undefined;
   return row?.name === tableName;
 }
 
@@ -138,7 +140,7 @@ export async function retrieveMemories(
   const memories: Array<{ memory: Memory; score: number }> = [];
   let totalTokens = 0;
 
-  const useModernTable = hasTable("memories");
+  const useModernTable = await hasTable("memories");
   const tableName = useModernTable ? "memories" : "memory";
   const columns = useModernTable
     ? {
@@ -157,7 +159,7 @@ export async function retrieveMemories(
   // Build base query
   let query =
     `SELECT * FROM ${tableName} WHERE ${columns.apiKeyId} = ? ` +
-    `AND (${columns.expiresAt} IS NULL OR datetime(${columns.expiresAt}) > datetime('now'))`;
+    `AND (${columns.expiresAt} IS NULL OR (${columns.expiresAt})::timestamptz > NOW())`;
   const params: any[] = [apiKeyId];
 
   if (normalizedConfig.scope === "session" && config.sessionId) {
@@ -169,13 +171,13 @@ export async function retrieveMemories(
     const cutoff = new Date(
       Date.now() - normalizedConfig.retentionDays * 24 * 60 * 60 * 1000
     ).toISOString();
-    query += ` AND datetime(${columns.createdAt}) >= datetime(?)`;
+    query += ` AND (${columns.createdAt})::timestamptz >= (?)::timestamptz`;
     params.push(cutoff);
   }
 
   // Execute query based on strategy
   let rows: MemoryRow[];
-  const ftsAvailable = useModernTable && hasTable("memory_fts");
+  const ftsAvailable = useModernTable && (await hasTable("memory_fts"));
 
   switch (strategy) {
     case "semantic": {
@@ -184,12 +186,12 @@ export async function retrieveMemories(
           `SELECT m.* FROM ${tableName} m ` +
           `JOIN memory_fts f ON m.memory_id = f.rowid ` +
           `WHERE f.memory_fts MATCH ? AND m.${columns.apiKeyId} = ? ` +
-          `AND (m.${columns.expiresAt} IS NULL OR datetime(m.${columns.expiresAt}) > datetime('now'))` +
+          `AND (m.${columns.expiresAt} IS NULL OR (m.${columns.expiresAt})::timestamptz > NOW())` +
           (normalizedConfig.scope === "session" && config.sessionId
             ? ` AND m.${columns.sessionId} = ?`
             : "") +
           (normalizedConfig.retentionDays > 0
-            ? ` AND datetime(m.${columns.createdAt}) >= datetime(?)`
+            ? ` AND (m.${columns.createdAt})::timestamptz >= (?)::timestamptz`
             : "") +
           ` ORDER BY f.rank LIMIT 100`;
         const ftsParams: any[] = [config.query, apiKeyId];
@@ -203,17 +205,17 @@ export async function retrieveMemories(
           ftsParams.push(cutoff);
         }
         try {
-          rows = db.prepare(ftsQuery).all(...ftsParams) as MemoryRow[];
+          rows = (await db.prepare(ftsQuery).all(...ftsParams)) as MemoryRow[];
         } catch {
           rows = [];
         }
         if (rows.length === 0) {
           query += ` ORDER BY ${columns.createdAt} DESC LIMIT 100`;
-          rows = db.prepare(query).all(...params) as MemoryRow[];
+          rows = (await db.prepare(query).all(...params)) as MemoryRow[];
         }
       } else {
         query += ` ORDER BY ${columns.createdAt} DESC LIMIT 100`;
-        rows = db.prepare(query).all(...params) as MemoryRow[];
+        rows = (await db.prepare(query).all(...params)) as MemoryRow[];
       }
       break;
     }
@@ -224,12 +226,12 @@ export async function retrieveMemories(
           `SELECT m.* FROM ${tableName} m ` +
           `JOIN memory_fts f ON m.memory_id = f.rowid ` +
           `WHERE f.memory_fts MATCH ? AND m.${columns.apiKeyId} = ? ` +
-          `AND (m.${columns.expiresAt} IS NULL OR datetime(m.${columns.expiresAt}) > datetime('now'))` +
+          `AND (m.${columns.expiresAt} IS NULL OR (m.${columns.expiresAt})::timestamptz > NOW())` +
           (normalizedConfig.scope === "session" && config.sessionId
             ? ` AND m.${columns.sessionId} = ?`
             : "") +
           (normalizedConfig.retentionDays > 0
-            ? ` AND datetime(m.${columns.createdAt}) >= datetime(?)`
+            ? ` AND (m.${columns.createdAt})::timestamptz >= (?)::timestamptz`
             : "") +
           ` ORDER BY f.rank LIMIT 100`;
         const ftsParams: any[] = [config.query, apiKeyId];
@@ -243,14 +245,14 @@ export async function retrieveMemories(
           ftsParams.push(cutoff);
         }
         try {
-          ftsRows = db.prepare(ftsQuery).all(...ftsParams) as MemoryRow[];
+          ftsRows = (await db.prepare(ftsQuery).all(...ftsParams)) as MemoryRow[];
         } catch {
           ftsRows = [];
         }
       }
       // Get chronological results for keyword scoring
       query += ` ORDER BY ${columns.createdAt} DESC LIMIT 100`;
-      const keywordRows = db.prepare(query).all(...params) as MemoryRow[];
+      const keywordRows = (await db.prepare(query).all(...params)) as MemoryRow[];
 
       // Union: FTS5 results first (higher relevance), then keyword results, dedup by id
       const seen = new Set<string | number>();
@@ -267,7 +269,7 @@ export async function retrieveMemories(
     case "exact":
     default: {
       query += ` ORDER BY ${columns.createdAt} DESC LIMIT 100`;
-      rows = db.prepare(query).all(...params) as MemoryRow[];
+      rows = (await db.prepare(query).all(...params)) as MemoryRow[];
     }
   }
 
