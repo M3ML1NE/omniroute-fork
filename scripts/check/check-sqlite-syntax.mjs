@@ -45,6 +45,7 @@ const CRITICAL_MODULES = [
   "src/lib/db/featureFlags.ts",
   "src/lib/db/creditBalance.ts",
   "src/lib/db/models.ts",
+  "src/lib/db/serviceModels.ts",
   "src/lib/db/stats.ts",
   "src/lib/db/sessionAccountAffinity.ts",
   "src/lib/db/tokenLimits.ts",
