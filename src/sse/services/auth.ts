@@ -653,11 +653,11 @@ async function selectSessionAffinityConnection(
 ): Promise<ProviderConnectionView | null> {
   if (!sessionKey || connections.length === 0 || ttlMs <= 0) return null;
 
-  const existing = getSessionAccountAffinity(sessionKey, provider, ttlMs);
+  const existing = await getSessionAccountAffinity(sessionKey, provider, ttlMs);
   if (existing) {
     const connection = connections.find((candidate) => candidate.id === existing.connectionId);
     if (connection) {
-      touchSessionAccountAffinity(sessionKey, provider, Date.now(), ttlMs);
+      await touchSessionAccountAffinity(sessionKey, provider, Date.now(), ttlMs);
       await updateProviderConnection(connection.id, {
         lastUsedAt: new Date().toISOString(),
         consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1,
@@ -672,7 +672,7 @@ async function selectSessionAffinityConnection(
       return connection;
     }
 
-    deleteSessionAccountAffinity(sessionKey, provider);
+    await deleteSessionAccountAffinity(sessionKey, provider);
     log.info(
       "AUTH",
       `affinity cleared for session_key=${formatSessionKeyForLog(sessionKey)} provider=${provider}`
@@ -682,7 +682,7 @@ async function selectSessionAffinityConnection(
   const connection = [...connections].sort(compareLruConnections)[0] ?? null;
   if (!connection) return null;
 
-  upsertSessionAccountAffinity(sessionKey, provider, connection.id, Date.now(), ttlMs);
+  await upsertSessionAccountAffinity(sessionKey, provider, connection.id, Date.now(), ttlMs);
   await updateProviderConnection(connection.id, {
     lastUsedAt: new Date().toISOString(),
     consecutiveUseCount: 1,

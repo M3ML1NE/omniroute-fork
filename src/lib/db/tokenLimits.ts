@@ -1,16 +1,3 @@
-/**
- * Per-API-Key Token Limits — Persistence Layer
- *
- * Enforcement-grade token budgets attachable to an API key, scoped to a
- * specific model, a specific provider, or globally. Complements the USD cost
- * budgets in domainState.ts / src/domain/costRules.ts.
- *
- * Tables (migration 073): api_key_token_limits, api_key_token_counters,
- *                         api_key_token_limit_reset_logs.
- *
- * @module lib/db/tokenLimits
- */
-
 import { randomUUID } from "crypto";
 import { getDbInstance } from "./core";
 import { getBudgetWindow, type BudgetResetInterval } from "@/domain/costRules";
@@ -50,8 +37,6 @@ export interface TokenWindowState {
 
 type JsonRecord = Record<string, unknown>;
 
-let _schemaChecked = false;
-
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
 }
@@ -75,45 +60,6 @@ function normalizeResetInterval(value: unknown): BudgetResetInterval {
   return "monthly";
 }
 
-function ensureSchema() {
-  if (_schemaChecked) return;
-  const db = getDbInstance();
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS api_key_token_limits (
-      id              TEXT PRIMARY KEY,
-      api_key_id      TEXT NOT NULL,
-      scope_type      TEXT NOT NULL CHECK (scope_type IN ('model', 'provider', 'global')),
-      scope_value     TEXT NOT NULL DEFAULT '',
-      token_limit     INTEGER NOT NULL CHECK (token_limit > 0),
-      reset_interval  TEXT NOT NULL DEFAULT 'monthly' CHECK (reset_interval IN ('daily', 'weekly', 'monthly')),
-      reset_time      TEXT,
-      enabled         INTEGER NOT NULL DEFAULT 1,
-      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (api_key_id, scope_type, scope_value)
-    );
-    CREATE INDEX IF NOT EXISTS idx_aktl_api_key_id ON api_key_token_limits (api_key_id);
-    CREATE TABLE IF NOT EXISTS api_key_token_counters (
-      limit_id      TEXT NOT NULL,
-      window_start  TEXT NOT NULL,
-      tokens_used   INTEGER NOT NULL DEFAULT 0,
-      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      PRIMARY KEY (limit_id, window_start),
-      FOREIGN KEY (limit_id) REFERENCES api_key_token_limits (id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS api_key_token_limit_reset_logs (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      limit_id      TEXT NOT NULL,
-      reset_at      TEXT NOT NULL DEFAULT (datetime('now')),
-      prev_tokens   INTEGER NOT NULL DEFAULT 0,
-      window_start  TEXT NOT NULL,
-      FOREIGN KEY (limit_id) REFERENCES api_key_token_limits (id) ON DELETE CASCADE
-    );
-    CREATE INDEX IF NOT EXISTS idx_aktlrl_limit_id ON api_key_token_limit_reset_logs (limit_id);
-  `);
-  _schemaChecked = true;
-}
-
 function rowToTokenLimit(row: unknown): TokenLimit {
   const r = asRecord(row);
   return {
@@ -130,14 +76,7 @@ function rowToTokenLimit(row: unknown): TokenLimit {
   };
 }
 
-// ──────────────── CRUD ────────────────
-
-/**
- * Insert or update a token limit. Upsert key is (api_key_id, scope_type, scope_value).
- * Returns the persisted row.
- */
-export function upsertTokenLimit(input: UpsertTokenLimitInput): TokenLimit {
-  ensureSchema();
+export async function upsertTokenLimit(input: UpsertTokenLimitInput): Promise<TokenLimit> {
   const db = getDbInstance();
   const scopeType = normalizeScopeType(input.scopeType);
   const scopeValue = scopeType === "global" ? "" : (input.scopeValue ?? "").trim();
@@ -148,148 +87,121 @@ export function upsertTokenLimit(input: UpsertTokenLimitInput): TokenLimit {
   const tokenLimit = Math.floor(toNumber(input.tokenLimit));
   const id = input.id && input.id.trim() ? input.id.trim() : randomUUID();
 
-  db.prepare(
-    `INSERT INTO api_key_token_limits
-       (id, api_key_id, scope_type, scope_value, token_limit, reset_interval, reset_time, enabled, created_at, updated_at)
-     VALUES (@id, @apiKeyId, @scopeType, @scopeValue, @tokenLimit, @resetInterval, @resetTime, @enabled, datetime('now'), datetime('now'))
-     ON CONFLICT(api_key_id, scope_type, scope_value)
-     DO UPDATE SET token_limit    = excluded.token_limit,
-                   reset_interval = excluded.reset_interval,
-                   reset_time     = excluded.reset_time,
-                   enabled        = excluded.enabled,
-                   updated_at     = datetime('now')`
-  ).run({ id, apiKeyId: input.apiKeyId, scopeType, scopeValue, tokenLimit, resetInterval, resetTime, enabled });
-
-  const row = db
+  await db
     .prepare(
-      "SELECT * FROM api_key_token_limits WHERE api_key_id = ? AND scope_type = ? AND scope_value = ?"
+      `INSERT INTO api_key_token_limits
+         (id, api_key_id, scope_type, scope_value, token_limit, reset_interval, reset_time, enabled, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+       ON CONFLICT (api_key_id, scope_type, scope_value)
+       DO UPDATE SET token_limit    = excluded.token_limit,
+                     reset_interval = excluded.reset_interval,
+                     reset_time     = excluded.reset_time,
+                     enabled        = excluded.enabled,
+                     updated_at     = NOW()`
+    )
+    .run(id, input.apiKeyId, scopeType, scopeValue, tokenLimit, resetInterval, resetTime, enabled);
+
+  const row = await db
+    .prepare(
+      "SELECT * FROM api_key_token_limits WHERE api_key_id = $1 AND scope_type = $2 AND scope_value = $3"
     )
     .get(input.apiKeyId, scopeType, scopeValue);
   return rowToTokenLimit(row);
 }
 
-/** List all token limits for an API key (ordered most-specific first: model, provider, global). */
-export function listTokenLimits(apiKeyId: string): TokenLimit[] {
-  ensureSchema();
+export async function listTokenLimits(apiKeyId: string): Promise<TokenLimit[]> {
   const db = getDbInstance();
-  return db
+  const rows = await db
     .prepare(
       `SELECT * FROM api_key_token_limits
-       WHERE api_key_id = ?
+       WHERE api_key_id = $1
        ORDER BY CASE scope_type WHEN 'model' THEN 0 WHEN 'provider' THEN 1 ELSE 2 END, scope_value`
     )
-    .all(apiKeyId)
-    .map(rowToTokenLimit);
+    .all(apiKeyId);
+  return rows.map(rowToTokenLimit);
 }
 
-/**
- * Return the enabled limits that apply to a given request: the model-scoped row
- * (scope_value === model), the provider-scoped row (scope_value === provider),
- * and the global row. Used by the enforcement read.
- */
-export function getTokenLimitsForRequest(
+export async function getTokenLimitsForRequest(
   apiKeyId: string,
   provider: string,
   model: string
-): TokenLimit[] {
-  ensureSchema();
+): Promise<TokenLimit[]> {
   const db = getDbInstance();
-  return db
+  const rows = await db
     .prepare(
       `SELECT * FROM api_key_token_limits
-       WHERE api_key_id = @apiKeyId
+       WHERE api_key_id = $1
          AND enabled = 1
          AND (
            (scope_type = 'global')
-           OR (scope_type = 'model' AND scope_value = @model)
-           OR (scope_type = 'provider' AND scope_value = @provider)
+           OR (scope_type = 'model' AND scope_value = $2)
+           OR (scope_type = 'provider' AND scope_value = $3)
          )`
     )
-    .all({ apiKeyId, model: model || "", provider: provider || "" } as JsonRecord)
-    .map(rowToTokenLimit);
+    .all(apiKeyId, model || "", provider || "");
+  return rows.map(rowToTokenLimit);
 }
 
-/** Delete a token limit by id (counters + reset logs cascade in app code below). */
-export function deleteTokenLimit(id: string): boolean {
-  ensureSchema();
+export async function deleteTokenLimit(id: string): Promise<boolean> {
   const db = getDbInstance();
-  // FK pragma is OFF in this build; delete dependents explicitly.
-  db.prepare("DELETE FROM api_key_token_counters WHERE limit_id = ?").run(id);
-  db.prepare("DELETE FROM api_key_token_limit_reset_logs WHERE limit_id = ?").run(id);
-  const info = db.prepare("DELETE FROM api_key_token_limits WHERE id = ?").run(id);
+  await db.prepare("DELETE FROM api_key_token_counters WHERE limit_id = $1").run(id);
+  await db.prepare("DELETE FROM api_key_token_limit_reset_logs WHERE limit_id = $1").run(id);
+  const info = await db.prepare("DELETE FROM api_key_token_limits WHERE id = $1").run(id);
   return info.changes > 0;
 }
 
-// ──────────────── Counters (concurrency-safe under WAL) ────────────────
-
-/**
- * Pure boundary calculator. Resolves the active window for a limit at `now`
- * and reports whether the window has rolled since the limit's last-known window.
- * No DB writes. Window math reused from costRules.getBudgetWindow.
- */
 export function resetWindowIfElapsed(limit: TokenLimit, now = Date.now()): TokenWindowState {
   const window = getBudgetWindow(limit.resetInterval, limit.resetTime, now);
   const windowStart = String(window.periodStartAt);
   return {
     windowStart,
-    didReset: false, // caller compares against the stored counter row to decide rollover
+    didReset: false,
     periodStartAt: window.periodStartAt,
     nextResetAt: window.nextResetAt,
   };
 }
 
-/**
- * Read-only point-read of the current window's usage for a limit.
- * Returns 0 if no counter row exists yet (cold window). DB-authoritative.
- */
-export function getWindowUsage(limit: TokenLimit, now = Date.now()): number {
-  ensureSchema();
+export async function getWindowUsage(limit: TokenLimit, now = Date.now()): Promise<number> {
   const db = getDbInstance();
   const { windowStart } = resetWindowIfElapsed(limit, now);
-  const row = db
+  const row = await db
     .prepare(
-      "SELECT tokens_used FROM api_key_token_counters WHERE limit_id = ? AND window_start = ?"
+      "SELECT tokens_used FROM api_key_token_counters WHERE limit_id = $1 AND window_start = $2"
     )
     .get(limit.id, windowStart);
   return toNumber(asRecord(row).tokens_used);
 }
 
-/**
- * Atomically add `tokens` to the counter for (limitId, windowStart) and return
- * the new running total. Uses UPSERT (no read-then-write) so concurrent
- * increments under WAL cannot lose updates.
- */
-export function incrementWindowTokens(
+export async function incrementWindowTokens(
   limitId: string,
   windowStart: string,
   tokens: number
-): number {
-  ensureSchema();
+): Promise<number> {
   const db = getDbInstance();
   const delta = Math.max(0, Math.floor(toNumber(tokens)));
-  const row = db
+  const row = await db
     .prepare(
       `INSERT INTO api_key_token_counters (limit_id, window_start, tokens_used, updated_at)
-       VALUES (@limitId, @windowStart, @tokens, datetime('now'))
-       ON CONFLICT(limit_id, window_start)
-       DO UPDATE SET tokens_used = tokens_used + excluded.tokens_used,
-                     updated_at  = datetime('now')
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (limit_id, window_start)
+       DO UPDATE SET tokens_used = api_key_token_counters.tokens_used + excluded.tokens_used,
+                     updated_at  = NOW()
        RETURNING tokens_used`
     )
-    .get({ limitId, windowStart, tokens: delta });
+    .get(limitId, windowStart, delta);
   return toNumber(asRecord(row).tokens_used);
 }
 
-/** Append a window-reset audit log row. */
-export function logTokenLimitReset(
+export async function logTokenLimitReset(
   limitId: string,
   prevTokens: number,
   windowStart: string
-): void {
-  ensureSchema();
+): Promise<void> {
   const db = getDbInstance();
-  db.prepare(
-    `INSERT INTO api_key_token_limit_reset_logs (limit_id, reset_at, prev_tokens, window_start)
-     VALUES (?, datetime('now'), ?, ?)`
-  ).run(limitId, Math.max(0, Math.floor(toNumber(prevTokens))), windowStart);
+  await db
+    .prepare(
+      `INSERT INTO api_key_token_limit_reset_logs (limit_id, reset_at, prev_tokens, window_start)
+       VALUES ($1, NOW(), $2, $3)`
+    )
+    .run(limitId, Math.max(0, Math.floor(toNumber(prevTokens))), windowStart);
 }

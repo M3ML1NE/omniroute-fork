@@ -181,12 +181,12 @@ function toRecord(value: unknown): Record<string, unknown> {
 /**
  * Read synced pricing from `pricing_synced` namespace.
  */
-export function getSyncedPricing(): PricingByProvider {
+export async function getSyncedPricing(): Promise<PricingByProvider> {
   if (nonCriticalDbDisabled()) return {};
   const db = getDbInstance();
-  const rows = db
+  const rows = (await db
     .prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing_synced'")
-    .all();
+    .all()) as Array<unknown>;
   const synced: PricingByProvider = {};
   for (const row of rows) {
     const record = toRecord(row);

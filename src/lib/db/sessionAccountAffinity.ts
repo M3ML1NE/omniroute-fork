@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 
-import { getDbInstance } from "./core";
+import { getDbInstance, withTransaction } from "./core";
 
 type SessionAccountAffinityRecord = {
   connectionId: string;
@@ -54,47 +54,47 @@ function parseRecord(value: unknown): SessionAccountAffinityRecord | null {
   }
 }
 
-function deleteAffinityKey(key: string): void {
-  getDbInstance()
+async function deleteAffinityKey(key: string): Promise<void> {
+  await getDbInstance()
     .prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?")
     .run(NAMESPACE, key);
 }
 
-export function getSessionAccountAffinity(
+export async function getSessionAccountAffinity(
   sessionKey: string,
   provider: string,
   ttlMs = 0,
   now: number = Date.now()
-): SessionAccountAffinityRecord | null {
+): Promise<SessionAccountAffinityRecord | null> {
   if (!sessionKey || !provider || normalizePositiveTtl(ttlMs) <= 0) return null;
 
   const key = affinityKey(sessionKey, provider);
-  const row = getDbInstance()
+  const row = (await getDbInstance()
     .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-    .get(NAMESPACE, key) as { value?: unknown } | undefined;
+    .get(NAMESPACE, key)) as { value?: unknown } | undefined;
   const record = parseRecord(row?.value);
   if (!record) return null;
 
   if (Date.parse(record.expiresAt) <= now) {
-    deleteAffinityKey(key);
+    await deleteAffinityKey(key);
     return null;
   }
 
   return record;
 }
 
-export function upsertSessionAccountAffinity(
+export async function upsertSessionAccountAffinity(
   sessionKey: string,
   provider: string,
   connectionId: string,
   now: number = Date.now(),
   ttlMs = 0
-): void {
+): Promise<void> {
   const normalizedTtlMs = normalizePositiveTtl(ttlMs);
   if (!sessionKey || !provider || !connectionId || normalizedTtlMs <= 0) return;
 
   const key = affinityKey(sessionKey, provider);
-  const existing = getSessionAccountAffinity(sessionKey, provider, normalizedTtlMs, now);
+  const existing = await getSessionAccountAffinity(sessionKey, provider, normalizedTtlMs, now);
   const timestamp = isoFromMs(now);
   const record: SessionAccountAffinityRecord = {
     connectionId,
@@ -103,71 +103,80 @@ export function upsertSessionAccountAffinity(
     expiresAt: isoFromMs(now + normalizedTtlMs),
   };
 
-  getDbInstance()
-    .prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+  await getDbInstance()
+    .prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value"
+    )
     .run(NAMESPACE, key, JSON.stringify(record));
 }
 
-export function touchSessionAccountAffinity(
+export async function touchSessionAccountAffinity(
   sessionKey: string,
   provider: string,
   now: number = Date.now(),
   ttlMs = 0
-): void {
+): Promise<void> {
   const normalizedTtlMs = normalizePositiveTtl(ttlMs);
   if (normalizedTtlMs <= 0) return;
 
-  const existing = getSessionAccountAffinity(sessionKey, provider, normalizedTtlMs, now);
+  const existing = await getSessionAccountAffinity(sessionKey, provider, normalizedTtlMs, now);
   if (!existing) return;
 
-  upsertSessionAccountAffinity(sessionKey, provider, existing.connectionId, now, normalizedTtlMs);
+  await upsertSessionAccountAffinity(
+    sessionKey,
+    provider,
+    existing.connectionId,
+    now,
+    normalizedTtlMs
+  );
 }
 
-export function deleteSessionAccountAffinity(sessionKey: string, provider: string): void {
+export async function deleteSessionAccountAffinity(
+  sessionKey: string,
+  provider: string
+): Promise<void> {
   if (!sessionKey || !provider) return;
-  deleteAffinityKey(affinityKey(sessionKey, provider));
+  await deleteAffinityKey(affinityKey(sessionKey, provider));
 }
 
-export function cleanupStaleSessionAccountAffinities(
+export async function cleanupStaleSessionAccountAffinities(
   _ttlMs: number = 30 * 60 * 1000,
   now: number = Date.now()
-): number {
+): Promise<number> {
   const db = getDbInstance();
-  const rows = db
+  const rows = (await db
     .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
-    .all(NAMESPACE) as Array<{ key?: unknown; value?: unknown }>;
+    .all(NAMESPACE)) as Array<{ key?: unknown; value?: unknown }>;
   let deleted = 0;
 
-  const tx = db.transaction(() => {
+  await withTransaction(async (client) => {
     for (const row of rows) {
       if (typeof row.key !== "string") continue;
       const record = parseRecord(row.value);
       if (!record || Date.parse(record.expiresAt) <= now) {
-        db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(NAMESPACE, row.key);
+        await client.query(
+          "DELETE FROM key_value WHERE namespace = $1 AND key = $2",
+          [NAMESPACE, row.key]
+        );
         deleted++;
       }
     }
   });
 
-  tx();
   return deleted;
 }
 
 export function startSessionAccountAffinityCleanup(): void {
   if (cleanupTimer) return;
 
-  try {
-    cleanupStaleSessionAccountAffinities();
-  } catch (error) {
+  cleanupStaleSessionAccountAffinities().catch((error) => {
     console.warn("[SESSION_AFFINITY] Startup cleanup failed:", error);
-  }
+  });
 
   cleanupTimer = setInterval(() => {
-    try {
-      cleanupStaleSessionAccountAffinities();
-    } catch (error) {
+    cleanupStaleSessionAccountAffinities().catch((error) => {
       console.warn("[SESSION_AFFINITY] Periodic cleanup failed:", error);
-    }
+    });
   }, CLEANUP_INTERVAL_MS);
   if (typeof cleanupTimer === "object" && "unref" in cleanupTimer) cleanupTimer.unref?.();
 }

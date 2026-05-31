@@ -1,10 +1,3 @@
-/**
- * Database Statistics Module
- *
- * Provides functions to retrieve database statistics including size, table counts, and performance metrics.
- */
-
-import type { SqliteAdapter } from "./adapters/types";
 import { getDbInstance } from "./core";
 
 export interface DatabaseStats {
@@ -24,48 +17,69 @@ export interface DatabaseStats {
   cacheSize: number;
 }
 
-export function getDatabaseStats(): DatabaseStats {
+export async function getDatabaseStats(): Promise<DatabaseStats> {
   const db = getDbInstance();
 
-  const pageSize = db.pragma("page_size", { simple: true }) as number;
-  const pageCount = db.pragma("page_count", { simple: true }) as number;
-  const cacheSize = db.pragma("cache_size", { simple: true }) as number;
-  const totalSize = pageSize * pageCount;
-
-  const tables = db
+  const tables = (await db
     .prepare(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
+      `SELECT table_name AS name
+       FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_type = 'BASE TABLE'
+       ORDER BY table_name`
     )
-    .all() as Array<{ name: string }>;
+    .all()) as Array<{ name: string }>;
 
-  const tableStats = tables.map((table) => {
-    const rowCount = db.prepare(`SELECT COUNT(*) as count FROM ${table.name}`).get() as {
-      count: number;
-    };
+  const tableStats = await Promise.all(
+    tables.map(async (table) => {
+      let rowCount = 0;
+      let size = 0;
+      try {
+        const countRow = (await db
+          .prepare(`SELECT COUNT(*) AS count FROM "${table.name}"`)
+          .get()) as { count: number | string } | undefined;
+        rowCount = Number(countRow?.count ?? 0);
+      } catch {
+        rowCount = 0;
+      }
+      try {
+        const sizeRow = (await db
+          .prepare(`SELECT pg_total_relation_size($1) AS size`)
+          .get(table.name)) as { size: number | string | null } | undefined;
+        size = Number(sizeRow?.size ?? 0);
+      } catch {
+        size = 0;
+      }
+      return { name: table.name, rowCount, size };
+    })
+  );
 
-    const tableSize = db
-      .prepare(`SELECT SUM(pgsize) as size FROM dbstat WHERE name = ?`)
-      .get(table.name) as { size: number | null };
-
-    return {
-      name: table.name,
-      rowCount: rowCount.count,
-      size: tableSize?.size || 0,
-    };
-  });
-
-  const indexes = db
+  const indexes = (await db
     .prepare(
-      `SELECT name, tbl_name as tableName FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%' ORDER BY name`
+      `SELECT indexname AS name, tablename AS "tableName"
+       FROM pg_indexes
+       WHERE schemaname = 'public'
+       ORDER BY indexname`
     )
-    .all() as Array<{ name: string; tableName: string }>;
+    .all()) as Array<{ name: string; tableName: string }>;
+
+  let totalSize = 0;
+  try {
+    const sizeRow = (await db
+      .prepare(`SELECT pg_database_size(current_database()) AS size`)
+      .get()) as { size: number | string | null } | undefined;
+    totalSize = Number(sizeRow?.size ?? 0);
+  } catch {
+    totalSize = 0;
+  }
 
   return {
     totalSize,
-    pageSize,
-    pageCount,
+    pageSize: 8192,
+    pageCount: Math.ceil(totalSize / 8192),
     tables: tableStats,
     indexes,
-    cacheSize,
+    cacheSize: 0,
   };
 }
+

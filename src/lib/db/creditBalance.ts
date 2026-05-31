@@ -8,16 +8,6 @@
 
 import { getDbInstance, isBuildPhase, isCloud } from "./core";
 
-interface StatementLike<TRow = unknown> {
-  get: (...params: unknown[]) => TRow | undefined;
-  run: (...params: unknown[]) => { changes?: number };
-  all: (...params: unknown[]) => TRow[];
-}
-
-interface DbLike {
-  prepare: <TRow = unknown>(sql: string) => StatementLike<TRow>;
-}
-
 interface KeyValueRow {
   key: string;
   value: string;
@@ -42,12 +32,12 @@ function parseJson(raw: string): unknown {
  * Read the persisted credit balance for an accountId.
  * Returns the balance number, or null if not found.
  */
-export function getPersistedCreditBalance(accountId: string): number | null {
+export async function getPersistedCreditBalance(accountId: string): Promise<number | null> {
   if (isBuildPhase || isCloud) return null;
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db
+  const db = getDbInstance();
+  const row = (await db
     .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-    .get(NAMESPACE, accountId) as KeyValueRow | undefined;
+    .get(NAMESPACE, accountId)) as KeyValueRow | undefined;
   if (!row?.value) return null;
   const parsed = parseJson(row.value) as CreditBalanceEntry | null;
   if (!parsed || typeof parsed.balance !== "number") return null;
@@ -58,13 +48,13 @@ export function getPersistedCreditBalance(accountId: string): number | null {
  * Read all persisted credit balances.
  * Returns a Map of accountId → balance.
  */
-export function getAllPersistedCreditBalances(): Map<string, number> {
+export async function getAllPersistedCreditBalances(): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   if (isBuildPhase || isCloud) return result;
-  const db = getDbInstance() as unknown as DbLike;
-  const rows = db
+  const db = getDbInstance();
+  const rows = (await db
     .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
-    .all(NAMESPACE) as KeyValueRow[];
+    .all(NAMESPACE)) as KeyValueRow[];
   for (const row of rows) {
     const parsed = parseJson(row.value) as CreditBalanceEntry | null;
     if (parsed && typeof parsed.balance === "number") {
@@ -77,16 +67,16 @@ export function getAllPersistedCreditBalances(): Map<string, number> {
 /**
  * Persist a credit balance for an accountId.
  */
-export function persistCreditBalance(accountId: string, balance: number): void {
+export async function persistCreditBalance(accountId: string, balance: number): Promise<void> {
   if (isBuildPhase || isCloud) return;
-  const db = getDbInstance() as unknown as DbLike;
+  const db = getDbInstance();
   const entry: CreditBalanceEntry = {
     balance,
     updatedAt: new Date().toISOString(),
   };
-  db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    NAMESPACE,
-    accountId,
-    JSON.stringify(entry)
-  );
+  await db
+    .prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value"
+    )
+    .run(NAMESPACE, accountId, JSON.stringify(entry));
 }

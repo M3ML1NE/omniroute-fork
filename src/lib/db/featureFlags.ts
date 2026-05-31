@@ -14,11 +14,11 @@ const NAMESPACE = "feature_flags";
 /**
  * Returns all feature flag overrides as a key→value map.
  */
-export function getFeatureFlagOverrides(): Record<string, string> {
+export async function getFeatureFlagOverrides(): Promise<Record<string, string>> {
   const db = getDbInstance();
-  const rows = db
+  const rows = (await db
     .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
-    .all(NAMESPACE) as Array<{ key: string; value: string }>;
+    .all(NAMESPACE)) as Array<{ key: string; value: string }>;
 
   const result: Record<string, string> = {};
   for (const row of rows) {
@@ -31,18 +31,18 @@ export function getFeatureFlagOverrides(): Record<string, string> {
  * Returns the override value for a single flag, or undefined if no override
  * is stored.
  */
-export function getFeatureFlagOverride(key: string): string | undefined {
+export async function getFeatureFlagOverride(key: string): Promise<string | undefined> {
   const db = getDbInstance();
-  const row = db
+  const row = (await db
     .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-    .get(NAMESPACE, key) as { value: string } | undefined;
+    .get(NAMESPACE, key)) as { value: string } | undefined;
   return row?.value;
 }
 
 /**
  * Persists (or replaces) an override for a single flag.
  */
-export function setFeatureFlagOverride(key: string, value: string): void {
+export async function setFeatureFlagOverride(key: string, value: string): Promise<void> {
   const definition = FEATURE_FLAG_DEFINITIONS.find((d) => d.key === key);
   if (!definition) {
     throw new Error(`Unknown feature flag key: ${key}`);
@@ -57,26 +57,28 @@ export function setFeatureFlagOverride(key: string, value: string): void {
     );
   }
   const db = getDbInstance();
-  db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    NAMESPACE,
-    key,
-    value
-  );
+  await db
+    .prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value"
+    )
+    .run(NAMESPACE, key, value);
 }
 
 /**
  * Removes the override for a single flag, restoring env-var / default
  * behaviour.
  */
-export function removeFeatureFlagOverride(key: string): void {
+export async function removeFeatureFlagOverride(key: string): Promise<void> {
   const db = getDbInstance();
-  db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(NAMESPACE, key);
+  await db
+    .prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?")
+    .run(NAMESPACE, key);
 }
 
 /**
  * Removes all stored feature flag overrides.
  */
-export function clearAllFeatureFlagOverrides(): void {
+export async function clearAllFeatureFlagOverrides(): Promise<void> {
   const db = getDbInstance();
-  db.prepare("DELETE FROM key_value WHERE namespace = ?").run(NAMESPACE);
+  await db.prepare("DELETE FROM key_value WHERE namespace = ?").run(NAMESPACE);
 }

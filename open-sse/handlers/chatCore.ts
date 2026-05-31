@@ -1852,7 +1852,7 @@ export async function handleChatCore({
         body.model = model;
       }
 
-      logAuditEvent({
+      await logAuditEvent({
         action: "routing.background_task_redirect",
         actor: apiKeyInfo?.name || "system",
         target: connectionId || provider || "chat",
@@ -1979,7 +1979,7 @@ export async function handleChatCore({
       responseBody
     );
     if (providerWarnings.length > 0) {
-      logAuditEvent({
+      await logAuditEvent({
         action: "provider.warning",
         actor: "system",
         target: [provider, connectionId].filter(Boolean).join(":") || provider || model,
@@ -2069,18 +2069,18 @@ export async function handleChatCore({
       ? credentials.providerSpecificData.customUserAgent.trim()
       : "";
 
-  const buildUpstreamHeadersForExecute = (modelToCall: string): Record<string, string> => {
+  const buildUpstreamHeadersForExecute = async (modelToCall: string): Promise<Record<string, string>> => {
     const upstreamHeaders =
       modelToCall === effectiveModel
         ? {
-            ...getModelUpstreamExtraHeaders(provider || "", model || "", sourceFormat),
-            ...getModelUpstreamExtraHeaders(provider || "", resolvedModel || "", sourceFormat),
+            ...(await getModelUpstreamExtraHeaders(provider || "", model || "", sourceFormat)),
+            ...(await getModelUpstreamExtraHeaders(provider || "", resolvedModel || "", sourceFormat)),
           }
-        : (() => {
+        : await (async () => {
             const r = resolveModelAlias(modelToCall);
             return {
-              ...getModelUpstreamExtraHeaders(provider || "", modelToCall || "", sourceFormat),
-              ...getModelUpstreamExtraHeaders(provider || "", r || "", sourceFormat),
+              ...(await getModelUpstreamExtraHeaders(provider || "", modelToCall || "", sourceFormat)),
+              ...(await getModelUpstreamExtraHeaders(provider || "", r || "", sourceFormat)),
             };
           })();
 
@@ -2845,7 +2845,7 @@ export async function handleChatCore({
           `Context compressed: ${stats.original} → ${stats.final} tokens${layersInfo}`
         );
 
-        logAuditEvent({
+        await logAuditEvent({
           action: "context.proactive_compression",
           actor: apiKeyInfo?.name || "system",
           target: connectionId || provider || "chat",
@@ -3060,12 +3060,12 @@ export async function handleChatCore({
       if (sourceFormat === FORMATS.CLAUDE && isClaudeCodeSemanticPassthrough) {
         log?.debug?.("FORMAT", "claude-code semantic passthrough enabled for compatible bridge");
       } else if (sourceFormat !== FORMATS.OPENAI) {
-        const normalizeToolCallId = getModelNormalizeToolCallId(
+        const normalizeToolCallId = await getModelNormalizeToolCallId(
           provider || "",
           model || "",
           sourceFormat
         );
-        const preserveDeveloperRole = getModelPreserveOpenAIDeveloperRole(
+        const preserveDeveloperRole = await getModelPreserveOpenAIDeveloperRole(
           provider || "",
           model || "",
           sourceFormat
@@ -3224,12 +3224,12 @@ export async function handleChatCore({
         }
       }
 
-      const normalizeToolCallId = getModelNormalizeToolCallId(
+      const normalizeToolCallId = await getModelNormalizeToolCallId(
         provider || "",
         model || "",
         sourceFormat
       );
-      const preserveDeveloperRole = getModelPreserveOpenAIDeveloperRole(
+      const preserveDeveloperRole = await getModelPreserveOpenAIDeveloperRole(
         provider || "",
         model || "",
         sourceFormat
@@ -3723,7 +3723,7 @@ export async function handleChatCore({
                     signal,
                     log,
                     extendedContext,
-                    upstreamExtraHeaders: buildUpstreamHeadersForExecute(modelToCall),
+                    upstreamExtraHeaders: await buildUpstreamHeadersForExecute(modelToCall),
                     clientHeaders: buildExecutorClientHeaders(clientRawRequest?.headers, userAgent),
                     onCredentialsRefreshed,
                     skipUpstreamRetry,
@@ -3814,7 +3814,7 @@ export async function handleChatCore({
                 // Clear session affinity so next request won't be pinned to the failing account
                 if (codexSessionAffinityKey) {
                   try {
-                    deleteSessionAccountAffinity(codexSessionAffinityKey, "codex");
+                    await deleteSessionAccountAffinity(codexSessionAffinityKey, "codex");
                   } catch {
                     // best-effort
                   }
@@ -3836,7 +3836,7 @@ export async function handleChatCore({
                   `Rotating codex account: ${String(failedConnectionId).slice(0, 8)} → ${newConnectionId.slice(0, 8)} (attempt ${attempts + 2}/${maxAttempts})`
                 );
 
-                logAuditEvent({
+                await logAuditEvent({
                   action: "codex.account_rotation",
                   actor: apiKeyInfo?.name || "system",
                   target: newConnectionId,
@@ -4240,7 +4240,7 @@ export async function handleChatCore({
           signal: streamController.signal,
           log,
           extendedContext,
-          upstreamExtraHeaders: buildUpstreamHeadersForExecute(retryModelId),
+          upstreamExtraHeaders: await buildUpstreamHeadersForExecute(retryModelId),
           clientHeaders: buildExecutorClientHeaders(clientRawRequest?.headers, userAgent),
           onCredentialsRefreshed,
           skipUpstreamRetry: isCombo,

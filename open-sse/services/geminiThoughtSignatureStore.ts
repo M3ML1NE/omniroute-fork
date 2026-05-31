@@ -1,4 +1,4 @@
-import { getDbInstance } from "../../src/lib/db/core.ts";
+import { getDbInstance, withTransaction } from "../../src/lib/db/core.ts";
 
 const MAX_SIGNATURES = 1000;
 const MAX_PERSISTED_SIGNATURES = 2_000;
@@ -91,13 +91,13 @@ function parsePersistedEntry(value: string, now = Date.now()) {
   }
 }
 
-function maybePrunePersistedSignatures(db: ReturnType<typeof getDbInstance>) {
+async function maybePrunePersistedSignatures(db: ReturnType<typeof getDbInstance>) {
   persistedPruneCounter += 1;
   if (persistedPruneCounter % 100 !== 0) return;
 
-  const rows = db
+  const rows = (await db
     .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
-    .all(NAMESPACE) as Array<{ key: string; value: string }>;
+    .all(NAMESPACE)) as Array<{ key: string; value: string }>;
 
   const now = Date.now();
   const validRows: Array<{ key: string; createdAt: number }> = [];
@@ -120,14 +120,14 @@ function maybePrunePersistedSignatures(db: ReturnType<typeof getDbInstance>) {
   }
 
   if (keysToDelete.size === 0) return;
-  const remove = db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?");
-  const tx = db.transaction((keys: string[]) => {
-    for (const key of keys) remove.run(NAMESPACE, key);
-  });
-  tx([...keysToDelete]);
+  for (const key of keysToDelete) {
+    await db
+      .prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?")
+      .run(NAMESPACE, key);
+  }
 }
 
-export function storeGeminiThoughtSignature(toolCallId: unknown, signature: unknown) {
+export async function storeGeminiThoughtSignature(toolCallId: unknown, signature: unknown) {
   if (typeof toolCallId !== "string" || !toolCallId) return;
   if (typeof signature !== "string" || !signature) return;
 
@@ -140,18 +140,22 @@ export function storeGeminiThoughtSignature(toolCallId: unknown, signature: unkn
 
   try {
     const db = getDbInstance();
-    db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-      NAMESPACE,
-      toolCallId,
-      serializePersistedEntry({ signature, createdAt: now, expiresAt: now + PERSISTED_TTL_MS })
-    );
-    maybePrunePersistedSignatures(db);
+    await db
+      .prepare(
+        "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value"
+      )
+      .run(
+        NAMESPACE,
+        toolCallId,
+        serializePersistedEntry({ signature, createdAt: now, expiresAt: now + PERSISTED_TTL_MS })
+      );
+    await maybePrunePersistedSignatures(db);
   } catch (error) {
     warnPersistenceError("store", error);
   }
 }
 
-export function getGeminiThoughtSignature(toolCallId: unknown) {
+export async function getGeminiThoughtSignature(toolCallId: unknown) {
   if (typeof toolCallId !== "string" || !toolCallId) return null;
 
   pruneExpired();
@@ -160,17 +164,16 @@ export function getGeminiThoughtSignature(toolCallId: unknown) {
 
   try {
     const db = getDbInstance();
-    const row = db
+    const row = (await db
       .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-      .get(NAMESPACE, toolCallId) as { value: string } | undefined;
+      .get(NAMESPACE, toolCallId)) as { value: string } | undefined;
 
     if (row?.value) {
       const persisted = parsePersistedEntry(row.value);
       if (!persisted) {
-        db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(
-          NAMESPACE,
-          toolCallId
-        );
+        await db
+          .prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?")
+          .run(NAMESPACE, toolCallId);
         return null;
       }
 
@@ -180,11 +183,9 @@ export function getGeminiThoughtSignature(toolCallId: unknown) {
       });
 
       if (persisted.shouldRewrite) {
-        db.prepare("UPDATE key_value SET value = ? WHERE namespace = ? AND key = ?").run(
-          serializePersistedEntry(persisted.entry),
-          NAMESPACE,
-          toolCallId
-        );
+        await db
+          .prepare("UPDATE key_value SET value = ? WHERE namespace = ? AND key = ?")
+          .run(serializePersistedEntry(persisted.entry), NAMESPACE, toolCallId);
       }
 
       return persisted.entry.signature;
@@ -280,11 +281,11 @@ export function isValidFullGeminiThoughtSignature(signature: unknown): boolean {
   return innerLength.nextOffset + innerLength.value === inner.length;
 }
 
-export function resolveGeminiThoughtSignature(
+export async function resolveGeminiThoughtSignature(
   toolCallId: unknown,
   clientSignature?: unknown
-): string | null {
-  const persisted = getGeminiThoughtSignature(toolCallId);
+): Promise<string | null> {
+  const persisted = await getGeminiThoughtSignature(toolCallId);
   if (typeof clientSignature !== "string" || clientSignature.length === 0) {
     return persisted;
   }
@@ -308,12 +309,12 @@ export function resolveGeminiThoughtSignature(
   return persisted;
 }
 
-export function clearGeminiThoughtSignatures() {
+export async function clearGeminiThoughtSignatures() {
   signatures.clear();
   signatureCacheMode = "enabled";
   try {
     const db = getDbInstance();
-    db.prepare("DELETE FROM key_value WHERE namespace = ?").run(NAMESPACE);
+    await db.prepare("DELETE FROM key_value WHERE namespace = ?").run(NAMESPACE);
   } catch (error) {
     warnPersistenceError("clear", error);
   }
