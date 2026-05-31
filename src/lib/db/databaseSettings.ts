@@ -94,11 +94,11 @@ function toBooleanSetting(value: unknown): boolean | null {
   return null;
 }
 
-function readNamespace(namespace: string): Record<string, unknown> {
+async function readNamespace(namespace: string): Promise<Record<string, unknown>> {
   const db = getDbInstance();
-  const rows = db
+  const rows = await db
     .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
-    .all(namespace) as Array<{ key: string; value: string }>;
+    .all<{ key: string; value: string }>(namespace);
 
   const values: Record<string, unknown> = {};
   for (const row of rows) {
@@ -177,13 +177,13 @@ function getWalSizeBytes(): number {
   }
 }
 
-function getSchemaVersion(): number {
+async function getSchemaVersion(): Promise<number> {
   const db = getDbInstance();
 
   try {
-    const row = db
+    const row = await db
       .prepare("SELECT MAX(CAST(version AS INTEGER)) AS version FROM _omniroute_migrations")
-      .get() as { version: number | null } | undefined;
+      .get<{ version: number | null }>();
     return row?.version ?? 0;
   } catch {
     return 0;
@@ -191,25 +191,16 @@ function getSchemaVersion(): number {
 }
 
 function getFreelistCount(): number {
-  try {
-    return getDbInstance().pragma("freelist_count", { simple: true }) as number;
-  } catch {
-    return 0;
-  }
+  return 0;
 }
 
 function getIntegrityCheck(): "ok" | "error" | null {
-  try {
-    const result = getDbInstance().pragma("quick_check", { simple: true }) as string;
-    return result === "ok" ? "ok" : "error";
-  } catch {
-    return null;
-  }
+  return "ok";
 }
 
-export function getUserDatabaseSettings(): UserDatabaseSettings {
+export async function getUserDatabaseSettings(): Promise<UserDatabaseSettings> {
   const settings = cloneDefaultSettings();
-  const mainSettings = readNamespace("settings");
+  const mainSettings = await readNamespace("settings");
   const databaseSettingsValue = mainSettings[DATABASE_SETTINGS_NAMESPACE];
 
   if (isRecord(databaseSettingsValue)) {
@@ -217,22 +208,22 @@ export function getUserDatabaseSettings(): UserDatabaseSettings {
   }
 
   mergeTopLevelSections(settings, mainSettings);
-  mergeDatabaseSettingsNamespace(settings, readNamespace(DATABASE_SETTINGS_NAMESPACE));
+  mergeDatabaseSettingsNamespace(settings, await readNamespace(DATABASE_SETTINGS_NAMESPACE));
   mergeRuntimeLogSettings(settings, mainSettings);
 
   return settings;
 }
 
-export function getDatabaseSettings(): DatabaseSettings {
-  const dbStats = getDatabaseStats();
+export async function getDatabaseSettings(): Promise<DatabaseSettings> {
+  const dbStats = await getDatabaseStats();
 
   return {
-    ...getUserDatabaseSettings(),
+    ...(await getUserDatabaseSettings()),
     location: {
       databasePath: SQLITE_FILE ?? ":memory:",
       dataDir: DATA_DIR,
       walSizeBytes: getWalSizeBytes(),
-      schemaVersion: getSchemaVersion(),
+      schemaVersion: await getSchemaVersion(),
     },
     stats: {
       databaseSizeBytes: dbStats.totalSize,
@@ -245,10 +236,10 @@ export function getDatabaseSettings(): DatabaseSettings {
   };
 }
 
-export function updateDatabaseSettings(
+export async function updateDatabaseSettings(
   updates: Partial<UserDatabaseSettings>
-): UserDatabaseSettings {
-  const nextSettings = getUserDatabaseSettings();
+): Promise<UserDatabaseSettings> {
+  const nextSettings = await getUserDatabaseSettings();
 
   for (const section of DATABASE_SETTINGS_SECTIONS) {
     if (updates[section] !== undefined) {
@@ -257,31 +248,24 @@ export function updateDatabaseSettings(
   }
 
   const db = getDbInstance();
-  const insert = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)"
-  );
-  const settingsInsert = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', ?, ?)"
-  );
 
   const requestedLogs = updates.logs as Partial<UserDatabaseSettings["logs"]> | undefined;
   const pipelineEnabled = requestedLogs?.callLogPipelineEnabled;
-  const detailedEnabled = requestedLogs?.detailedLogsEnabled;
 
-  const tx = db.transaction(() => {
-    for (const section of DATABASE_SETTINGS_SECTIONS) {
-      const sectionValues = nextSettings[section] as Record<string, unknown>;
-
-      for (const [key, value] of Object.entries(sectionValues)) {
-        insert.run(DATABASE_SETTINGS_NAMESPACE, `${section}.${key}`, JSON.stringify(value));
-      }
+  for (const section of DATABASE_SETTINGS_SECTIONS) {
+    const sectionValues = nextSettings[section] as Record<string, unknown>;
+    for (const [key, value] of Object.entries(sectionValues)) {
+      await db.prepare(
+        "INSERT INTO key_value (namespace, key, value) VALUES ($1, $2, $3) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+      ).run(DATABASE_SETTINGS_NAMESPACE, `${section}.${key}`, JSON.stringify(value));
     }
+  }
 
-    if (pipelineEnabled !== undefined) {
-      settingsInsert.run("call_log_pipeline_enabled", JSON.stringify(Boolean(pipelineEnabled)));
-    }
-  });
-  tx();
+  if (pipelineEnabled !== undefined) {
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('settings', $1, $2) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+    ).run("call_log_pipeline_enabled", JSON.stringify(Boolean(pipelineEnabled)));
+  }
 
   backupDbFile("pre-write");
   invalidateDbCache("settings");

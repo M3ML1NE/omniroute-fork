@@ -80,7 +80,7 @@ function toProxyValue(value: unknown): ProxyValue {
 
 export async function getSettings() {
   const db = getDbInstance();
-  const rows = db.prepare("SELECT key, value FROM key_value WHERE namespace = 'settings'").all();
+  const rows = await db.prepare("SELECT key, value FROM key_value WHERE namespace = 'settings'").all();
   const settings: Record<string, unknown> = {
     cloudEnabled: true,
     tailscaleEnabled: false,
@@ -135,11 +135,11 @@ export async function getSettings() {
   if (!settings.setupComplete && process.env.INITIAL_PASSWORD) {
     settings.setupComplete = true;
     settings.requireLogin = true;
-    db.prepare(
-      "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', 'setupComplete', 'true')"
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('settings', 'setupComplete', 'true') ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
     ).run();
-    db.prepare(
-      "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', 'requireLogin', 'true')"
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('settings', 'requireLogin', 'true') ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
     ).run();
   }
 
@@ -148,15 +148,11 @@ export async function getSettings() {
 
 export async function updateSettings(updates: Record<string, unknown>) {
   const db = getDbInstance();
-  const insert = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', ?, ?)"
-  );
-  const tx = db.transaction(() => {
-    for (const [key, value] of Object.entries(updates)) {
-      insert.run(key, JSON.stringify(value));
-    }
-  });
-  tx();
+  for (const [key, value] of Object.entries(updates)) {
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('settings', ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+    ).run(key, JSON.stringify(value));
+  }
   backupDbFile("pre-write");
   invalidateDbCache("settings"); // Bust the read cache immediately
   const nextSettings = await getSettings();
@@ -181,11 +177,11 @@ export async function isCloudEnabled() {
 
 // ──────────────── Pricing ────────────────
 
-function readPricingNamespace(
+async function readPricingNamespace(
   db: ReturnType<typeof getDbInstance>,
   namespace: string
-): PricingByProvider {
-  const rows = db.prepare("SELECT key, value FROM key_value WHERE namespace = ?").all(namespace);
+): Promise<PricingByProvider> {
+  const rows = await db.prepare("SELECT key, value FROM key_value WHERE namespace = ?").all(namespace);
   const pricing: PricingByProvider = {};
 
   for (const row of rows) {
@@ -265,9 +261,9 @@ async function getPricingLayers() {
   const { getDefaultPricing } = await import("@/shared/constants/pricing");
   return {
     defaults: getDefaultPricing(),
-    litellm: readPricingNamespace(db, "pricing_synced"),
-    modelsDev: readPricingNamespace(db, "models_dev_pricing"),
-    user: readPricingNamespace(db, "pricing"),
+    litellm: await readPricingNamespace(db, "pricing_synced"),
+    modelsDev: await readPricingNamespace(db, "models_dev_pricing"),
+    user: await readPricingNamespace(db, "pricing"),
   };
 }
 
@@ -342,13 +338,10 @@ export async function getPricingForModel(provider: string, model: string) {
 
 export async function updatePricing(pricingData: PricingByProvider) {
   const db = getDbInstance();
-  const insert = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('pricing', ?, ?)"
-  );
 
-  const rows = db.prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing'").all();
+  const existingRows = await db.prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing'").all();
   const existing: PricingByProvider = {};
-  for (const row of rows) {
+  for (const row of existingRows) {
     const record = toRecord(row);
     const key = typeof record.key === "string" ? record.key : null;
     const rawValue = typeof record.value === "string" ? record.value : null;
@@ -356,16 +349,15 @@ export async function updatePricing(pricingData: PricingByProvider) {
     existing[key] = toRecord(JSON.parse(rawValue)) as PricingModels;
   }
 
-  const tx = db.transaction(() => {
-    for (const [provider, models] of Object.entries(pricingData)) {
-      insert.run(provider, JSON.stringify({ ...(existing[provider] || {}), ...models }));
-    }
-  });
-  tx();
+  for (const [provider, models] of Object.entries(pricingData)) {
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('pricing', ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+    ).run(provider, JSON.stringify({ ...(existing[provider] || {}), ...models }));
+  }
   backupDbFile("pre-write");
   invalidateDbCache("pricing"); // Bust the pricing read cache
   const updated: PricingByProvider = {};
-  const allRows = db.prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing'").all();
+  const allRows = await db.prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing'").all();
   for (const row of allRows) {
     const record = toRecord(row);
     const key = typeof record.key === "string" ? record.key : null;
@@ -380,7 +372,7 @@ export async function resetPricing(provider: string, model?: string) {
   const db = getDbInstance();
 
   if (model) {
-    const row = db
+    const row = await db
       .prepare("SELECT value FROM key_value WHERE namespace = 'pricing' AND key = ?")
       .get(provider);
     if (row) {
@@ -389,20 +381,20 @@ export async function resetPricing(provider: string, model?: string) {
       const models = toRecord(JSON.parse(value));
       delete models[model];
       if (Object.keys(models).length === 0) {
-        db.prepare("DELETE FROM key_value WHERE namespace = 'pricing' AND key = ?").run(provider);
+        await db.prepare("DELETE FROM key_value WHERE namespace = 'pricing' AND key = ?").run(provider);
       } else {
-        db.prepare("UPDATE key_value SET value = ? WHERE namespace = 'pricing' AND key = ?").run(
+        await db.prepare("UPDATE key_value SET value = ? WHERE namespace = 'pricing' AND key = ?").run(
           JSON.stringify(models),
           provider
         );
       }
     }
   } else {
-    db.prepare("DELETE FROM key_value WHERE namespace = 'pricing' AND key = ?").run(provider);
+    await db.prepare("DELETE FROM key_value WHERE namespace = 'pricing' AND key = ?").run(provider);
   }
 
   backupDbFile("pre-write");
-  const allRows = db.prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing'").all();
+  const allRows = await db.prepare("SELECT key, value FROM key_value WHERE namespace = 'pricing'").all();
   const result: Record<string, unknown> = {};
   for (const row of allRows) {
     const record = toRecord(row);
@@ -416,7 +408,7 @@ export async function resetPricing(provider: string, model?: string) {
 
 export async function resetAllPricing() {
   const db = getDbInstance();
-  db.prepare("DELETE FROM key_value WHERE namespace = 'pricing'").run();
+  await db.prepare("DELETE FROM key_value WHERE namespace = 'pricing'").run();
   backupDbFile("pre-write");
   return {};
 }
@@ -431,9 +423,9 @@ export interface LKGPRecord {
 export async function getLKGP(comboName: string, modelId: string): Promise<LKGPRecord | null> {
   const db = getDbInstance();
   const key = `${comboName}:${modelId}`;
-  const row = db
+  const row = await db
     .prepare("SELECT value FROM key_value WHERE namespace = 'lkgp' AND key = ?")
-    .get(key) as { value?: string } | undefined;
+    .get<{ value?: string }>(key);
   if (!row?.value) return null;
   try {
     const parsed = JSON.parse(row.value);
@@ -456,15 +448,14 @@ export async function setLKGP(
   const key = `${comboName}:${modelId}`;
   const value: LKGPRecord = { provider: providerId };
   if (connectionId) value.connectionId = connectionId;
-  db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('lkgp', ?, ?)").run(
-    key,
-    JSON.stringify(value)
-  );
+  await db.prepare(
+    "INSERT INTO key_value (namespace, key, value) VALUES ('lkgp', ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+  ).run(key, JSON.stringify(value));
 }
 
-export function clearAllLKGP(): void {
+export async function clearAllLKGP(): Promise<void> {
   const db = getDbInstance();
-  db.prepare("DELETE FROM key_value WHERE namespace = 'lkgp'").run();
+  await db.prepare("DELETE FROM key_value WHERE namespace = 'lkgp'").run();
 }
 
 // ──────────────── Proxy Config ────────────────
@@ -522,7 +513,7 @@ function migrateProxyEntry(value: unknown): JsonRecord | null {
 
 export async function getProxyConfig() {
   const db = getDbInstance();
-  const rows = db.prepare("SELECT key, value FROM key_value WHERE namespace = 'proxyConfig'").all();
+  const rows = await db.prepare("SELECT key, value FROM key_value WHERE namespace = 'proxyConfig'").all();
 
   const raw: ProxyConfig = { ...DEFAULT_PROXY_CONFIG };
   for (const row of rows) {
@@ -548,11 +539,16 @@ export async function getProxyConfig() {
   }
 
   if (migrated) {
-    const insert = db.prepare(
-      "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('proxyConfig', ?, ?)"
-    );
-    if (raw.global !== undefined) insert.run("global", JSON.stringify(raw.global));
-    if (raw.providers) insert.run("providers", JSON.stringify(raw.providers));
+    if (raw.global !== undefined) {
+      await db.prepare(
+        "INSERT INTO key_value (namespace, key, value) VALUES ('proxyConfig', 'global', ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+      ).run(JSON.stringify(raw.global));
+    }
+    if (raw.providers) {
+      await db.prepare(
+        "INSERT INTO key_value (namespace, key, value) VALUES ('proxyConfig', 'providers', ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+      ).run(JSON.stringify(raw.providers));
+    }
   }
 
   return raw;
@@ -571,8 +567,8 @@ export async function setProxyForLevel(level: string, id: string | null, proxy: 
 
   if (level === "global") {
     config.global = proxy || null;
-    db.prepare(
-      "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('proxyConfig', 'global', ?)"
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('proxyConfig', 'global', ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
     ).run(JSON.stringify(config.global));
   } else {
     const mapKey = level + "s";
@@ -583,8 +579,8 @@ export async function setProxyForLevel(level: string, id: string | null, proxy: 
       if (id) delete map[id];
     }
     config[mapKey] = map;
-    db.prepare(
-      "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('proxyConfig', ?, ?)"
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('proxyConfig', ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
     ).run(mapKey, JSON.stringify(map));
   }
 
@@ -628,7 +624,7 @@ export async function resolveProxyForConnection(connectionId: string) {
   }
 
   const db = getDbInstance();
-  const connection = db
+  const connection = await db
     .prepare("SELECT provider FROM provider_connections WHERE id = ?")
     .get(connectionId);
 
@@ -643,7 +639,7 @@ export async function resolveProxyForConnection(connectionId: string) {
     }
 
     if (config.combos && Object.keys(config.combos).length > 0) {
-      const combos = db.prepare("SELECT id, data FROM combos").all();
+      const combos = await db.prepare("SELECT id, data FROM combos").all();
       for (const comboRow of combos) {
         const comboRecord = toRecord(comboRow);
         const comboId = typeof comboRecord.id === "string" ? comboRecord.id : null;
@@ -694,27 +690,25 @@ export async function setProxyConfig(config: Record<string, unknown>) {
 
   const db = getDbInstance();
   const current = await getProxyConfig();
-  const insert = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('proxyConfig', ?, ?)"
-  );
 
-  const tx = db.transaction(() => {
-    if (config.global !== undefined) {
-      current.global = toProxyValue(config.global);
-      insert.run("global", JSON.stringify(current.global));
-    }
-    for (const mapKey of ["providers", "combos", "keys"]) {
-      if (config[mapKey]) {
-        const merged = { ...toProxyMap(current[mapKey]), ...toProxyMap(config[mapKey]) };
-        for (const [k, v] of Object.entries(merged)) {
-          if (!v) delete merged[k];
-        }
-        current[mapKey] = merged;
-        insert.run(mapKey, JSON.stringify(merged));
+  if (config.global !== undefined) {
+    current.global = toProxyValue(config.global);
+    await db.prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('proxyConfig', 'global', ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+    ).run(JSON.stringify(current.global));
+  }
+  for (const mapKey of ["providers", "combos", "keys"]) {
+    if (config[mapKey]) {
+      const merged = { ...toProxyMap(current[mapKey]), ...toProxyMap(config[mapKey]) };
+      for (const [k, v] of Object.entries(merged)) {
+        if (!v) delete merged[k];
       }
+      current[mapKey] = merged;
+      await db.prepare(
+        "INSERT INTO key_value (namespace, key, value) VALUES ('proxyConfig', ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+      ).run(mapKey, JSON.stringify(merged));
     }
-  });
-  tx();
+  }
 
   backupDbFile("pre-write");
   bumpProxyConfigGeneration();
@@ -730,7 +724,7 @@ export async function getCacheMetrics() {
 
   try {
     // Aggregate totals from usage_history
-    const totalsRow = db
+    const totalsRow = await db
       .prepare(
         `
       SELECT
@@ -742,27 +736,25 @@ export async function getCacheMetrics() {
       WHERE tokens_cache_read > 0 OR tokens_cache_creation > 0
     `
       )
-      .get() as
-      | {
-          totalRequests: number;
-          totalInputTokens: number | null;
-          totalCachedTokens: number | null;
-          totalCacheCreationTokens: number | null;
-        }
-      | undefined;
+      .get<{
+        totalRequests: number;
+        totalInputTokens: number | null;
+        totalCachedTokens: number | null;
+        totalCacheCreationTokens: number | null;
+      }>();
 
     // Get all requests count (including those without cache activity)
-    const allRequestsRow = db
+    const allRequestsRow = await db
       .prepare(
         `
       SELECT COUNT(*) as totalRequests
       FROM usage_history
     `
       )
-      .get() as { totalRequests: number } | undefined;
+      .get<{ totalRequests: number }>();
 
     // Aggregate by provider
-    const byProviderRows = db
+    const byProviderRows = await db
       .prepare(
         `
       SELECT
@@ -778,17 +770,17 @@ export async function getCacheMetrics() {
       HAVING cachedRequests > 0
     `
       )
-      .all() as Array<{
+      .all<{
       provider: string;
       totalRequests: number;
       cachedRequests: number;
       inputTokens: number | null;
       cachedTokens: number | null;
       cacheCreationTokens: number | null;
-    }>;
+    }>();
 
     // Aggregate by combo strategy (direct requests stored as 'direct')
-    const byStrategyRows = db
+    const byStrategyRows = await db
       .prepare(
         `
       SELECT
@@ -802,13 +794,13 @@ export async function getCacheMetrics() {
       GROUP BY combo_strategy
     `
       )
-      .all() as Array<{
+      .all<{
       strategy: string;
       requests: number;
       inputTokens: number | null;
       cachedTokens: number | null;
       cacheCreationTokens: number | null;
-    }>;
+    }>();
 
     const tokensSaved = totalsRow?.totalCachedTokens || 0;
 
@@ -908,30 +900,30 @@ export async function getCacheTrend(hours = 24): Promise<CacheTrendPoint[]> {
   const db = getDbInstance();
 
   try {
-    const rows = db
+    const rows = await db
       .prepare(
         `
         SELECT
-          strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour,
+          to_char(date_trunc('hour', timestamp::timestamp), 'YYYY-MM-DD"T"HH24:00:00Z') as hour,
           COUNT(*) as requests,
           SUM(CASE WHEN tokens_cache_read > 0 OR tokens_cache_creation > 0 THEN 1 ELSE 0 END) as cachedRequests,
           SUM(tokens_input) as inputTokens,
           SUM(tokens_cache_read) as cachedTokens,
           SUM(tokens_cache_creation) as cacheCreationTokens
         FROM usage_history
-        WHERE timestamp >= datetime('now', ?)
+        WHERE timestamp >= NOW() - ($1 || ' hours')::interval
         GROUP BY hour
         ORDER BY hour ASC
       `
       )
-      .all(`-${hours} hours`) as Array<{
+      .all<{
       hour: string;
       requests: number;
       cachedRequests: number;
       inputTokens: number | null;
       cachedTokens: number | null;
       cacheCreationTokens: number | null;
-    }>;
+    }>(String(hours));
 
     return rows.map((r) => ({
       timestamp: r.hour,
