@@ -53,3 +53,25 @@ export async function closePool(): Promise<void> {
     _pool = undefined;
   }
 }
+
+/**
+ * Run `fn` inside a real Postgres transaction on a dedicated connection
+ * (BEGIN / COMMIT, ROLLBACK on throw, always released). Queries must use the
+ * supplied `client`, not the shared `query()` helper, to be transactional.
+ */
+export async function withTransaction<T>(
+  fn: (client: pg.PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}

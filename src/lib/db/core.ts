@@ -12,8 +12,7 @@
  * queries at runtime must be migrated module-by-module in subsequent waves.
  */
 
-import { getPool, query, closePool } from "./postgres";
-import type { SqliteAdapter } from "./adapters/types";
+import { getPool, query, closePool, withTransaction } from "./postgres";
 
 // ──────────────── Environment Detection ────────────────
 
@@ -90,63 +89,98 @@ export function cleanNulls(obj: unknown): JsonRecord {
 
 // ──────────────── pg-backed adapter ────────────────
 //
-// Modules under `src/lib/db/*` that have not yet been migrated still expect
-// the better-sqlite3 sugar: `db.prepare(sql).run/get/all(...)`. To keep them
-// type-checking against `tsc --project tsconfig.typecheck-core.json` we expose
-// `getDbInstance()` as a loosely-typed adapter. Each call site casts it to a
-// local `DbLike` interface, so we don't need to fully model the legacy API.
-//
-// At runtime the adapter shells calls into a Postgres pool via tagged-async
-// helpers. The synchronous ergonomics is preserved by returning a thenable
-// proxy from `prepare()` whose `run/get/all` methods return promises. Direct
-// runtime callers should migrate to `await query(sql, params)` from
-// `./postgres`. See the wave-3 migration notes in
-// `notepads/omniroute-fork-stripdown/learnings.md`.
+// Honest async types. `prepare(sql).run/get/all(...)` each return a Promise
+// because the underlying driver is Postgres (`pg`), which is fully async.
+// Legacy callers that invoke these synchronously (no `await`) will surface as
+// TypeScript errors — that error list IS the worklist for the async-conversion
+// waves. There are deliberately NO `as never`/type-lie casts here.
 
-type AnyDb = SqliteAdapter;
+export interface RunResult {
+  changes: number;
+  lastInsertRowid: number;
+}
 
-let _adapter: AnyDb | undefined;
+type Row = Record<string, unknown>;
 
-function buildPgAdapter(): AnyDb {
-  // The shape mirrors better-sqlite3 just enough that source-level imports keep
-  // compiling. Callers cast to their own `DbLike` interface, so the runtime
-  // contract is intentionally loose.
+export interface PreparedStatement {
+  run(...params: unknown[]): Promise<RunResult>;
+  get<T = Row>(...params: unknown[]): Promise<T | undefined>;
+  all<T = Row>(...params: unknown[]): Promise<T[]>;
+}
+
+export interface DbLike {
+  readonly driver: "better-sqlite3";
+  readonly open: boolean;
+  readonly name: string;
+  prepare(sql: string): PreparedStatement;
+  exec(sql: string): Promise<void>;
+  pragma(value?: string): void;
+  transaction<T>(fn: (...args: unknown[]) => T | Promise<T>): (...args: unknown[]) => Promise<T>;
+  immediate(fn: () => void): void;
+  backup(destination: string): Promise<void>;
+  checkpoint(mode?: string): void;
+  close(): void;
+  readonly raw: unknown;
+}
+
+let _adapter: DbLike | undefined;
+
+function buildPgAdapter(): DbLike {
   return {
     driver: "better-sqlite3",
     open: true,
     name: "postgres",
-    prepare(sql: string) {
+    prepare(sql: string): PreparedStatement {
       const positional = convertPlaceholders(sql);
+      const insertSql = appendReturningId(positional);
       return {
-        async run(...params: unknown[]) {
+        async run(...params: unknown[]): Promise<RunResult> {
           const flat = flattenParams(params);
+          if (insertSql) {
+            try {
+              const result = await query(insertSql, flat);
+              return {
+                changes: result.rowCount ?? 0,
+                lastInsertRowid: Number(result.rows[0]?.id) || 0,
+              };
+            } catch (err) {
+              // 42703 = undefined_column: table has no `id`, retry without it.
+              if (!isUndefinedColumn(err)) throw err;
+            }
+          }
           const result = await query(positional, flat);
           return {
             changes: result.rowCount ?? 0,
             lastInsertRowid: 0,
           };
         },
-        async get(...params: unknown[]) {
+        async get<T = Row>(...params: unknown[]): Promise<T | undefined> {
           const flat = flattenParams(params);
           const result = await query(positional, flat);
-          return result.rows[0];
+          return result.rows[0] as T | undefined;
         },
-        async all(...params: unknown[]) {
+        async all<T = Row>(...params: unknown[]): Promise<T[]> {
           const flat = flattenParams(params);
           const result = await query(positional, flat);
-          return result.rows;
+          return result.rows as T[];
         },
-      } as never;
+      };
     },
-    exec(sql: string) {
-      void query(sql);
+    async exec(sql: string): Promise<void> {
+      await query(sql);
     },
-    pragma(_value: string) {
+    pragma(_value?: string): void {
       // Postgres has no PRAGMA; legacy callers expect a no-op.
       return undefined;
     },
-    transaction<T>(fn: (...args: unknown[]) => T): (...args: unknown[]) => T {
-      return ((...args: unknown[]) => fn(...args)) as never;
+    transaction<T>(
+      fn: (...args: unknown[]) => T | Promise<T>
+    ): (...args: unknown[]) => Promise<T> {
+      // Deprecated: prefer `withTransaction()` from `./postgres`, which runs on
+      // a checked-out client with real BEGIN/COMMIT/ROLLBACK. This shim only
+      // awaits `fn` on the shared pool, so nested `.run()` calls are NOT atomic.
+      // Callers migrate to `withTransaction` in a later wave.
+      return async (...args: unknown[]): Promise<T> => fn(...args);
     },
     immediate(fn: () => void): void {
       fn();
@@ -157,7 +191,7 @@ function buildPgAdapter(): AnyDb {
     checkpoint(_mode?: string): void {
       // No-op on Postgres.
     },
-    close() {
+    close(): void {
       void closePool();
     },
     raw: {},
@@ -184,6 +218,25 @@ function convertPlaceholders(sql: string): string {
   return out;
 }
 
+/**
+ * If `sql` is an INSERT lacking a RETURNING clause, append ` RETURNING id` so
+ * `run()` can surface a real `lastInsertRowid`. Returns null for non-INSERTs or
+ * INSERTs that already RETURN, signalling `run()` to use the original SQL.
+ */
+function appendReturningId(sql: string): string | null {
+  if (!/^\s*insert\s/i.test(sql)) return null;
+  if (/\breturning\b/i.test(sql)) return null;
+  return `${sql.replace(/;\s*$/, "")} RETURNING id`;
+}
+
+function isUndefinedColumn(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: string }).code === "42703"
+  );
+}
+
 function flattenParams(params: unknown[]): unknown[] {
   if (params.length === 0) return [];
   // Single object → treat as named-binding map; flatten into array of values
@@ -200,7 +253,7 @@ function flattenParams(params: unknown[]): unknown[] {
   return params;
 }
 
-export function getDbInstance(): AnyDb {
+export function getDbInstance(): DbLike {
   if (!_adapter) _adapter = buildPgAdapter();
   return _adapter;
 }
@@ -239,4 +292,4 @@ export function isNativeSqliteLoadError(_error: unknown): boolean {
 }
 
 // Re-export the raw Postgres helpers for callers that have been migrated.
-export { query, getPool, closePool };
+export { query, getPool, closePool, withTransaction };
