@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       const stmt = db.prepare(
         "SELECT * FROM proxy_logs WHERE timestamp >= @since ORDER BY timestamp DESC"
       );
-      rows = stmt.all({ since });
+      rows = await stmt.all({ since });
     }
 
     const filename = `omniroute-${tableName}-${hours}h-${new Date().toISOString().slice(0, 10)}.json`;

@@ -36,16 +36,17 @@ export async function rollupDailyUsage(
 
   try {
     // Aggregate quota_snapshots by provider, model, and date
+    // Postgres: use ->>/CAST instead of json_extract, DATE() works in PG too
     const aggregateQuery = `
       INSERT INTO daily_usage_summary (provider, model, date, total_requests, total_input_tokens, total_output_tokens, total_cost)
       SELECT 
         provider,
-        COALESCE(json_extract(raw_data, '$.model'), 'unknown') as model,
+        COALESCE(NULLIF(raw_data->>'model', ''), 'unknown') as model,
         DATE(created_at) as date,
         COUNT(*) as total_requests,
-        COALESCE(SUM(CAST(json_extract(raw_data, '$.input_tokens') AS INTEGER)), 0) as total_input_tokens,
-        COALESCE(SUM(CAST(json_extract(raw_data, '$.output_tokens') AS INTEGER)), 0) as total_output_tokens,
-        COALESCE(SUM(CAST(json_extract(raw_data, '$.cost') AS REAL)), 0.0) as total_cost
+        COALESCE(SUM(CAST(raw_data->>'input_tokens' AS INTEGER)), 0) as total_input_tokens,
+        COALESCE(SUM(CAST(raw_data->>'output_tokens' AS INTEGER)), 0) as total_output_tokens,
+        COALESCE(SUM(CAST(raw_data->>'cost' AS NUMERIC)), 0.0) as total_cost
       FROM quota_snapshots
       WHERE DATE(created_at) >= ? AND DATE(created_at) <= ?
       GROUP BY provider, model, DATE(created_at)
@@ -56,8 +57,7 @@ export async function rollupDailyUsage(
         total_cost = excluded.total_cost
     `;
 
-    const stmt = db.prepare(aggregateQuery);
-    const runResult = stmt.run(fromDate, toDate);
+    const runResult = await db.prepare(aggregateQuery).run(fromDate, toDate);
 
     result.processed = runResult.changes;
     result.inserted = runResult.changes;
@@ -92,20 +92,20 @@ export async function rollupHourlyQuota(
   };
 
   try {
-    // Aggregate quota_snapshots by provider, model, and hour
+    // Postgres: date_trunc('hour', ...) replaces datetime(strftime('%Y-%m-%d %H:00:00', ...))
     const aggregateQuery = `
       INSERT INTO hourly_usage_summary (provider, model, date_hour, total_requests, total_input_tokens, total_output_tokens, total_cost)
       SELECT 
         provider,
-        COALESCE(json_extract(raw_data, '$.model'), 'unknown') as model,
-        datetime(strftime('%Y-%m-%d %H:00:00', created_at)) as date_hour,
+        COALESCE(NULLIF(raw_data->>'model', ''), 'unknown') as model,
+        date_trunc('hour', created_at) as date_hour,
         COUNT(*) as total_requests,
-        COALESCE(SUM(CAST(json_extract(raw_data, '$.input_tokens') AS INTEGER)), 0) as total_input_tokens,
-        COALESCE(SUM(CAST(json_extract(raw_data, '$.output_tokens') AS INTEGER)), 0) as total_output_tokens,
-        COALESCE(SUM(CAST(json_extract(raw_data, '$.cost') AS REAL)), 0.0) as total_cost
+        COALESCE(SUM(CAST(raw_data->>'input_tokens' AS INTEGER)), 0) as total_input_tokens,
+        COALESCE(SUM(CAST(raw_data->>'output_tokens' AS INTEGER)), 0) as total_output_tokens,
+        COALESCE(SUM(CAST(raw_data->>'cost' AS NUMERIC)), 0.0) as total_cost
       FROM quota_snapshots
       WHERE created_at >= ? AND created_at <= ?
-      GROUP BY provider, model, datetime(strftime('%Y-%m-%d %H:00:00', created_at))
+      GROUP BY provider, model, date_trunc('hour', created_at)
       ON CONFLICT(provider, model, date_hour) DO UPDATE SET
         total_requests = excluded.total_requests,
         total_input_tokens = excluded.total_input_tokens,
@@ -113,8 +113,7 @@ export async function rollupHourlyQuota(
         total_cost = excluded.total_cost
     `;
 
-    const stmt = db.prepare(aggregateQuery);
-    const runResult = stmt.run(fromDate, toDate);
+    const runResult = await db.prepare(aggregateQuery).run(fromDate, toDate);
 
     result.processed = runResult.changes;
     result.inserted = runResult.changes;
@@ -151,6 +150,7 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
   };
 
   try {
+    // Postgres: DATE() works; LOWER() works; no SQLite-specific syntax needed here
     const aggregateQuery = `
       INSERT INTO daily_usage_summary (provider, model, date, total_requests, total_input_tokens, total_output_tokens, total_cost)
       SELECT
@@ -172,8 +172,7 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
         total_output_tokens = daily_usage_summary.total_output_tokens + excluded.total_output_tokens
     `;
 
-    const stmt = db.prepare(aggregateQuery);
-    const runResult = stmt.run(beforeDate);
+    const runResult = await db.prepare(aggregateQuery).run(beforeDate);
 
     result.processed = runResult.changes;
     result.inserted = runResult.changes;
@@ -196,7 +195,8 @@ export async function rollupUsageHistoryBeforeDate(beforeDate: string): Promise<
  * @returns ISO date string (YYYY-MM-DD)
  */
 export async function getRawDataCutoffDate(): Promise<string> {
-  const rawDataRetentionDays = getUserDatabaseSettings().aggregation.rawDataRetentionDays;
+  const settings = await getUserDatabaseSettings();
+  const rawDataRetentionDays = settings.aggregation.rawDataRetentionDays;
 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - rawDataRetentionDays);
@@ -208,5 +208,6 @@ export async function getRawDataCutoffDate(): Promise<string> {
  * Check if aggregation is enabled in settings.
  */
 export async function isAggregationEnabled(): Promise<boolean> {
-  return getUserDatabaseSettings().aggregation.enabled;
+  const settings = await getUserDatabaseSettings();
+  return settings.aggregation.enabled;
 }

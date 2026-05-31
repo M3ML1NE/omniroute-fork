@@ -330,7 +330,7 @@ export async function GET(request: Request) {
 
     // Compute the raw-data cutoff: rows older than this may have been rolled up to
     // daily_usage_summary and deleted from usage_history.
-    const dbSettings = getUserDatabaseSettings();
+    const dbSettings = await getUserDatabaseSettings();
     const rawRetentionDays = dbSettings.aggregation?.rawDataRetentionDays ?? 30;
     const rawCutoff = new Date();
     rawCutoff.setDate(rawCutoff.getDate() - rawRetentionDays);
@@ -473,7 +473,7 @@ export async function GET(request: Request) {
       await import("@/lib/usage/costCalculator");
     const { PROVIDER_ID_TO_ALIAS } = await import("@omniroute/open-sse/config/providerModels");
 
-    const summaryRow = db
+    const summaryRow = await db
       .prepare(
         `
         SELECT
@@ -494,7 +494,7 @@ export async function GET(request: Request) {
       )
       .get(params) as Record<string, unknown>;
 
-    const dailyRows = db
+    const dailyRows = await db
       .prepare(
         `
         SELECT
@@ -511,7 +511,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const dailyCostRows = db
+    const dailyCostRows = await db
       .prepare(
         `
         SELECT
@@ -552,7 +552,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const heatmapRows = db
+    const heatmapRows = await db
       .prepare(
         `
         SELECT
@@ -566,7 +566,7 @@ export async function GET(request: Request) {
       )
       .all(heatmapParams) as Array<Record<string, unknown>>;
 
-    const modelRows = db
+    const modelRows = await db
       .prepare(
         `
         SELECT
@@ -591,7 +591,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const providerCostRows = db
+    const providerCostRows = await db
       .prepare(
         `
         SELECT
@@ -610,7 +610,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const providerRows = db
+    const providerRows = await db
       .prepare(
         `
         SELECT
@@ -629,7 +629,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const accountCostRows = db
+    const accountCostRows = await db
       .prepare(
         `
         SELECT
@@ -650,7 +650,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const accountRows = db
+    const accountRows = await db
       .prepare(
         `
         SELECT
@@ -675,7 +675,7 @@ export async function GET(request: Request) {
       whereClause,
       "(api_key_id IS NOT NULL AND api_key_id != '') OR (api_key_name IS NOT NULL AND api_key_name != '')"
     );
-    const apiKeyRows = db
+    const apiKeyRows = await db
       .prepare(
         `
         SELECT
@@ -698,7 +698,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const serviceTierRows = db
+    const serviceTierRows = await db
       .prepare(
         `
         SELECT
@@ -720,7 +720,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const apiKeyMetadataRows = db
+    const apiKeyMetadataRows = await db
       .prepare(
         `
         SELECT
@@ -751,7 +751,7 @@ export async function GET(request: Request) {
       apiKeyMetadata.set(groupKey, existing);
     }
 
-    const weeklyRows = db
+    const weeklyRows = await db
       .prepare(
         `
         SELECT
@@ -762,12 +762,12 @@ export async function GET(request: Request) {
         FROM (
           SELECT
             DATE(timestamp) as date,
-            strftime('%w', timestamp) as dayOfWeek,
+            EXTRACT(DOW FROM timestamp::timestamptz)::text as dayOfWeek,
             COUNT(*) as requests,
             COALESCE(SUM(tokens_input + tokens_output), 0) as totalTokens
           FROM ${unifiedSource} AS _u
           ${unifiedWhere}
-          GROUP BY DATE(timestamp), strftime('%w', timestamp)
+          GROUP BY DATE(timestamp), EXTRACT(DOW FROM timestamp::timestamptz)
         )
         GROUP BY dayOfWeek
         ORDER BY dayOfWeek ASC
@@ -775,7 +775,7 @@ export async function GET(request: Request) {
       )
       .all(params) as Array<Record<string, unknown>>;
 
-    const fallbackRow = db
+    const fallbackRow = await db
       .prepare(
         `
         SELECT
@@ -1281,7 +1281,7 @@ export async function GET(request: Request) {
               ${presetRawWhere}
             )`;
 
-        const presetModelRows = db
+        const presetModelRows = await db
           .prepare(
             `
             SELECT
