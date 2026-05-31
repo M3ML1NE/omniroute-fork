@@ -1,11 +1,11 @@
 import https from "node:https";
 import fs from "node:fs";
 import crypto from "node:crypto";
-import type { MtlsConfig } from "../types/keyStore.ts";
+import type { MtlsConfig } from "../types/keyStore.js";
 
 /**
- * Compute fingerprint of MtlsConfig paths (not contents).
- * Used as LRU pool key — same paths reuse same Agent instance.
+ * Compute short fingerprint from MtlsConfig paths (not contents).
+ * LRU pool key; same paths reuse same Agent instance.
  */
 function fingerprint(cfg: MtlsConfig): string {
   return crypto
@@ -16,8 +16,8 @@ function fingerprint(cfg: MtlsConfig): string {
 }
 
 /**
- * Simple LRU pool of https.Agent.
- * Bounded at max=64. Evicted agents are .destroy()'d to release sockets.
+ * Simple LRU pool for https.Agent.
+ * Bounded max=64. Evicted agents .destroy() called to release sockets.
  * lru-cache dependency intentionally avoided (not in deps tree).
  */
 class LRUAgentPool {
@@ -29,9 +29,11 @@ class LRUAgentPool {
   get(key: string): https.Agent | undefined {
     const agent = this.map.get(key);
     if (agent) {
-      // bump to most-recently-used
+      // bump most-recently-used
       const idx = this.order.indexOf(key);
-      if (idx !== -1) this.order.splice(idx, 1);
+      if (idx !== -1) {
+        this.order.splice(idx, 1);
+      }
       this.order.push(key);
     }
     return agent;
@@ -40,14 +42,20 @@ class LRUAgentPool {
   set(key: string, agent: https.Agent): void {
     if (this.map.has(key)) {
       const idx = this.order.indexOf(key);
-      if (idx !== -1) this.order.splice(idx, 1);
-    } else if (this.map.size >= this.max) {
-      // Evict least-recently-used
-      const lruKey = this.order.shift();
-      if (lruKey !== undefined) {
-        const lruAgent = this.map.get(lruKey);
-        if (lruAgent) lruAgent.destroy();
-        this.map.delete(lruKey);
+      if (idx !== -1) {
+        this.order.splice(idx, 1);
+      }
+    } else {
+      if (this.map.size >= this.max) {
+        // Evict least-recently-used
+        const lruKey = this.order.shift();
+        if (lruKey !== undefined) {
+          const lruAgent = this.map.get(lruKey);
+          if (lruAgent) {
+            lruAgent.destroy();
+          }
+          this.map.delete(lruKey);
+        }
       }
     }
     this.map.set(key, agent);
@@ -70,42 +78,45 @@ class LRUAgentPool {
 const pool = new LRUAgentPool(64);
 
 /**
- * Get cached https.Agent for given mTLS config, or create+cache one.
- * Reads cert/key/ca files synchronously on first use; throws Error
- * mentioning the offending path (not file content) on read failure.
- *
- * Always sets rejectUnauthorized: true (Sber PKI requirement —
- * never disable peer cert verification).
+ * Get cached https.Agent given mTLS config, or create & cache one.
+ * Reads cert/key/ca files synchronously on first use; throws Error mentioning
+ * offending path (not file content) on read failure.
+ * Sets rejectUnauthorized: true (Sber PKI requirement; do not disable peer cert verification).
  */
 export function getAgent(cfg: MtlsConfig): https.Agent {
   const key = fingerprint(cfg);
   const cached = pool.get(key);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   let cert: Buffer;
   let keyPem: Buffer;
   let ca: Buffer;
+
   try {
     cert = fs.readFileSync(cfg.cert_path);
   } catch {
     throw new Error(`mTLS: cannot read cert file: ${cfg.cert_path}`);
   }
+
   try {
     keyPem = fs.readFileSync(cfg.key_path);
   } catch {
     throw new Error(`mTLS: cannot read key file: ${cfg.key_path}`);
   }
+
   try {
     ca = fs.readFileSync(cfg.ca_path);
   } catch {
-    throw new Error(`mTLS: cannot read CA file: ${cfg.ca_path}`);
+    throw new Error(`mTLS: cannot read ca file: ${cfg.ca_path}`);
   }
 
   const agent = new https.Agent({
     cert,
     key: keyPem,
     ca,
-    rejectUnauthorized: true,
+    rejectUnauthorized: true, // Sber PKI requirement; do not set false
     keepAlive: true,
   });
 
@@ -114,14 +125,15 @@ export function getAgent(cfg: MtlsConfig): https.Agent {
 }
 
 /**
- * Destroy all pooled agents and reset pool. Used on shutdown / tests.
+ * Destroy all cached agents; clear pool.
+ * Call on server shutdown.
  */
 export function clearPool(): void {
   pool.clear();
 }
 
 /**
- * Internal: current pool size (test introspection).
+ * Exposed for testing only; returns current pool size.
  */
 export function _getPoolSize(): number {
   return pool.size;
