@@ -98,25 +98,25 @@ function generateRawKey(): string {
 }
 
 /** Reset window counters if the tracking period has changed. */
-function maybeResetWindow(
+async function maybeResetWindow(
   db: ReturnType<typeof getDbInstance>,
   table: string,
   idField: string,
   idValue: string
-): void {
+): Promise<void> {
   const today = nowDay();
   const hour = nowHour();
 
-  db.prepare(
-    `
-    UPDATE ${table}
-    SET daily_issued = CASE WHEN last_reset_day <> ? THEN 0 ELSE daily_issued END,
-        hourly_issued = CASE WHEN last_reset_hour <> ? THEN 0 ELSE hourly_issued END,
-        last_reset_day = ?,
-        last_reset_hour = ?
-    WHERE ${idField} = ?
-  `
-  ).run(today, hour, today, hour, idValue);
+  await db
+    .prepare(
+      `UPDATE ${table}
+       SET daily_issued = CASE WHEN last_reset_day <> ? THEN 0 ELSE daily_issued END,
+           hourly_issued = CASE WHEN last_reset_hour <> ? THEN 0 ELSE hourly_issued END,
+           last_reset_day = ?,
+           last_reset_hour = ?
+       WHERE ${idField} = ?`
+    )
+    .run(today, hour, today, hour, idValue);
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -125,18 +125,16 @@ function maybeResetWindow(
  * Check if a new registered key can be issued for the given provider/account.
  * Returns { allowed: true } or { allowed: false, errorCode, errorMessage }.
  */
-export function checkQuota(provider = "", accountId = ""): QuotaCheckResult {
+export async function checkQuota(provider = "", accountId = ""): Promise<QuotaCheckResult> {
   const db = getDbInstance();
-  const today = nowDay();
-  const hour = nowHour();
 
   // ── provider-level check ──
   if (provider) {
-    maybeResetWindow(db, "provider_key_limits", "provider", provider);
+    await maybeResetWindow(db, "provider_key_limits", "provider", provider);
 
-    const limits = db
+    const limits = await db
       .prepare("SELECT * FROM provider_key_limits WHERE provider = ?")
-      .get(provider) as ProviderKeyLimitRow | undefined;
+      .get<ProviderKeyLimitRow>(provider);
 
     if (limits) {
       if (limits.hourly_issue_limit !== null && limits.hourly_issued >= limits.hourly_issue_limit) {
@@ -156,11 +154,12 @@ export function checkQuota(provider = "", accountId = ""): QuotaCheckResult {
         };
       }
       if (limits.max_active_keys !== null) {
-        const { activeCount } = db
+        const countRow = await db
           .prepare(
             "SELECT COUNT(*) as activeCount FROM registered_keys WHERE provider = ? AND is_active = 1"
           )
-          .get(provider) as { activeCount: number };
+          .get<{ activeCount: number }>(provider);
+        const activeCount = countRow?.activeCount ?? 0;
         if (activeCount >= limits.max_active_keys) {
           return {
             allowed: false,
@@ -176,11 +175,11 @@ export function checkQuota(provider = "", accountId = ""): QuotaCheckResult {
 
   // ── account-level check ──
   if (accountId) {
-    maybeResetWindow(db, "account_key_limits", "account_id", accountId);
+    await maybeResetWindow(db, "account_key_limits", "account_id", accountId);
 
-    const limits = db
+    const limits = await db
       .prepare("SELECT * FROM account_key_limits WHERE account_id = ?")
-      .get(accountId) as AccountKeyLimitRow | undefined;
+      .get<AccountKeyLimitRow>(accountId);
 
     if (limits) {
       if (limits.hourly_issue_limit !== null && limits.hourly_issued >= limits.hourly_issue_limit) {
@@ -200,11 +199,12 @@ export function checkQuota(provider = "", accountId = ""): QuotaCheckResult {
         };
       }
       if (limits.max_active_keys !== null) {
-        const { activeCount } = db
+        const countRow = await db
           .prepare(
             "SELECT COUNT(*) as activeCount FROM registered_keys WHERE account_id = ? AND is_active = 1"
           )
-          .get(accountId) as { activeCount: number };
+          .get<{ activeCount: number }>(accountId);
+        const activeCount = countRow?.activeCount ?? 0;
         if (activeCount >= limits.max_active_keys) {
           return {
             allowed: false,
@@ -223,11 +223,11 @@ export function checkQuota(provider = "", accountId = ""): QuotaCheckResult {
 
 /**
  * Issue a new registered key.
- * Returns the key with rawKey (only on creation) or null if idempotency_key already exists.
+ * Returns the key with rawKey (only on creation) or an idempotency conflict object.
  */
-export function issueRegisteredKey(
+export async function issueRegisteredKey(
   params: IssueKeyParams
-): RegisteredKeyWithSecret | { idempotencyConflict: true; existing: RegisteredKey } {
+): Promise<RegisteredKeyWithSecret | { idempotencyConflict: true; existing: RegisteredKey }> {
   const db = getDbInstance();
   const {
     name,
@@ -241,9 +241,9 @@ export function issueRegisteredKey(
 
   // ── idempotency check ──
   if (idempotencyKey) {
-    const existing = db
+    const existing = await db
       .prepare("SELECT * FROM registered_keys WHERE idempotency_key = ?")
-      .get(idempotencyKey) as RegisteredKeyRow | undefined;
+      .get<RegisteredKeyRow>(idempotencyKey);
     if (existing) {
       return {
         idempotencyConflict: true,
@@ -257,78 +257,79 @@ export function issueRegisteredKey(
   const keyHash = hashKey(rawKey);
   const keyPrefix = rawKey.slice(0, 12); // "ork_" + 8 chars
 
-  db.prepare(
-    `
-    INSERT INTO registered_keys
-      (id, key, key_prefix, name, provider, account_id, idempotency_key, expires_at, daily_budget, hourly_budget, last_reset_day, last_reset_hour)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `
-  ).run(
-    id,
-    keyHash,
-    keyPrefix,
-    name,
-    provider,
-    accountId,
-    idempotencyKey ?? null,
-    expiresAt ?? null,
-    dailyBudget ?? null,
-    hourlyBudget ?? null,
-    nowDay(),
-    nowHour()
-  );
+  await db
+    .prepare(
+      `INSERT INTO registered_keys
+        (id, key, key_prefix, name, provider, account_id, idempotency_key, expires_at, daily_budget, hourly_budget, last_reset_day, last_reset_hour)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      keyHash,
+      keyPrefix,
+      name,
+      provider,
+      accountId,
+      idempotencyKey ?? null,
+      expiresAt ?? null,
+      dailyBudget ?? null,
+      hourlyBudget ?? null,
+      nowDay(),
+      nowHour()
+    );
 
   // Increment provider/account issuance counters
   if (provider) {
-    maybeResetWindow(db, "provider_key_limits", "provider", provider);
-    db.prepare(
-      `
-      INSERT INTO provider_key_limits (provider, daily_issued, hourly_issued, last_reset_day, last_reset_hour)
-      VALUES (?, 1, 1, ?, ?)
-      ON CONFLICT(provider) DO UPDATE SET
-        daily_issued = daily_issued + 1,
-        hourly_issued = hourly_issued + 1,
-        updated_at = datetime('now')
-    `
-    ).run(provider, nowDay(), nowHour());
+    await maybeResetWindow(db, "provider_key_limits", "provider", provider);
+    await db
+      .prepare(
+        `INSERT INTO provider_key_limits (provider, daily_issued, hourly_issued, last_reset_day, last_reset_hour)
+         VALUES (?, 1, 1, ?, ?)
+         ON CONFLICT(provider) DO UPDATE SET
+           daily_issued = provider_key_limits.daily_issued + 1,
+           hourly_issued = provider_key_limits.hourly_issued + 1,
+           updated_at = NOW()`
+      )
+      .run(provider, nowDay(), nowHour());
   }
   if (accountId) {
-    maybeResetWindow(db, "account_key_limits", "account_id", accountId);
-    db.prepare(
-      `
-      INSERT INTO account_key_limits (account_id, daily_issued, hourly_issued, last_reset_day, last_reset_hour)
-      VALUES (?, 1, 1, ?, ?)
-      ON CONFLICT(account_id) DO UPDATE SET
-        daily_issued = daily_issued + 1,
-        hourly_issued = hourly_issued + 1,
-        updated_at = datetime('now')
-    `
-    ).run(accountId, nowDay(), nowHour());
+    await maybeResetWindow(db, "account_key_limits", "account_id", accountId);
+    await db
+      .prepare(
+        `INSERT INTO account_key_limits (account_id, daily_issued, hourly_issued, last_reset_day, last_reset_hour)
+         VALUES (?, 1, 1, ?, ?)
+         ON CONFLICT(account_id) DO UPDATE SET
+           daily_issued = account_key_limits.daily_issued + 1,
+           hourly_issued = account_key_limits.hourly_issued + 1,
+           updated_at = NOW()`
+      )
+      .run(accountId, nowDay(), nowHour());
   }
 
-  const created = db
+  const created = await db
     .prepare("SELECT * FROM registered_keys WHERE id = ?")
-    .get(id) as RegisteredKeyRow;
+    .get<RegisteredKeyRow>(id);
+  if (!created) throw new Error("Failed to retrieve newly created registered key");
   return { ...(rowToCamel(created) as unknown as RegisteredKey), rawKey };
 }
 
 /**
  * Get a registered key by ID (without the raw key — only prefix is returned).
  */
-export function getRegisteredKey(id: string): RegisteredKey | null {
+export async function getRegisteredKey(id: string): Promise<RegisteredKey | null> {
   const db = getDbInstance();
-  const row = db.prepare("SELECT * FROM registered_keys WHERE id = ?").get(id) as
-    | RegisteredKeyRow
-    | undefined;
+  const row = await db
+    .prepare("SELECT * FROM registered_keys WHERE id = ?")
+    .get<RegisteredKeyRow>(id);
   return row ? (rowToCamel(row) as unknown as RegisteredKey) : null;
 }
 
 /**
  * List all registered keys (optionally filtered by provider/accountId).
  */
-export function listRegisteredKeys(
+export async function listRegisteredKeys(
   opts: { provider?: string; accountId?: string } = {}
-): RegisteredKey[] {
+): Promise<RegisteredKey[]> {
   const db = getDbInstance();
   let sql = "SELECT * FROM registered_keys WHERE 1=1";
   const args: string[] = [];
@@ -341,22 +342,20 @@ export function listRegisteredKeys(
     args.push(opts.accountId);
   }
   sql += " ORDER BY created_at DESC LIMIT 500";
-  const rows = db.prepare(sql).all(...args) as RegisteredKeyRow[];
+  const rows = await db.prepare(sql).all<RegisteredKeyRow>(...args);
   return rows.map((r) => rowToCamel(r) as unknown as RegisteredKey);
 }
 
 /**
  * Revoke a registered key by ID.
  */
-export function revokeRegisteredKey(id: string): boolean {
+export async function revokeRegisteredKey(id: string): Promise<boolean> {
   const db = getDbInstance();
-  const result = db
+  const result = await db
     .prepare(
-      `
-    UPDATE registered_keys
-    SET is_active = 0, revoked_at = datetime('now'), updated_at = datetime('now')
-    WHERE id = ? AND is_active = 1
-  `
+      `UPDATE registered_keys
+       SET is_active = 0, revoked_at = NOW(), updated_at = NOW()
+       WHERE id = ? AND is_active = 1`
     )
     .run(id);
   return result.changes > 0;
@@ -366,33 +365,31 @@ export function revokeRegisteredKey(id: string): boolean {
  * Validate a raw registered key against stored hashes.
  * Returns the key metadata if valid, null otherwise.
  */
-export function validateRegisteredKey(rawKey: string): RegisteredKey | null {
+export async function validateRegisteredKey(rawKey: string): Promise<RegisteredKey | null> {
   const db = getDbInstance();
   const hash = hashKey(rawKey);
-  const row = db
+  const row = await db
     .prepare(
-      `
-    SELECT * FROM registered_keys
-    WHERE key = ? AND is_active = 1
-      AND (expires_at IS NULL OR expires_at > datetime('now'))
-  `
+      `SELECT * FROM registered_keys
+       WHERE key = ? AND is_active = 1
+         AND (expires_at IS NULL OR expires_at > NOW())`
     )
-    .get(hash) as RegisteredKeyRow | undefined;
+    .get<RegisteredKeyRow>(hash);
   if (!row) return null;
 
   // Auto-reset budget windows if needed
   const today = nowDay();
   const hour = nowHour();
   if (row.last_reset_day !== today || row.last_reset_hour !== hour) {
-    db.prepare(
-      `
-      UPDATE registered_keys
-      SET daily_used = CASE WHEN last_reset_day <> ? THEN 0 ELSE daily_used END,
-          hourly_used = CASE WHEN last_reset_hour <> ? THEN 0 ELSE hourly_used END,
-          last_reset_day = ?, last_reset_hour = ?
-      WHERE id = ?
-    `
-    ).run(today, hour, today, hour, row.id);
+    await db
+      .prepare(
+        `UPDATE registered_keys
+         SET daily_used = CASE WHEN last_reset_day <> ? THEN 0 ELSE daily_used END,
+             hourly_used = CASE WHEN last_reset_hour <> ? THEN 0 ELSE hourly_used END,
+             last_reset_day = ?, last_reset_hour = ?
+         WHERE id = ?`
+      )
+      .run(today, hour, today, hour, row.id);
   }
 
   // Budget check
@@ -405,82 +402,82 @@ export function validateRegisteredKey(rawKey: string): RegisteredKey | null {
 /**
  * Increment usage counters for a registered key (called by request pipeline).
  */
-export function incrementRegisteredKeyUsage(id: string): void {
+export async function incrementRegisteredKeyUsage(id: string): Promise<void> {
   const db = getDbInstance();
-  db.prepare(
-    `
-    UPDATE registered_keys
-    SET daily_used = daily_used + 1, hourly_used = hourly_used + 1, updated_at = datetime('now')
-    WHERE id = ?
-  `
-  ).run(id);
+  await db
+    .prepare(
+      `UPDATE registered_keys
+       SET daily_used = daily_used + 1, hourly_used = hourly_used + 1, updated_at = NOW()
+       WHERE id = ?`
+    )
+    .run(id);
 }
 
 // ─── Provider / Account Limit Management ──────────────────────────────────────
 
-export function setProviderKeyLimit(
+export async function setProviderKeyLimit(
   provider: string,
   limits: Partial<Omit<ProviderKeyLimit, "provider" | "dailyIssued" | "hourlyIssued" | "updatedAt">>
-): void {
+): Promise<void> {
   const db = getDbInstance();
-  db.prepare(
-    `
-    INSERT INTO provider_key_limits (provider, max_active_keys, daily_issue_limit, hourly_issue_limit, last_reset_day, last_reset_hour)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(provider) DO UPDATE SET
-      max_active_keys = excluded.max_active_keys,
-      daily_issue_limit = excluded.daily_issue_limit,
-      hourly_issue_limit = excluded.hourly_issue_limit,
-      updated_at = datetime('now')
-  `
-  ).run(
-    provider,
-    limits.maxActiveKeys ?? null,
-    limits.dailyIssueLimit ?? null,
-    limits.hourlyIssueLimit ?? null,
-    nowDay(),
-    nowHour()
-  );
+  await db
+    .prepare(
+      `INSERT INTO provider_key_limits (provider, max_active_keys, daily_issue_limit, hourly_issue_limit, last_reset_day, last_reset_hour)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(provider) DO UPDATE SET
+         max_active_keys = excluded.max_active_keys,
+         daily_issue_limit = excluded.daily_issue_limit,
+         hourly_issue_limit = excluded.hourly_issue_limit,
+         updated_at = NOW()`
+    )
+    .run(
+      provider,
+      limits.maxActiveKeys ?? null,
+      limits.dailyIssueLimit ?? null,
+      limits.hourlyIssueLimit ?? null,
+      nowDay(),
+      nowHour()
+    );
 }
 
-export function setAccountKeyLimit(
+export async function setAccountKeyLimit(
   accountId: string,
   limits: Partial<Omit<AccountKeyLimit, "accountId" | "dailyIssued" | "hourlyIssued" | "updatedAt">>
-): void {
+): Promise<void> {
   const db = getDbInstance();
-  db.prepare(
-    `
-    INSERT INTO account_key_limits (account_id, max_active_keys, daily_issue_limit, hourly_issue_limit, last_reset_day, last_reset_hour)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(account_id) DO UPDATE SET
-      max_active_keys = excluded.max_active_keys,
-      daily_issue_limit = excluded.daily_issue_limit,
-      hourly_issue_limit = excluded.hourly_issue_limit,
-      updated_at = datetime('now')
-  `
-  ).run(
-    accountId,
-    limits.maxActiveKeys ?? null,
-    limits.dailyIssueLimit ?? null,
-    limits.hourlyIssueLimit ?? null,
-    nowDay(),
-    nowHour()
-  );
+  await db
+    .prepare(
+      `INSERT INTO account_key_limits (account_id, max_active_keys, daily_issue_limit, hourly_issue_limit, last_reset_day, last_reset_hour)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(account_id) DO UPDATE SET
+         max_active_keys = excluded.max_active_keys,
+         daily_issue_limit = excluded.daily_issue_limit,
+         hourly_issue_limit = excluded.hourly_issue_limit,
+         updated_at = NOW()`
+    )
+    .run(
+      accountId,
+      limits.maxActiveKeys ?? null,
+      limits.dailyIssueLimit ?? null,
+      limits.hourlyIssueLimit ?? null,
+      nowDay(),
+      nowHour()
+    );
 }
 
-export function getProviderKeyLimit(provider: string): ProviderKeyLimit | null {
+export async function getProviderKeyLimit(provider: string): Promise<ProviderKeyLimit | null> {
   const db = getDbInstance();
-  const row = db.prepare("SELECT * FROM provider_key_limits WHERE provider = ?").get(provider) as
-    | ProviderKeyLimitRow
-    | undefined;
+  const row = await db
+    .prepare("SELECT * FROM provider_key_limits WHERE provider = ?")
+    .get<ProviderKeyLimitRow>(provider);
   return row ? (rowToCamel(row) as unknown as ProviderKeyLimit) : null;
 }
 
-export function getAccountKeyLimit(accountId: string): AccountKeyLimit | null {
+export async function getAccountKeyLimit(accountId: string): Promise<AccountKeyLimit | null> {
   const db = getDbInstance();
-  const row = db.prepare("SELECT * FROM account_key_limits WHERE account_id = ?").get(accountId) as
-    | AccountKeyLimitRow
-    | undefined;
+  const row = await db
+    .prepare("SELECT * FROM account_key_limits WHERE account_id = ?")
+    .get<AccountKeyLimitRow>(accountId);
   return row ? (rowToCamel(row) as unknown as AccountKeyLimit) : null;
 }
 
