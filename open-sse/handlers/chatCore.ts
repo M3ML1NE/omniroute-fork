@@ -1979,7 +1979,8 @@ export async function handleChatCore({
       responseBody
     );
     if (providerWarnings.length > 0) {
-      await logAuditEvent({
+      // Fire-and-forget: persistAttemptLogs is a sync callback (18 call sites); awaiting here breaks boot.
+      void logAuditEvent({
         action: "provider.warning",
         actor: "system",
         target: [provider, connectionId].filter(Boolean).join(":") || provider || model,
@@ -1993,7 +1994,7 @@ export async function handleChatCore({
           httpStatus: status,
           warnings: providerWarnings,
         },
-      });
+      }).catch(() => {});
     }
 
     const callLogId = generateRequestId();
@@ -3714,7 +3715,7 @@ export async function handleChatCore({
                 model: modelToCall,
                 signal: streamController.signal,
                 log,
-                execute: (signal) =>
+                execute: async (signal) =>
                   executor.execute({
                     model: modelToCall,
                     body: bodyToSend,
