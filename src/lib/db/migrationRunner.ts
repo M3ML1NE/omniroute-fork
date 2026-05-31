@@ -101,6 +101,18 @@ function resolveMigrationsDir(): string {
 const MIGRATIONS_DIR = resolveMigrationsDir();
 
 /**
+ * The Postgres compat adapter (`core.ts` `buildPgAdapter`) reports
+ * `name === "postgres"`; real SQLite adapters report a filename or ":memory:".
+ * This runner reads SQLite-only `src/lib/db/migrations/*.sql` (datetime('now'),
+ * PRAGMA), which would error on a Postgres connection. Postgres uses the
+ * consolidated baseline applied by `db/migrate-postgres.ts` instead, so this
+ * runner short-circuits to a no-op when handed the Postgres adapter.
+ */
+function isPostgresAdapter(db: SqliteAdapter): boolean {
+  return (db as { name?: string } | null)?.name === "postgres";
+}
+
+/**
  * Maximum number of migrations allowed to run in a single startup on an
  * existing database. If more migrations are pending than this threshold,
  * it likely means the migration tracking table was accidentally wiped,
@@ -795,6 +807,9 @@ function createPreMigrationBackup(db: SqliteAdapter): string | null {
  * 3. Creates automatic backup before running any migrations
  */
 export function runMigrations(db: SqliteAdapter, options?: { isNewDb?: boolean }): number {
+  if (isPostgresAdapter(db)) {
+    return 0;
+  }
   const isNewDb = options?.isNewDb === true;
   ensureMigrationsTable(db);
 
@@ -997,6 +1012,9 @@ export function getMigrationStatus(db: SqliteAdapter): {
   applied: Array<{ version: string; name: string; applied_at: string }>;
   pending: Array<{ version: string; name: string }>;
 } {
+  if (isPostgresAdapter(db)) {
+    return { applied: [], pending: [] };
+  }
   ensureMigrationsTable(db);
 
   const appliedRows = db
