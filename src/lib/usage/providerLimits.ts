@@ -323,7 +323,7 @@ async function setLastProviderLimitsAutoSyncTime(timestamp: string): Promise<voi
   await updateSettings({ [PROVIDER_LIMITS_AUTO_SYNC_SETTING_KEY]: timestamp });
 }
 
-export function getCachedProviderLimitsMap(): Record<string, ProviderLimitsCacheEntry> {
+export async function getCachedProviderLimitsMap(): Promise<Record<string, ProviderLimitsCacheEntry>> {
   return getAllProviderLimitsCache();
 }
 
@@ -446,7 +446,7 @@ export async function fetchAndPersistProviderLimits(
   // Serve the prior entry instead; only successful fetches update the cache.
   const fetchFailed = !newCache.quotas && newCache.message;
   if (fetchFailed) {
-    const previous = getProviderLimitsCache(connectionId);
+    const previous = await getProviderLimitsCache(connectionId);
     if (previous?.quotas && Object.keys(previous.quotas).length > 0) {
       // utils.tsx parseQuotaData ignores `quotas` if `message` is set — drop
       // the message so the prior quotas render; surface staleness via _stale.
@@ -465,7 +465,7 @@ export async function fetchAndPersistProviderLimits(
     return { connection, usage, cache: newCache };
   }
 
-  setProviderLimitsCache(connectionId, newCache);
+  await setProviderLimitsCache(connectionId, newCache);
   return { connection, usage, cache: newCache };
 }
 
@@ -501,34 +501,35 @@ export async function syncAllProviderLimits(
       })
     );
 
-    results.forEach((result, index) => {
+    for (let index = 0; index < results.length; index++) {
+      const result = results[index]!;
       const connectionId = chunk[index]?.id;
-      if (!connectionId) return;
+      if (!connectionId) continue;
 
       if (result.status === "fulfilled") {
         const { cache } = result.value;
         // Don't persist error-only entries; show prior cache or pass through.
         if (!cache.quotas && cache.message) {
-          const previous = getProviderLimitsCache(connectionId);
+          const previous = await getProviderLimitsCache(connectionId);
           if (previous?.quotas && Object.keys(previous.quotas).length > 0) {
             caches[connectionId] = previous;
           } else {
             caches[connectionId] = cache;
           }
-          return;
+          continue;
         }
         cacheEntries.push({ connectionId, entry: cache });
         caches[connectionId] = cache;
-        return;
+        continue;
       }
 
       const reason = result.reason as { message?: string } | undefined;
       errors[connectionId] = reason?.message || "Failed to refresh provider limits";
-    });
+    }
   }
 
   if (cacheEntries.length > 0) {
-    setProviderLimitsCacheBatch(cacheEntries);
+    await setProviderLimitsCacheBatch(cacheEntries);
   }
 
   if (source === "scheduled") {
