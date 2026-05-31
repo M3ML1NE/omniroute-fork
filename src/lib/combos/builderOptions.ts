@@ -242,7 +242,7 @@ function buildConnectionOption(
   };
 }
 
-function addModelOption(
+async function addModelOption(
   modelMap: Map<string, ComboBuilderModelOption>,
   providerId: string,
   input: {
@@ -258,7 +258,7 @@ function addModelOption(
 ) {
   const modelId = toStringOrNull(input.id);
   if (!modelId) return;
-  if (getModelIsHidden(providerId, modelId)) return;
+  if (await getModelIsHidden(providerId, modelId)) return;
   if (!isChatCapable(input.supportedEndpoints)) return;
 
   const nextSourcePriority = getSourcePriority(input.source);
@@ -410,7 +410,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
         provider: providerId,
         model: toStringOrNull(model.id),
       });
-      addModelOption(modelMap, providerId, {
+      await addModelOption(modelMap, providerId, {
         id: toStringOrNull(model.id),
         name: toStringOrNull(model.name),
         source: "imported",
@@ -429,7 +429,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
         provider: providerId,
         model: toStringOrNull(model.id),
       });
-      addModelOption(modelMap, providerId, {
+      await addModelOption(modelMap, providerId, {
         id: toStringOrNull(model.id),
         name: toStringOrNull(model.name),
         source: "system",
@@ -450,7 +450,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
         provider: providerId,
         model: toStringOrNull(model.id),
       });
-      addModelOption(modelMap, providerId, {
+      await addModelOption(modelMap, providerId, {
         id: toStringOrNull(model.id),
         name: toStringOrNull(model.name),
         source,
@@ -471,7 +471,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
           provider: providerId,
           model: toStringOrNull(model.id),
         });
-        addModelOption(modelMap, providerId, {
+        await addModelOption(modelMap, providerId, {
           id: toStringOrNull(model.id),
           name: toStringOrNull(model.name),
           source: "fallback",
@@ -543,7 +543,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
         provider: providerId,
         model: toStringOrNull(model.id),
       });
-      addModelOption(modelMap, providerId, {
+      await addModelOption(modelMap, providerId, {
         id: toStringOrNull(model.id),
         name: toStringOrNull(model.name),
         source: "imported",
@@ -562,7 +562,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
         provider: providerId,
         model: toStringOrNull(model.id),
       });
-      addModelOption(modelMap, providerId, {
+      await addModelOption(modelMap, providerId, {
         id: toStringOrNull(model.id),
         name: toStringOrNull(model.name),
         source: "system",
@@ -583,7 +583,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
         provider: providerId,
         model: toStringOrNull(model.id),
       });
-      addModelOption(modelMap, providerId, {
+      await addModelOption(modelMap, providerId, {
         id: toStringOrNull(model.id),
         name: toStringOrNull(model.name),
         source,
@@ -604,7 +604,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
           provider: providerId,
           model: toStringOrNull(model.id),
         });
-        addModelOption(modelMap, providerId, {
+        await addModelOption(modelMap, providerId, {
           id: toStringOrNull(model.id),
           name: toStringOrNull(model.name),
           source: "fallback",

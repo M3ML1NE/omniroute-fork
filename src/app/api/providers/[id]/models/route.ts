@@ -10,7 +10,7 @@ import { getModelsByProviderId } from "@/shared/constants/models";
 import { getStaticModelsForProvider, type LocalCatalogModel } from "@/lib/providers/staticModels";
 import {
   getProviderConnectionById,
-  getModelIsHidden,
+  buildModelHiddenChecker,
   resolveProxyForProvider,
 } from "@/lib/localDb";
 import {
@@ -752,9 +752,11 @@ export async function GET(
     // Resolve proxy for this provider (provider-level → global → direct)
     const proxy = await resolveProxyForProvider(provider);
 
+    const isModelHidden = excludeHidden ? await buildModelHiddenChecker(provider) : null;
+
     const buildResponse = (payload: any, statusConfig?: ResponseInit) => {
-      if (excludeHidden && payload.models && Array.isArray(payload.models)) {
-        payload.models = payload.models.filter((m: any) => !getModelIsHidden(provider, m.id));
+      if (isModelHidden && payload.models && Array.isArray(payload.models)) {
+        payload.models = payload.models.filter((m: any) => !isModelHidden(m.id));
       }
       return NextResponse.json(payload, statusConfig);
     };

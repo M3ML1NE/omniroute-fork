@@ -945,6 +945,52 @@ export async function getModelIsHidden(providerId: string, modelId: string): Pro
   return Boolean(co?.isHidden);
 }
 
+/**
+ * Build a synchronous "is hidden" checker for one provider by pre-loading the
+ * customModels + compat lists once. Lets sync hot loops/closures filter hidden
+ * models without awaiting per model. Precedence mirrors getModelIsHidden:
+ * a customModels row's own isHidden flag wins, else the compat-list entry's.
+ */
+export async function buildModelHiddenChecker(
+  providerId: string
+): Promise<(modelId: string) => boolean> {
+  const db = getDbInstance();
+
+  const customRow = (await db
+    .prepare("SELECT value FROM key_value WHERE namespace = 'customModels' AND key = ?")
+    .get(providerId)) as { value?: string } | undefined;
+  const customById = new Map<string, JsonRecord>();
+  if (customRow?.value) {
+    try {
+      const models = JSON.parse(customRow.value) as unknown;
+      if (Array.isArray(models)) {
+        for (const x of models) {
+          if (x && typeof x === "object" && !Array.isArray(x)) {
+            const id = (x as { id?: string }).id;
+            if (typeof id === "string") customById.set(id, x as JsonRecord);
+          }
+        }
+      }
+    } catch {
+      // malformed customModels payload — treat as no custom rows
+    }
+  }
+
+  const compatList = await readCompatList(providerId);
+  const compatById = new Map<string, ModelCompatOverride>();
+  for (const e of compatList) {
+    if (e && typeof e.id === "string") compatById.set(e.id, e);
+  }
+
+  return (modelId: string): boolean => {
+    const m = customById.get(modelId);
+    if (m && Object.prototype.hasOwnProperty.call(m, "isHidden")) {
+      return Boolean(m.isHidden);
+    }
+    return Boolean(compatById.get(modelId)?.isHidden);
+  };
+}
+
 function readUpstreamFromJsonRecord(
   row: JsonRecord | null | undefined,
   key: "upstreamHeaders"

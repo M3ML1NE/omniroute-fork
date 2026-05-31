@@ -644,7 +644,7 @@ export async function getUnifiedModelsResponse(
       for (const model of providerModels) {
         if (!providerSupportsModel(canonicalProviderId, model.id)) continue;
         const aliasId = `${alias}/${model.id}`;
-        if (getModelIsHidden(canonicalProviderId, model.id)) continue;
+        if (await getModelIsHidden(canonicalProviderId, model.id)) continue;
 
         const visionFields =
           getVisionCapabilityFields(aliasId) || getVisionCapabilityFields(model.id);
@@ -682,7 +682,7 @@ export async function getUnifiedModelsResponse(
 
     for (const modelId of CODEX_NATIVE_UNPREFIXED_MODELS) {
       if (!providerSupportsModel("codex", modelId)) continue;
-      if (getModelIsHidden("codex", modelId)) continue;
+      if (await getModelIsHidden("codex", modelId)) continue;
 
       const alias = providerIdToAlias.codex || "cx";
       const aliasId = `${alias}/${modelId}`;
@@ -731,7 +731,7 @@ export async function getUnifiedModelsResponse(
 
         for (const sm of syncedModels) {
           if (!providerSupportsModel(canonicalProviderId, sm.id)) continue;
-          if (getModelIsHidden(providerId, sm.id)) continue;
+          if (await getModelIsHidden(providerId, sm.id)) continue;
 
           // Strip modelIdPrefix (e.g. "accounts/fireworks/models/") from display ID
           // so synced model IDs match the short IDs from static registry.
@@ -1109,7 +1109,7 @@ export async function getUnifiedModelsResponse(
       for (const model of fallbackModels) {
         const modelId = typeof model.id === "string" ? model.id : null;
         if (!modelId) continue;
-        if (getModelIsHidden(providerId, modelId)) continue;
+        if (await getModelIsHidden(providerId, modelId)) continue;
         if (!hasEligibleConnectionForModel([conn], modelId)) continue;
 
         const aliasId = `${alias}/${modelId}`;
