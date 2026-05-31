@@ -294,6 +294,18 @@ CREATE TABLE IF NOT EXISTS domain_budgets (
   warning_period_start  BIGINT
 );
 
+CREATE TABLE IF NOT EXISTS domain_budget_reset_logs (
+  id              BIGSERIAL PRIMARY KEY,
+  api_key_id      TEXT NOT NULL,
+  reset_interval  TEXT NOT NULL,
+  previous_spend  DOUBLE PRECISION NOT NULL DEFAULT 0,
+  reset_at        BIGINT NOT NULL,
+  next_reset_at   BIGINT NOT NULL,
+  period_start    BIGINT NOT NULL,
+  period_end      BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dbrl_key_reset ON domain_budget_reset_logs(api_key_id, reset_at DESC);
+
 CREATE TABLE IF NOT EXISTS domain_cost_history (
   id          BIGSERIAL PRIMARY KEY,
   api_key_id  TEXT NOT NULL,
@@ -331,6 +343,22 @@ CREATE TABLE IF NOT EXISTS semantic_cache (
 );
 CREATE INDEX IF NOT EXISTS idx_sc_sig   ON semantic_cache(signature);
 CREATE INDEX IF NOT EXISTS idx_sc_model ON semantic_cache(model);
+
+CREATE TABLE IF NOT EXISTS prompt_templates (
+  id           BIGSERIAL PRIMARY KEY,
+  slug         TEXT NOT NULL,
+  version      INTEGER NOT NULL DEFAULT 1,
+  content      TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  variables    TEXT,
+  description  TEXT,
+  is_active    INTEGER NOT NULL DEFAULT 1,
+  created_at   TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  UNIQUE(slug, version)
+);
+CREATE INDEX IF NOT EXISTS idx_pt_slug   ON prompt_templates(slug);
+CREATE INDEX IF NOT EXISTS idx_pt_active ON prompt_templates(slug, is_active);
+CREATE INDEX IF NOT EXISTS idx_pt_hash   ON prompt_templates(content_hash);
 
 CREATE TABLE IF NOT EXISTS quota_snapshots (
   id                     BIGSERIAL PRIMARY KEY,
@@ -1355,3 +1383,35 @@ ON CONFLICT (id) DO NOTHING;
 -- Schema version stamp.
 INSERT INTO db_meta (key, value) VALUES ('schema_version', '1')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+-- ── Module-created tables (previously CREATE'd inline at runtime by domainState.ts / prompts.ts) ──
+-- domain_budget_reset_logs: created inline in src/lib/db/domainState.ts (SQLite AUTOINCREMENT → BIGSERIAL)
+CREATE TABLE IF NOT EXISTS domain_budget_reset_logs (
+  id              BIGSERIAL PRIMARY KEY,
+  api_key_id      TEXT NOT NULL,
+  reset_interval  TEXT NOT NULL,
+  previous_spend  DOUBLE PRECISION NOT NULL DEFAULT 0,
+  reset_at        BIGINT NOT NULL,
+  next_reset_at   BIGINT NOT NULL,
+  period_start    BIGINT NOT NULL,
+  period_end      BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dbrl_key_reset
+  ON domain_budget_reset_logs(api_key_id, reset_at DESC);
+
+-- prompt_templates: created inline in src/lib/db/prompts.ts (SQLite AUTOINCREMENT → BIGSERIAL, datetime('now') → to_char)
+CREATE TABLE IF NOT EXISTS prompt_templates (
+  id            BIGSERIAL PRIMARY KEY,
+  slug          TEXT NOT NULL,
+  version       INTEGER NOT NULL DEFAULT 1,
+  content       TEXT NOT NULL,
+  content_hash  TEXT NOT NULL,
+  variables     TEXT,
+  description   TEXT,
+  is_active     INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  UNIQUE(slug, version)
+);
+CREATE INDEX IF NOT EXISTS idx_pt_slug ON prompt_templates(slug);
+CREATE INDEX IF NOT EXISTS idx_pt_active ON prompt_templates(slug, is_active);
+CREATE INDEX IF NOT EXISTS idx_pt_hash ON prompt_templates(content_hash);
