@@ -135,7 +135,7 @@ function buildPgAdapter(): DbLike {
       const insertSql = appendReturningId(positional);
       return {
         async run(...params: unknown[]): Promise<RunResult> {
-          const flat = flattenParams(params);
+          const flat = flattenParams(params, sql);
           if (insertSql) {
             try {
               const result = await query(insertSql, flat);
@@ -155,12 +155,12 @@ function buildPgAdapter(): DbLike {
           };
         },
         async get<T = Row>(...params: unknown[]): Promise<T | undefined> {
-          const flat = flattenParams(params);
+          const flat = flattenParams(params, sql);
           const result = await query(positional, flat);
           return result.rows[0] as T | undefined;
         },
         async all<T = Row>(...params: unknown[]): Promise<T[]> {
-          const flat = flattenParams(params);
+          const flat = flattenParams(params, sql);
           const result = await query(positional, flat);
           return result.rows as T[];
         },
@@ -237,18 +237,32 @@ function isUndefinedColumn(err: unknown): boolean {
   );
 }
 
-function flattenParams(params: unknown[]): unknown[] {
+function extractNameOrder(sql: string): string[] {
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const [, name] of sql.matchAll(/@([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    if (!seen.has(name)) {
+      seen.add(name);
+      order.push(name);
+    }
+  }
+  return order;
+}
+
+function flattenParams(params: unknown[], sql: string): unknown[] {
   if (params.length === 0) return [];
-  // Single object → treat as named-binding map; flatten into array of values
-  // in the order the keys appeared. Best-effort fallback when callers haven't
-  // been migrated.
   if (
     params.length === 1 &&
     params[0] !== null &&
     typeof params[0] === "object" &&
     !Array.isArray(params[0])
   ) {
-    return Object.values(params[0] as Record<string, unknown>);
+    const obj = params[0] as Record<string, unknown>;
+    const nameOrder = extractNameOrder(sql);
+    if (nameOrder.length > 0) {
+      return nameOrder.map((k) => obj[k]);
+    }
+    return Object.values(obj);
   }
   return params;
 }
