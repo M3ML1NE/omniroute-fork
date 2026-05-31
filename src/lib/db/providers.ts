@@ -3,7 +3,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { getDbInstance, rowToCamel, cleanNulls } from "./core";
+import { getDbInstance, rowToCamel, cleanNulls, withTransaction, DbLike } from "./core";
 import { backupDbFile } from "./backup";
 import {
   encryptConnectionFields,
@@ -14,16 +14,6 @@ import { invalidateDbCache } from "./readCache";
 import { normalizeProviderSpecificData } from "@/lib/providers/requestDefaults";
 
 type JsonRecord = Record<string, unknown>;
-
-interface StatementLike<TRow = unknown> {
-  all: (...params: unknown[]) => TRow[];
-  get: (...params: unknown[]) => TRow | undefined;
-  run: (...params: unknown[]) => { changes?: number };
-}
-
-interface DbLike {
-  prepare: <TRow = unknown>(sql: string) => StatementLike<TRow>;
-}
 
 function withNullableMaxConcurrent(
   record: JsonRecord,
@@ -101,7 +91,7 @@ function toNumberOrZero(value: unknown): number {
 // ──────────────── Provider Connections ────────────────
 
 export async function getProviderConnections(filter: JsonRecord = {}) {
-  const db = getDbInstance() as unknown as DbLike;
+  const db = getDbInstance();
   let sql = "SELECT * FROM provider_connections";
   const conditions: string[] = [];
   const params: Record<string, unknown> = {};
@@ -120,7 +110,7 @@ export async function getProviderConnections(filter: JsonRecord = {}) {
   }
   sql += " ORDER BY priority ASC, updated_at DESC";
 
-  const rows = db.prepare(sql).all(params);
+  const rows = await db.prepare(sql).all(params);
   return rows.map((r) => {
     const camelRow = rowToCamel(r);
     return decryptConnectionFields(
@@ -133,8 +123,8 @@ export async function getProviderConnections(filter: JsonRecord = {}) {
 }
 
 export async function getProviderConnectionById(id: string) {
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db.prepare("SELECT * FROM provider_connections WHERE id = ?").get(id);
+  const db = getDbInstance();
+  const row = await db.prepare("SELECT * FROM provider_connections WHERE id = ?").get(id);
   if (!row) return null;
 
   const camelRow = rowToCamel(row);
@@ -147,7 +137,7 @@ export async function getProviderConnectionById(id: string) {
 }
 
 export async function createProviderConnection(data: JsonRecord) {
-  const db = getDbInstance() as unknown as DbLike;
+  const db = getDbInstance();
   const now = new Date().toISOString();
   const normalizedProviderSpecificData = normalizeProviderSpecificData(
     toStringOrNull(data.provider),
@@ -168,40 +158,40 @@ export async function createProviderConnection(data: JsonRecord) {
       // A single workspace can have multiple users (Team/Business plans)
       // We need both workspace + email uniqueness to allow multiple accounts
       existing =
-        (db
+        ((await db
           .prepare(
             "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND email = ?"
           )
-          .get(data.provider, workspaceId, data.email) as JsonRecord | undefined) || null;
+          .get(data.provider, workspaceId, data.email)) as JsonRecord | undefined) || null;
 
       // If no match with workspace+email, also check workspace-only for backward compat
       // (old connections without email should still be updated, not duplicated)
       if (!existing) {
         existing =
-          (db
+          ((await db
             .prepare(
               "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND (email IS NULL OR email = '')"
             )
-            .get(data.provider, workspaceId) as JsonRecord | undefined) || null;
+            .get(data.provider, workspaceId)) as JsonRecord | undefined) || null;
       }
       // For Codex with workspaceId, don't fall back to email-only check
       // This allows creating new connections for different workspaces
     } else {
       // For other providers (or Codex without workspaceId), use email check
       existing =
-        (db
+        ((await db
           .prepare(
             "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND email = ?"
           )
-          .get(data.provider, data.email) as JsonRecord | undefined) || null;
+          .get(data.provider, data.email)) as JsonRecord | undefined) || null;
     }
   } else if (data.authType === "apikey" && data.name) {
     existing =
-      (db
+      ((await db
         .prepare(
           "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'apikey' AND name = ?"
         )
-        .get(data.provider, data.name) as JsonRecord | undefined) || null;
+        .get(data.provider, data.name)) as JsonRecord | undefined) || null;
   }
 
   if (existing) {
@@ -212,7 +202,7 @@ export async function createProviderConnection(data: JsonRecord) {
       toStringOrNull(merged.provider),
       merged.providerSpecificData
     );
-    _updateConnectionRow(db, existingId, merged);
+    await _updateConnectionRow(existingId, merged);
     backupDbFile("pre-write");
     return withNullableQuotaWindowThresholds(
       withNullableMaxConcurrent(cleanNulls(merged), merged),
@@ -235,9 +225,9 @@ export async function createProviderConnection(data: JsonRecord) {
   // Auto-increment priority
   let connectionPriority = data.priority;
   if (!connectionPriority) {
-    const max = db
+    const max = (await db
       .prepare("SELECT MAX(priority) as maxP FROM provider_connections WHERE provider = ?")
-      .get(data.provider) as JsonRecord | undefined;
+      .get(data.provider)) as JsonRecord | undefined;
     const maxPriority = toNumberOrZero(toRecord(max).maxP);
     connectionPriority = maxPriority + 1;
   }
@@ -301,10 +291,10 @@ export async function createProviderConnection(data: JsonRecord) {
     );
   }
 
-  _insertConnectionRow(db, encryptConnectionFields({ ...connection }));
+  await _insertConnectionRow(encryptConnectionFields({ ...connection }));
   const providerId = toStringOrNull(data.provider);
   if (providerId) {
-    _reorderConnections(db, providerId);
+    await _reorderConnections(providerId);
   }
   backupDbFile("pre-write");
   invalidateDbCache("connections"); // Bust connections read cache
@@ -315,8 +305,9 @@ export async function createProviderConnection(data: JsonRecord) {
   );
 }
 
-function _insertConnectionRow(db: DbLike, conn: JsonRecord) {
-  db.prepare(
+async function _insertConnectionRow(conn: JsonRecord) {
+  const db = getDbInstance();
+  await db.prepare(
     `
     INSERT INTO provider_connections (
       id, provider, auth_type, name, email, priority, is_active,
@@ -389,9 +380,10 @@ function _insertConnectionRow(db: DbLike, conn: JsonRecord) {
   });
 }
 
-function _updateConnectionRow(db: DbLike, id: string, data: JsonRecord) {
+async function _updateConnectionRow(id: string, data: JsonRecord) {
+  const db = getDbInstance();
   const now = data.updatedAt || new Date().toISOString();
-  db.prepare(
+  await db.prepare(
     `
     UPDATE provider_connections SET
       provider = @provider, auth_type = @authType, name = @name, email = @email,
@@ -461,8 +453,8 @@ function _updateConnectionRow(db: DbLike, id: string, data: JsonRecord) {
 }
 
 export async function updateProviderConnection(id: string, data: JsonRecord) {
-  const db = getDbInstance() as unknown as DbLike;
-  const existing = db.prepare("SELECT * FROM provider_connections WHERE id = ?").get(id);
+  const db = getDbInstance();
+  const existing = await db.prepare("SELECT * FROM provider_connections WHERE id = ?").get(id);
   if (!existing) return null;
 
   const merged: JsonRecord = {
@@ -482,7 +474,7 @@ export async function updateProviderConnection(id: string, data: JsonRecord) {
     // path surfaces the cleared state to callers that just patched it.
     merged.quotaWindowThresholds = sanitized;
   }
-  _updateConnectionRow(db, id, encryptConnectionFields({ ...merged }));
+  await _updateConnectionRow(id, encryptConnectionFields({ ...merged }));
   backupDbFile("pre-write");
   invalidateDbCache("connections"); // Bust connections read cache
 
@@ -492,7 +484,7 @@ export async function updateProviderConnection(id: string, data: JsonRecord) {
       typeof existingRecord.provider === "string"
         ? existingRecord.provider
         : String(existingRecord.provider || "");
-    _reorderConnections(db, providerId);
+    await _reorderConnections(providerId);
   }
 
   return withNullableQuotaWindowThresholds(
@@ -502,18 +494,20 @@ export async function updateProviderConnection(id: string, data: JsonRecord) {
 }
 
 export async function deleteProviderConnection(id: string) {
-  const db = getDbInstance() as unknown as DbLike;
-  const existing = db.prepare("SELECT provider FROM provider_connections WHERE id = ?").get(id);
+  const db = getDbInstance();
+  const existing = await db
+    .prepare("SELECT provider FROM provider_connections WHERE id = ?")
+    .get(id);
   if (!existing) return false;
 
-  db.prepare("DELETE FROM quota_snapshots WHERE connection_id = ?").run(id);
-  db.prepare("DELETE FROM provider_connections WHERE id = ?").run(id);
+  await db.prepare("DELETE FROM quota_snapshots WHERE connection_id = ?").run(id);
+  await db.prepare("DELETE FROM provider_connections WHERE id = ?").run(id);
   const existingRecord = toRecord(existing);
   const providerId =
     typeof existingRecord.provider === "string"
       ? existingRecord.provider
       : String(existingRecord.provider || "");
-  _reorderConnections(db, providerId);
+  await _reorderConnections(providerId);
   backupDbFile("pre-write");
   invalidateDbCache("connections"); // Bust connections read cache
   return true;
@@ -521,16 +515,19 @@ export async function deleteProviderConnection(id: string) {
 
 export async function deleteProviderConnections(ids: string[]): Promise<number> {
   if (ids.length === 0) return 0;
-  const db = getDbInstance();
 
-  const deletedCount = db.transaction(() => {
-    const placeholders = ids.map(() => "?").join(",");
-    db.prepare(`DELETE FROM quota_snapshots WHERE connection_id IN (${placeholders})`).run(...ids);
-    const result = db
-      .prepare(`DELETE FROM provider_connections WHERE id IN (${placeholders})`)
-      .run(...ids);
-    return result.changes ?? 0;
-  })();
+  const deletedCount = await withTransaction(async (client) => {
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
+    await client.query(
+      `DELETE FROM quota_snapshots WHERE connection_id IN (${placeholders})`,
+      ids
+    );
+    const result = await client.query(
+      `DELETE FROM provider_connections WHERE id IN (${placeholders})`,
+      ids
+    );
+    return result.rowCount ?? 0;
+  });
 
   backupDbFile("pre-write");
   invalidateDbCache("connections");
@@ -538,10 +535,11 @@ export async function deleteProviderConnections(ids: string[]): Promise<number> 
 }
 
 export async function deleteProviderConnectionsByProvider(providerId: string) {
-  const db = getDbInstance() as unknown as DbLike;
-  const connectionIds = db
+  const db = getDbInstance();
+  const rows = await db
     .prepare("SELECT id FROM provider_connections WHERE provider = ?")
-    .all(providerId)
+    .all(providerId);
+  const connectionIds = rows
     .map((row) => {
       const record = toRecord(row);
       return typeof record.id === "string" ? record.id : null;
@@ -551,32 +549,34 @@ export async function deleteProviderConnectionsByProvider(providerId: string) {
   if (connectionIds.length > 0) {
     const deleteSnapshots = db.prepare("DELETE FROM quota_snapshots WHERE connection_id = ?");
     for (const connectionId of connectionIds) {
-      deleteSnapshots.run(connectionId);
+      await deleteSnapshots.run(connectionId);
     }
   }
 
-  const result = db.prepare("DELETE FROM provider_connections WHERE provider = ?").run(providerId);
+  const result = await db
+    .prepare("DELETE FROM provider_connections WHERE provider = ?")
+    .run(providerId);
   backupDbFile("pre-write");
   return result.changes;
 }
 
 export async function reorderProviderConnections(providerId: string) {
-  const db = getDbInstance() as unknown as DbLike;
-  _reorderConnections(db, providerId);
+  await _reorderConnections(providerId);
 }
 
-function _reorderConnections(db: DbLike, providerId: string) {
-  const rows = db
+async function _reorderConnections(providerId: string) {
+  const db = getDbInstance();
+  const rows = await db
     .prepare(
       "SELECT id, priority, updated_at FROM provider_connections WHERE provider = ? ORDER BY priority ASC, updated_at DESC"
     )
     .all(providerId);
 
   const update = db.prepare("UPDATE provider_connections SET priority = ? WHERE id = ?");
-  rows.forEach((row, index) => {
-    const current = toRecord(row);
-    update.run(index + 1, current.id);
-  });
+  for (let index = 0; index < rows.length; index++) {
+    const current = toRecord(rows[index]);
+    await update.run(index + 1, current.id);
+  }
 }
 
 export async function cleanupProviderConnections() {
@@ -584,12 +584,12 @@ export async function cleanupProviderConnections() {
 }
 
 export async function getDistinctGroups(): Promise<string[]> {
-  const db = getDbInstance() as unknown as DbLike;
-  const rows = db
+  const db = getDbInstance();
+  const rows = (await db
     .prepare(
       'SELECT DISTINCT "group" FROM provider_connections WHERE "group" IS NOT NULL ORDER BY "group"'
     )
-    .all() as Array<{ group?: string }>;
+    .all()) as Array<{ group?: string }>;
   return rows.map((r) => String(r.group ?? "")).filter(Boolean);
 }
 
@@ -599,9 +599,9 @@ export async function getDistinctGroups(): Promise<string[]> {
  * Scans all connections and re-encrypts any fields using the old dynamic salt
  * so they use the new canonical static salt.
  */
-export function autoMigrateLegacyEncryptedConnections(): number {
-  const db = getDbInstance() as unknown as DbLike;
-  const rows = db.prepare("SELECT * FROM provider_connections").all();
+export async function autoMigrateLegacyEncryptedConnections(): Promise<number> {
+  const db = getDbInstance();
+  const rows = await db.prepare("SELECT * FROM provider_connections").all();
   let migratedCount = 0;
 
   for (const row of rows) {
@@ -631,7 +631,7 @@ export function autoMigrateLegacyEncryptedConnections(): number {
       // `encryptConnectionFields` in `_updateConnectionRow` will encrypt it AGAIN!
       // Let's modify the DB directly so we don't double encrypt.
 
-      db.prepare(
+      await db.prepare(
         "UPDATE provider_connections SET api_key = @apiKey, id_token = @idToken, access_token = @accessToken, refresh_token = @refreshToken, updated_at = @updatedAt WHERE id = @id"
       ).run({
         id: camelRow.id,
@@ -657,7 +657,7 @@ export function autoMigrateLegacyEncryptedConnections(): number {
 // ──────────────── Provider Nodes ────────────────
 
 export async function getProviderNodes(filter: JsonRecord = {}) {
-  const db = getDbInstance() as unknown as DbLike;
+  const db = getDbInstance();
   let sql = "SELECT * FROM provider_nodes";
   const params: Record<string, unknown> = {};
 
@@ -666,17 +666,17 @@ export async function getProviderNodes(filter: JsonRecord = {}) {
     params.type = filter.type;
   }
 
-  return db.prepare(sql).all(params).map(rowToCamel);
+  return (await db.prepare(sql).all(params)).map(rowToCamel);
 }
 
 export async function getProviderNodeById(id: string) {
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
+  const db = getDbInstance();
+  const row = await db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
   return row ? rowToCamel(row) : null;
 }
 
 export async function createProviderNode(data: JsonRecord) {
-  const db = getDbInstance() as unknown as DbLike;
+  const db = getDbInstance();
   const now = new Date().toISOString();
 
   const node = {
@@ -692,7 +692,7 @@ export async function createProviderNode(data: JsonRecord) {
     updatedAt: now,
   };
 
-  db.prepare(
+  await db.prepare(
     `
     INSERT INTO provider_nodes (id, type, name, prefix, api_type, base_url, chat_path, models_path, created_at, updated_at)
     VALUES (@id, @type, @name, @prefix, @apiType, @baseUrl, @chatPath, @modelsPath, @createdAt, @updatedAt)
@@ -704,8 +704,8 @@ export async function createProviderNode(data: JsonRecord) {
 }
 
 export async function updateProviderNode(id: string, data: JsonRecord) {
-  const db = getDbInstance() as unknown as DbLike;
-  const existing = db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
+  const db = getDbInstance();
+  const existing = await db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
   if (!existing) return null;
 
   const merged: JsonRecord = {
@@ -714,7 +714,7 @@ export async function updateProviderNode(id: string, data: JsonRecord) {
     updatedAt: new Date().toISOString(),
   };
 
-  db.prepare(
+  await db.prepare(
     `
     UPDATE provider_nodes SET type = @type, name = @name, prefix = @prefix,
     api_type = @apiType, base_url = @baseUrl, chat_path = @chatPath,
@@ -738,11 +738,11 @@ export async function updateProviderNode(id: string, data: JsonRecord) {
 }
 
 export async function deleteProviderNode(id: string) {
-  const db = getDbInstance() as unknown as DbLike;
-  const existing = db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
+  const db = getDbInstance();
+  const existing = await db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
   if (!existing) return null;
 
-  db.prepare("DELETE FROM provider_nodes WHERE id = ?").run(id);
+  await db.prepare("DELETE FROM provider_nodes WHERE id = ?").run(id);
   backupDbFile("pre-write");
   return rowToCamel(existing);
 }
@@ -759,9 +759,9 @@ export async function deleteProviderNode(id: string) {
  * @param connectionId - The provider_connections.id
  * @param until - Epoch ms when the rate limit expires (null to clear)
  */
-export function setConnectionRateLimitUntil(connectionId: string, until: number | null): void {
-  const db = getDbInstance() as unknown as DbLike;
-  db.prepare(
+export async function setConnectionRateLimitUntil(connectionId: string, until: number | null): Promise<void> {
+  const db = getDbInstance();
+  await db.prepare(
     "UPDATE provider_connections SET rate_limited_until = ?, updated_at = ? WHERE id = ?"
   ).run(until, new Date().toISOString(), connectionId);
   invalidateDbCache("connections");
@@ -773,11 +773,11 @@ export function setConnectionRateLimitUntil(connectionId: string, until: number 
  *
  * @returns true if rate_limited_until is set and in the future
  */
-export function isConnectionRateLimited(connectionId: string): boolean {
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db
+export async function isConnectionRateLimited(connectionId: string): Promise<boolean> {
+  const db = getDbInstance();
+  const row = (await db
     .prepare("SELECT rate_limited_until FROM provider_connections WHERE id = ?")
-    .get(connectionId) as { rate_limited_until?: number | null } | undefined;
+    .get(connectionId)) as { rate_limited_until?: number | null } | undefined;
   if (!row?.rate_limited_until) return false;
   return Date.now() < row.rate_limited_until;
 }
@@ -786,16 +786,16 @@ export function isConnectionRateLimited(connectionId: string): boolean {
  * T05: Get all connections for a provider that are currently rate-limited.
  * Returns an array of { id, rateLimitedUntil } for dashboard display.
  */
-export function getRateLimitedConnections(
+export async function getRateLimitedConnections(
   provider: string
-): Array<{ id: string; rateLimitedUntil: number }> {
-  const db = getDbInstance() as unknown as DbLike;
+): Promise<Array<{ id: string; rateLimitedUntil: number }>> {
+  const db = getDbInstance();
   const now = Date.now();
-  const rows = db
+  const rows = (await db
     .prepare(
       "SELECT id, rate_limited_until FROM provider_connections WHERE provider = ? AND rate_limited_until > ?"
     )
-    .all(provider, now) as Array<{ id: string; rate_limited_until: number }>;
+    .all(provider, now)) as Array<{ id: string; rate_limited_until: number }>;
   return rows.map((r) => ({ id: r.id, rateLimitedUntil: r.rate_limited_until }));
 }
 
