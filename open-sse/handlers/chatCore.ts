@@ -2176,7 +2176,7 @@ export async function handleChatCore({
       body.temperature,
       body.top_p
     );
-    const cached = getCachedResponse(signature);
+    const cached = await getCachedResponse(signature);
     if (cached) {
       log?.debug?.("CACHE", `Semantic cache HIT for ${model} (stream=${stream})`);
       reqLogger.logConvertedResponse(cached as Record<string, unknown>);
@@ -5158,7 +5158,7 @@ export async function handleChatCore({
         body.top_p
       );
       const tokensSaved = usage?.prompt_tokens + usage?.completion_tokens || 0;
-      setCachedResponse(signature, model, translatedResponse, tokensSaved);
+      void setCachedResponse(signature, model, translatedResponse, tokensSaved);
       log?.debug?.("CACHE", `Stored response for ${model} (${tokensSaved} tokens)`);
     }
 
@@ -5430,7 +5430,7 @@ export async function handleChatCore({
         const u = streamUsage as Record<string, unknown> | null;
         const tokensSaved =
           (Number(u?.prompt_tokens ?? 0) || 0) + (Number(u?.completion_tokens ?? 0) || 0);
-        setCachedResponse(sig, model, cleanBody, tokensSaved);
+        void setCachedResponse(sig, model, cleanBody, tokensSaved);
         log?.debug?.("CACHE", `Stored streaming response for ${model} (${tokensSaved} tokens)`);
       } catch {
         // Cache write failed — non-critical

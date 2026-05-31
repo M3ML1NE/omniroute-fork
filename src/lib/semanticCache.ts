@@ -4,7 +4,7 @@
  * Caches LLM responses (temperature=0) to reduce cost and latency.
  * Supports both streaming and non-streaming requests: streaming responses
  * are cached after assembly; cache hits always return JSON.
- * Two-tier: in-memory LRU (fast) + SQLite (persistent across restarts).
+ * Two-tier: in-memory LRU (fast) + Postgres (persistent across restarts).
  *
  * Cache key = SHA-256(model + normalized messages + temperature + top_p)
  * Bypass: X-OmniRoute-No-Cache: true
@@ -31,39 +31,44 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function ensureCacheMetricsTable() {
+async function ensureCacheMetricsTable() {
   try {
     const db = getDbInstance();
-    db.prepare(
-      `CREATE TABLE IF NOT EXISTS cache_metrics (
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS cache_metrics (
         key TEXT PRIMARY KEY,
         value INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`
-    ).run();
-    db.prepare(
-      `INSERT OR IGNORE INTO cache_metrics (key, value) VALUES ('hits', 0), ('misses', 0), ('tokens_saved', 0)`
-    ).run();
+      )
+      .run();
+    await db
+      .prepare(
+        `INSERT INTO cache_metrics (key, value) VALUES ('hits', 0), ('misses', 0), ('tokens_saved', 0)
+         ON CONFLICT (key) DO NOTHING`
+      )
+      .run();
   } catch {
     // DB not available
   }
 }
 
-function incrementMetric(metric: "hits" | "misses" | "tokens_saved", amount = 1) {
+async function incrementMetric(metric: "hits" | "misses" | "tokens_saved", amount = 1) {
   try {
     const db = getDbInstance();
-    db.prepare(
-      `UPDATE cache_metrics SET value = value + ?, updated_at = datetime('now') WHERE key = ?`
-    ).run(amount, metric);
+    await db
+      .prepare(`UPDATE cache_metrics SET value = value + ?, updated_at = NOW() WHERE key = ?`)
+      .run(amount, metric);
   } catch {
     // DB not available — fall back to in-memory
   }
 }
 
-function getMetricValue(metric: string): number {
+async function getMetricValue(metric: string): Promise<number> {
   try {
     const db = getDbInstance();
-    const row = db.prepare(`SELECT value FROM cache_metrics WHERE key = ?`).get(metric);
+    const row = await db.prepare(`SELECT value FROM cache_metrics WHERE key = ?`).get(metric);
     return row ? toNumber(asRecord(row).value, 0) : 0;
   } catch {
     return 0;
@@ -100,7 +105,7 @@ function getMemoryCache() {
       maxBytes: parseInt(process.env.SEMANTIC_CACHE_MAX_BYTES || String(2 * 1024 * 1024), 10),
       defaultTTL: parseInt(process.env.SEMANTIC_CACHE_TTL_MS || "1800000", 10),
     });
-    ensureCacheMetricsTable();
+    void ensureCacheMetricsTable();
   }
   return memoryCache;
 }
@@ -154,25 +159,25 @@ function normalizeConversation(conversation: unknown) {
 
 /**
  * Check if a cached response exists for the given signature.
- * Checks memory first, then SQLite.
+ * Checks memory first, then Postgres.
  * @param {string} signature
  * @returns {object|null} Cached response or null
  */
-export function getCachedResponse(signature) {
+export async function getCachedResponse(signature): Promise<unknown> {
   // 1. Check memory cache
   const memResult = getMemoryCache().get(signature);
   if (memResult) {
-    incrementMetric("hits");
-    incrementMetric("tokens_saved", memResult.tokensSaved || 0);
+    void incrementMetric("hits");
+    void incrementMetric("tokens_saved", memResult.tokensSaved || 0);
     return memResult.response;
   }
 
-  // 2. Check SQLite
+  // 2. Check Postgres
   try {
     const db = getDbInstance();
-    const row = db
+    const row = await db
       .prepare(
-        "SELECT response, tokens_saved FROM semantic_cache WHERE signature = ? AND expires_at > datetime('now')"
+        "SELECT response, tokens_saved FROM semantic_cache WHERE signature = ? AND expires_at > NOW()"
       )
       .get(signature);
 
@@ -180,7 +185,7 @@ export function getCachedResponse(signature) {
       const record = asRecord(row);
       const responsePayload = typeof record.response === "string" ? record.response : null;
       if (!responsePayload) {
-        incrementMetric("misses");
+        void incrementMetric("misses");
         return null;
       }
       const parsed = JSON.parse(responsePayload);
@@ -191,19 +196,19 @@ export function getCachedResponse(signature) {
         tokensSaved,
       });
       // Update hit count in DB
-      db.prepare("UPDATE semantic_cache SET hit_count = hit_count + 1 WHERE signature = ?").run(
-        signature
-      );
+      await db
+        .prepare("UPDATE semantic_cache SET hit_count = hit_count + 1 WHERE signature = ?")
+        .run(signature);
 
-      incrementMetric("hits");
-      incrementMetric("tokens_saved", tokensSaved);
+      void incrementMetric("hits");
+      void incrementMetric("tokens_saved", tokensSaved);
       return parsed;
     }
   } catch {
     // DB not available — fail open
   }
 
-  incrementMetric("misses");
+  void incrementMetric("misses");
   return null;
 }
 
@@ -215,13 +220,19 @@ export function getCachedResponse(signature) {
  * @param {number} tokensSaved - Estimated tokens saved
  * @param {number} [ttlMs] - TTL in ms (default: 1 hour)
  */
-export function setCachedResponse(signature, model, response, tokensSaved = 0, ttlMs = 3600000) {
+export async function setCachedResponse(
+  signature,
+  model,
+  response,
+  tokensSaved = 0,
+  ttlMs = 3600000
+): Promise<void> {
   const ttl = parseInt(process.env.SEMANTIC_CACHE_TTL_MS || String(ttlMs), 10);
 
   // 1. Memory cache
   getMemoryCache().set(signature, { response, tokensSaved }, ttl);
 
-  // 2. SQLite
+  // 2. Postgres
   try {
     const db = getDbInstance();
     const id = crypto.randomUUID();
@@ -229,10 +240,20 @@ export function setCachedResponse(signature, model, response, tokensSaved = 0, t
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + ttl).toISOString();
 
-    db.prepare(
-      `INSERT OR REPLACE INTO semantic_cache (id, signature, model, prompt_hash, response, tokens_saved, hit_count, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`
-    ).run(id, signature, model, promptHash, JSON.stringify(response), tokensSaved, now, expiresAt);
+    await db
+      .prepare(
+        `INSERT INTO semantic_cache (id, signature, model, prompt_hash, response, tokens_saved, hit_count, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+         ON CONFLICT (signature) DO UPDATE SET
+           model = EXCLUDED.model,
+           prompt_hash = EXCLUDED.prompt_hash,
+           response = EXCLUDED.response,
+           tokens_saved = EXCLUDED.tokens_saved,
+           hit_count = 0,
+           created_at = EXCLUDED.created_at,
+           expires_at = EXCLUDED.expires_at`
+      )
+      .run(id, signature, model, promptHash, JSON.stringify(response), tokensSaved, now, expiresAt);
   } catch {
     // DB write failed — cache still in memory
   }
@@ -241,14 +262,14 @@ export function setCachedResponse(signature, model, response, tokensSaved = 0, t
 // ─── Maintenance ─────────────────
 
 /**
- * Remove expired entries from SQLite.
+ * Remove expired entries from Postgres.
  * @returns {number} Number of entries removed
  */
-export function cleanExpiredEntries() {
+export async function cleanExpiredEntries(): Promise<number> {
   try {
     const db = getDbInstance();
-    const result = db
-      .prepare("DELETE FROM semantic_cache WHERE expires_at <= datetime('now')")
+    const result = await db
+      .prepare("DELETE FROM semantic_cache WHERE expires_at <= NOW()")
       .run();
     return result.changes;
   } catch {
@@ -262,11 +283,13 @@ export function cleanExpiredEntries() {
  * @param {string} model - Model name to invalidate (exact match)
  * @returns {number} Number of entries removed
  */
-export function invalidateByModel(model: string): number {
+export async function invalidateByModel(model: string): Promise<number> {
   getMemoryCache().clear(); // Memory cache doesn't track model; full clear
   try {
     const db = getDbInstance();
-    const result = db.prepare("DELETE FROM semantic_cache WHERE model = ?").run(model);
+    const result = await db
+      .prepare("DELETE FROM semantic_cache WHERE model = ?")
+      .run(model);
     return result.changes || 0;
   } catch {
     return 0;
@@ -278,11 +301,13 @@ export function invalidateByModel(model: string): number {
  * @param {string} signature - Cache signature to invalidate
  * @returns {boolean} Whether the entry was found and removed
  */
-export function invalidateBySignature(signature: string): boolean {
+export async function invalidateBySignature(signature: string): Promise<boolean> {
   getMemoryCache().delete(signature);
   try {
     const db = getDbInstance();
-    const result = db.prepare("DELETE FROM semantic_cache WHERE signature = ?").run(signature);
+    const result = await db
+      .prepare("DELETE FROM semantic_cache WHERE signature = ?")
+      .run(signature);
     return (result.changes || 0) > 0;
   } catch {
     return false;
@@ -294,12 +319,14 @@ export function invalidateBySignature(signature: string): boolean {
  * @param {number} maxAgeMs - Maximum age in milliseconds
  * @returns {number} Number of entries removed
  */
-export function invalidateStale(maxAgeMs: number): number {
+export async function invalidateStale(maxAgeMs: number): Promise<number> {
   getMemoryCache().clear();
   try {
     const db = getDbInstance();
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
-    const result = db.prepare("DELETE FROM semantic_cache WHERE created_at < ?").run(cutoff);
+    const result = await db
+      .prepare("DELETE FROM semantic_cache WHERE created_at < ?")
+      .run(cutoff);
     return result.changes || 0;
   } catch {
     return 0;
@@ -317,10 +344,11 @@ let _cleanupTimer: ReturnType<typeof setInterval> | null = null;
 export function startAutoCleanup(intervalMs = 300_000): void {
   stopAutoCleanup();
   _cleanupTimer = setInterval(() => {
-    const removed = cleanExpiredEntries();
-    if (removed > 0) {
-      console.log(`[SemanticCache] Auto-cleaned ${removed} expired entries`);
-    }
+    void cleanExpiredEntries().then((removed) => {
+      if (removed > 0) {
+        console.log(`[SemanticCache] Auto-cleaned ${removed} expired entries`);
+      }
+    });
   }, intervalMs);
   if (_cleanupTimer && typeof _cleanupTimer === "object" && "unref" in _cleanupTimer) {
     (_cleanupTimer as { unref?: () => void }).unref?.();
@@ -337,11 +365,13 @@ export function stopAutoCleanup(): void {
   }
 }
 
-export function cleanOldMetrics(retentionDays = 90): number {
+export async function cleanOldMetrics(retentionDays = 90): Promise<number> {
   try {
     const db = getDbInstance();
     const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
-    const result = db.prepare("DELETE FROM semantic_cache WHERE created_at < ?").run(cutoff);
+    const result = await db
+      .prepare("DELETE FROM semantic_cache WHERE created_at < ?")
+      .run(cutoff);
     return result.changes || 0;
   } catch {
     return 0;
@@ -351,36 +381,36 @@ export function cleanOldMetrics(retentionDays = 90): number {
 /**
  * Clear all cache entries.
  */
-export function clearCache(): number {
+export async function clearCache(): Promise<number> {
   getMemoryCache().clear();
   let removed = 0;
   try {
     const db = getDbInstance();
-    const result = db.prepare("DELETE FROM semantic_cache").run();
+    const result = await db.prepare("DELETE FROM semantic_cache").run();
     removed = result.changes || 0;
-    db.prepare("UPDATE cache_metrics SET value = 0").run();
+    await db.prepare("UPDATE cache_metrics SET value = 0").run();
   } catch {
     // DB not available
   }
   return removed;
 }
 
-export function getCacheStats() {
+export async function getCacheStats() {
   const memStats = getMemoryCache().getStats();
   let dbSize = 0;
   try {
     const db = getDbInstance();
-    const row = db
-      .prepare("SELECT COUNT(*) as count FROM semantic_cache WHERE expires_at > datetime('now')")
+    const row = await db
+      .prepare("SELECT COUNT(*) as count FROM semantic_cache WHERE expires_at > NOW()")
       .get();
     dbSize = toNumber(asRecord(row).count, 0);
   } catch {
     // DB not available
   }
 
-  const hits = getMetricValue("hits");
-  const misses = getMetricValue("misses");
-  const tokensSaved = getMetricValue("tokens_saved");
+  const hits = await getMetricValue("hits");
+  const misses = await getMetricValue("misses");
+  const tokensSaved = await getMetricValue("tokens_saved");
   const total = hits + misses;
 
   return {

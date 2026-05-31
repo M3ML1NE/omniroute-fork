@@ -201,20 +201,18 @@ export function setQuotaCache(
         (quotaInfo.total > 0
           ? Math.round(((quotaInfo.total - (quotaInfo.used || 0)) / quotaInfo.total) * 100)
           : 0);
-      try {
-        saveQuotaSnapshot({
-          provider,
-          connection_id: connectionId,
-          window_key: windowKey,
-          remaining_percentage: remainingPercentage,
-          is_exhausted: entry.exhausted ? 1 : 0,
-          next_reset_at: quotaInfo.resetAt ?? null,
-          window_duration_ms: entry.windowDurationMs ?? null,
-          raw_data: null,
-        });
-      } catch (error) {
+      void saveQuotaSnapshot({
+        provider,
+        connection_id: connectionId,
+        window_key: windowKey,
+        remaining_percentage: remainingPercentage,
+        is_exhausted: entry.exhausted ? 1 : 0,
+        next_reset_at: quotaInfo.resetAt ?? null,
+        window_duration_ms: entry.windowDurationMs ?? null,
+        raw_data: null,
+      }).catch((error) => {
         console.error("[quotaCache] Failed to save snapshot:", error);
-      }
+      });
     }
   }
 }
@@ -358,7 +356,7 @@ async function backgroundRefreshTick() {
   tickRunning = true;
 
   try {
-    cleanupOldSnapshots();
+    void cleanupOldSnapshots();
     const now = Date.now();
     const pending = [...cache.values()].filter((e) => needsRefresh(e, now));
 

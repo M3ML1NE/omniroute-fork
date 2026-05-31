@@ -1,28 +1,18 @@
 /**
  * Prompt Template Versioning — L-6
  *
- * SQLite-backed prompt template storage with version tracking.
+ * Postgres-backed prompt template storage with version tracking.
  * Each prompt has a unique `slug`, and every save creates a new version
  * (content-addressed via SHA-256 hash). Previous versions are retained
  * for rollback and audit.
+ *
+ * Schema is owned by the baseline migration (prompt_templates table).
  *
  * @module lib/db/prompts
  */
 
 import crypto from "crypto";
-import { getDbInstance } from "./core";
-
-interface StatementLike<TRow = unknown> {
-  all: (...params: unknown[]) => TRow[];
-  get: (...params: unknown[]) => TRow | undefined;
-  run: (...params: unknown[]) => { lastInsertRowid?: number | bigint; changes?: number };
-}
-
-interface DbLike {
-  prepare: <TRow = unknown>(sql: string) => StatementLike<TRow>;
-  exec: (sql: string) => void;
-  transaction: (fn: () => void) => () => void;
-}
+import { getDbInstance, withTransaction } from "./core";
 
 interface PromptRow {
   id: unknown;
@@ -67,39 +57,6 @@ function parseVariables(value: unknown): string[] | null {
   }
 }
 
-// ── Schema (auto-created on first access) ──
-
-const PROMPT_SCHEMA = `
-  CREATE TABLE IF NOT EXISTS prompt_templates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    slug TEXT NOT NULL,
-    version INTEGER NOT NULL DEFAULT 1,
-    content TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    variables TEXT,
-    description TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(slug, version)
-  );
-  CREATE INDEX IF NOT EXISTS idx_pt_slug ON prompt_templates(slug);
-  CREATE INDEX IF NOT EXISTS idx_pt_active ON prompt_templates(slug, is_active);
-  CREATE INDEX IF NOT EXISTS idx_pt_hash ON prompt_templates(content_hash);
-`;
-
-let _initialized = false;
-
-function ensureSchema(): void {
-  if (_initialized) return;
-  try {
-    const db = getDbInstance() as unknown as DbLike;
-    db.exec(PROMPT_SCHEMA);
-    _initialized = true;
-  } catch {
-    // Schema creation is best-effort during build phase
-  }
-}
-
 function hashContent(content: string): string {
   return crypto.createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
@@ -123,121 +80,132 @@ export interface PromptTemplate {
  * has changed, a new version is created. If content is identical,
  * returns the existing version without duplicating.
  */
-export function savePrompt(
+export async function savePrompt(
   slug: string,
   content: string,
   options: { variables?: string[]; description?: string } = {}
-): PromptTemplate {
-  ensureSchema();
-  const db = getDbInstance() as unknown as DbLike;
+): Promise<PromptTemplate> {
+  const db = getDbInstance();
   const hash = hashContent(content);
 
   // Check if identical content already exists for this slug
-  const existing = db
-    .prepare<PromptRow>("SELECT * FROM prompt_templates WHERE slug = ? AND content_hash = ?")
-    .get(slug, hash);
+  const existing = (await db
+    .prepare(
+      "SELECT * FROM prompt_templates WHERE slug = ? AND content_hash = ?"
+    )
+    .get(slug, hash)) as PromptRow | undefined;
+
 
   if (existing) {
     return rowToPrompt(existing);
   }
 
-  // Deactivate previous active version
-  db.prepare("UPDATE prompt_templates SET is_active = 0 WHERE slug = ? AND is_active = 1").run(
-    slug
-  );
-
-  // Get next version number
-  const maxVersion = db
-    .prepare<{
-      max_v: unknown;
-    }>("SELECT MAX(version) as max_v FROM prompt_templates WHERE slug = ?")
-    .get(slug);
-  const nextVersion = toNumber(maxVersion?.max_v, 0) + 1;
-
-  // Insert new version
-  const result = db
-    .prepare(
-      `INSERT INTO prompt_templates (slug, version, content, content_hash, variables, description, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`
-    )
-    .run(
-      slug,
-      nextVersion,
-      content,
-      hash,
-      options.variables ? JSON.stringify(options.variables) : null,
-      options.description || null
+  return withTransaction(async (client) => {
+    // Deactivate previous active version
+    await client.query(
+      "UPDATE prompt_templates SET is_active = 0 WHERE slug = $1 AND is_active = 1",
+      [slug]
     );
 
-  return {
-    id: toNumber(result.lastInsertRowid, 0),
-    slug,
-    version: nextVersion,
-    content,
-    contentHash: hash,
-    variables: options.variables || null,
-    description: options.description || null,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  };
+    // Get next version number
+    const maxRes = await client.query<{ max_v: string | null }>(
+      "SELECT MAX(version) as max_v FROM prompt_templates WHERE slug = $1",
+      [slug]
+    );
+    const nextVersion = toNumber(maxRes.rows[0]?.max_v, 0) + 1;
+
+    // Insert new version
+    const insertRes = await client.query<{ id: unknown }>(
+      `INSERT INTO prompt_templates (slug, version, content, content_hash, variables, description, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       RETURNING id`,
+      [
+        slug,
+        nextVersion,
+        content,
+        hash,
+        options.variables ? JSON.stringify(options.variables) : null,
+        options.description || null,
+      ]
+    );
+
+    return {
+      id: toNumber(insertRes.rows[0]?.id, 0),
+      slug,
+      version: nextVersion,
+      content,
+      contentHash: hash,
+      variables: options.variables || null,
+      description: options.description || null,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+  });
 }
 
 /**
  * Get the active (latest) version of a prompt by slug.
  */
-export function getActivePrompt(slug: string): PromptTemplate | null {
-  ensureSchema();
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db
-    .prepare<PromptRow>("SELECT * FROM prompt_templates WHERE slug = ? AND is_active = 1")
-    .get(slug);
+export async function getActivePrompt(slug: string): Promise<PromptTemplate | null> {
+  const db = getDbInstance();
+  const row = (await db
+    .prepare(
+      "SELECT * FROM prompt_templates WHERE slug = ? AND is_active = 1"
+    )
+    .get(slug)) as PromptRow | undefined;
   return row ? rowToPrompt(row) : null;
 }
 
 /**
  * Get a specific version of a prompt.
  */
-export function getPromptVersion(slug: string, version: number): PromptTemplate | null {
-  ensureSchema();
-  const db = getDbInstance() as unknown as DbLike;
-  const row = db
-    .prepare<PromptRow>("SELECT * FROM prompt_templates WHERE slug = ? AND version = ?")
-    .get(slug, version);
+export async function getPromptVersion(
+  slug: string,
+  version: number
+): Promise<PromptTemplate | null> {
+  const db = getDbInstance();
+  const row = (await db
+    .prepare(
+      "SELECT * FROM prompt_templates WHERE slug = ? AND version = ?"
+    )
+    .get(slug, version)) as PromptRow | undefined;
   return row ? rowToPrompt(row) : null;
 }
 
 /**
  * List all versions of a prompt (newest first).
  */
-export function listPromptVersions(slug: string): PromptTemplate[] {
-  ensureSchema();
-  const db = getDbInstance() as unknown as DbLike;
-  const rows = db
-    .prepare<PromptRow>("SELECT * FROM prompt_templates WHERE slug = ? ORDER BY version DESC")
-    .all(slug);
+export async function listPromptVersions(slug: string): Promise<PromptTemplate[]> {
+  const db = getDbInstance();
+  const rows = (await db
+    .prepare(
+      "SELECT * FROM prompt_templates WHERE slug = ? ORDER BY version DESC"
+    )
+    .all(slug)) as PromptRow[];
   return rows.map(rowToPrompt);
 }
 
 /**
  * List all prompt slugs with their active version info.
  */
-export function listPrompts(): Array<{
-  slug: string;
-  activeVersion: number;
-  totalVersions: number;
-}> {
-  ensureSchema();
-  const db = getDbInstance() as unknown as DbLike;
-  const rows = db
-    .prepare<PromptListRow>(
+export async function listPrompts(): Promise<
+  Array<{
+    slug: string;
+    activeVersion: number;
+    totalVersions: number;
+  }>
+> {
+  const db = getDbInstance();
+  const rows = (await db
+    .prepare(
       `SELECT slug,
-              MAX(CASE WHEN is_active = 1 THEN version ELSE 0 END) as active_version,
+              MAX(CASE WHEN is_active = true THEN version ELSE 0 END) as active_version,
               COUNT(*) as total_versions
        FROM prompt_templates
        GROUP BY slug
        ORDER BY slug`
     )
-    .all();
+    .all()) as PromptListRow[];
 
   return rows.map((r) => ({
     slug: toString(r.slug),
@@ -249,33 +217,42 @@ export function listPrompts(): Array<{
 /**
  * Rollback to a previous version (makes it the active one).
  */
-export function rollbackPrompt(slug: string, version: number): PromptTemplate | null {
-  ensureSchema();
-  const db = getDbInstance() as unknown as DbLike;
+export async function rollbackPrompt(
+  slug: string,
+  version: number
+): Promise<PromptTemplate | null> {
+  const db = getDbInstance();
 
-  const target = db
-    .prepare<PromptRow>("SELECT * FROM prompt_templates WHERE slug = ? AND version = ?")
-    .get(slug, version);
+  const target = (await db
+    .prepare(
+      "SELECT * FROM prompt_templates WHERE slug = ? AND version = ?"
+    )
+    .get(slug, version)) as PromptRow | undefined;
 
   if (!target) return null;
 
-  const rollback = db.transaction(() => {
-    db.prepare("UPDATE prompt_templates SET is_active = 0 WHERE slug = ?").run(slug);
-    db.prepare("UPDATE prompt_templates SET is_active = 1 WHERE slug = ? AND version = ?").run(
-      slug,
-      version
+  await withTransaction(async (client) => {
+    await client.query(
+      "UPDATE prompt_templates SET is_active = false WHERE slug = $1",
+      [slug]
+    );
+    await client.query(
+      "UPDATE prompt_templates SET is_active = true WHERE slug = $1 AND version = $2",
+      [slug, version]
     );
   });
-  rollback();
 
-  return rowToPrompt({ ...target, is_active: 1 });
+  return rowToPrompt({ ...target, is_active: true } as PromptRow);
 }
 
 /**
  * Render a prompt template by substituting variables.
  */
-export function renderPrompt(slug: string, vars: Record<string, string> = {}): string | null {
-  const prompt = getActivePrompt(slug);
+export async function renderPrompt(
+  slug: string,
+  vars: Record<string, string> = {}
+): Promise<string | null> {
+  const prompt = await getActivePrompt(slug);
   if (!prompt) return null;
 
   let content = prompt.content;
