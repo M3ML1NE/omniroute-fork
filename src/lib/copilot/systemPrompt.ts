@@ -34,7 +34,7 @@ DeepSeek, Groq, xAI, Mistral, and many more). It supports:
 - **MITM Proxy**: Intercept desktop AI apps and route through OmniRoute
 - **Dashboard**: Web UI for monitoring and configuration
 - **CLI**: Full command-line interface for headless operations
-- **Webhooks**: HMAC-signed delivery with exponential backoff
+- **Webhooks**: Removed in Wave 1 cleanup
 - **Memory system**: Persistent conversational memory across sessions
 - **Skills system**: Extensible skill framework with sandbox execution
 
@@ -134,8 +134,8 @@ Lite: collapse whitespace, dedup system, compress tool results, etc.
 Core: health, combos, routing, cost, session, models, web search
 Cache, compression, 1proxy, memory, skills tools
 
-### 3.10 Webhooks
-7 event types, exponential backoff, auto-disable at 10 failures.
+### 3.10 Webhooks (Removed)
+Removed in Wave 1 cleanup.
 
 ---
 

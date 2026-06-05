@@ -126,7 +126,7 @@ function extractRelayAuth(notes: unknown): string | undefined {
     };
     // Prefer the encrypted form when both are present (legacy plaintext rows
     // are still readable until migrated). decrypt() is a no-op when encryption
-    // is disabled, matching the existing convention for webhook secrets.
+    // is disabled, matching the existing convention for encrypted secrets.
     if (parsed.relayAuthEnc) {
       const dec = decrypt(parsed.relayAuthEnc);
       if (dec) return dec;

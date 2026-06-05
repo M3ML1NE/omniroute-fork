@@ -11,25 +11,29 @@
 | `POST /v1/chat/completions` | чат (streaming и non-streaming) |
 | `POST /v1/embeddings` | эмбеддинги |
 | `GET /v1/models` | список моделей |
-| `POST /v1/completions` | completions |
-| `POST /v1/audio/speech`, `/v1/images/generations`, `/v1/moderations` | если поддерживается провайдером |
-| MCP server skeleton | без tools |
-| Admin Next.js dashboard | providers / usage / auth |
-| Admin CLI | providers / config / auth / serve |
-| Per-key mTLS + custom URL | для GigaChat |
+| MCP server | 12 Atlassian инструментов (Jira, Bitbucket, Confluence) |
+| Admin Next.js dashboard | провайдеры, настройки, комбо |
 | PostgreSQL persistence | через `DATABASE_URL` |
+| Контекстная компрессия | lite / caveman / rtk |
+| Per-key mTLS + custom URL | для GigaChat |
 
 ---
 
 ## Что удалено
 
-- 761 провайдер (оставлены `gigachat` и `openai-compatible`)
+- 200+ провайдеров (оставлены только `gigachat` и `openai-compatible`)
+- Специфичная логика и эндпоинты Claude/Anthropic (`/v1/messages`)
+- Подсистема вебхуков (Webhooks)
+- Телеметрия квот и кэш (Quota telemetry & cache)
+- Фреймворк навыков (Skills framework)
+- Страницы Translator, Playground, Search Tools
+- UI системных трансформаций (System Transforms)
+- Встроенные алиасы моделей (Built-in model aliases)
 - Electron desktop app
-- Web/OAuth/MITM провайдеры
-- CLI agent-client команды (`chat`, `responses`, `tui`)
-- 37 MCP tools
-- Anthropic `/v1/messages` и вспомогательные endpoints
+- OAuth/WebCookie провайдеры
+- 37 оригинальных MCP инструментов (заменены на 12 инструментов Atlassian)
 - 41 локаль (оставлена только `ru`)
+- Legacy `/v1/completions` эндпоинт
 
 ---
 

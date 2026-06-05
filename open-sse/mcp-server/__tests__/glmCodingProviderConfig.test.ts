@@ -6,7 +6,7 @@ import {
   getModelsByProviderId,
   getProviderModels,
 } from "../../config/providerModels.ts";
-import { buildGlmAnthropicMessagesUrl, buildGlmOpenAIChatUrl } from "../../config/glmProvider.ts";
+import { buildGlmOpenAIChatUrl } from "../../config/glmProvider.ts";
 import { supportsToolCalling } from "../../services/modelCapabilities.ts";
 import { getPricingForModel } from "../../../src/shared/constants/pricing.ts";
 
@@ -37,11 +37,11 @@ describe("GLM Coding provider registry surfaces", () => {
       "https://proxy.example/glm/api/coding/paas/v4/chat/completions?tenant=alpha&route=glm"
     );
     expect(
-      buildGlmAnthropicMessagesUrl({
-        anthropicBaseUrl:
-          "https://proxy.example/glm/api/anthropic/v1/messages?tenant=alpha&route=glm",
+      buildGlmOpenAIChatUrl({
+        baseUrl:
+          "https://proxy.example/glm/api/coding/paas/v4/chat/completions?tenant=alpha&route=glm",
       })
-    ).toBe("https://proxy.example/glm/api/anthropic/v1/messages?tenant=alpha&route=glm&beta=true");
+    ).toBe("https://proxy.example/glm/api/coding/paas/v4/chat/completions?tenant=alpha&route=glm");
   });
 
   it("registers GLMT as an explicit high-budget preset over the dual GLM transport", () => {

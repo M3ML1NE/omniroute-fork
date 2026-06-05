@@ -21,7 +21,7 @@ export interface DiscoveryConfig {
   scanInterval: number; // ms between scans (default: 24h)
   maxConcurrentScans: number;
   targetProviders: string[]; // empty = scan all known
-  notificationWebhook?: string;
+  // Webhook subsystem removed — see Wave 1 cleanup
 }
 
 export interface DiscoveryResult {

@@ -15,7 +15,6 @@ import {
   NOAUTH_PROVIDERS,
   APIKEY_PROVIDERS,
   isOpenAICompatibleProvider,
-  isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
 
 // Provider order: OAuth first, then no-auth, then API Key (matches dashboard/providers)
@@ -135,7 +134,7 @@ export default function ModelSelectModal({
       const alias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
       const providerInfo = allProviders[providerId] || { name: providerId, color: "#666" };
       const isCustomProvider =
-        isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
+        isOpenAICompatibleProvider(providerId);
 
       // Get user-added custom models for this provider (if any)
       const providerCustomModels = customModels[providerId] || [];

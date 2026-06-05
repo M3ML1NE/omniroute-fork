@@ -27,7 +27,6 @@ const ROUTES = [
   "/dashboard/providers",
   "/dashboard/settings",
   "/dashboard/settings/pricing",
-  "/dashboard/translator",
   "/dashboard/usage",
 ];
 

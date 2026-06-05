@@ -7,13 +7,12 @@ import {
 } from "@/lib/localDb";
 import {
   getProviderAlias,
-  isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import { resolveManagedModelAlias } from "@/shared/utils/providerModelAliases";
 
 function isCompatibleProvider(providerId: string): boolean {
-  return isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
+  return isOpenAICompatibleProvider(providerId);
 }
 
 export function usesManagedAvailableModels(providerId: string): boolean {

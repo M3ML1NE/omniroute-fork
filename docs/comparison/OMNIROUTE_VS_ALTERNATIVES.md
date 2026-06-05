@@ -19,7 +19,7 @@ Objective feature comparison vs popular open-source AI routers.
 | **Auto-fallback combos**                           |     **14 strategies**      | priority-based |    tier-based     |  weighted   |
 | **Tier 1/2/3 fallback (subscription→cheap→free)**  |          ✅ + UI           |     manual     |        n/a        |   manual    |
 | **Token compression**                              | RTK (47 filters) + Caveman |      none      |       none        |    none     |
-| **Built-in MCP server**                            |   ✅ 37 tools, 13 scopes   |       ❌       |        ❌         |     ❌      |
+| **Built-in MCP server**                            |   ✅ 12 tools, Atlassian   |       ❌       |        ❌         |     ❌      |
 | **A2A protocol**                                   |        ✅ 5 skills         |       ❌       |        ❌         |     ❌      |
 | **Memory (FTS5 + vector)**                         |             ✅             |       ❌       |        ❌         |     ❌      |
 | **Guardrails (PII, injection, vision)**            |             ✅             |    partial     |        ❌         |   ✅ paid   |

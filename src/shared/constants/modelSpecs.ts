@@ -17,22 +17,6 @@ export interface ModelSpec {
   supportsVision?: boolean;
 }
 
-const BEDROCK_CLAUDE_ALIASES = (...modelIds: string[]) => [
-  ...new Set(
-    modelIds.flatMap((modelId) => [
-      modelId,
-      `anthropic.${modelId}`,
-      `eu.anthropic.${modelId}`,
-      `us.anthropic.${modelId}`,
-      `global.anthropic.${modelId}`,
-      `bedrock/anthropic.${modelId}`,
-      `bedrock/eu.anthropic.${modelId}`,
-      `bedrock/us.anthropic.${modelId}`,
-      `bedrock/global.anthropic.${modelId}`,
-    ])
-  ),
-];
-
 export const MODEL_SPECS: Record<string, ModelSpec> = {
   "gpt-5.5": {
     maxOutputTokens: 128000,
@@ -49,7 +33,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: false,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["openai/gpt-4o-mini"],
+    aliases: [],
   },
   "gpt-4o": {
     maxOutputTokens: 16384,
@@ -57,7 +41,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: false,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["openai/gpt-4o"],
+    aliases: [],
   },
 
   // ── Gemini 3 Flash series ───────────────────────────────────────
@@ -69,7 +53,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: false,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"],
+    aliases: [],
   },
 
   // ── Gemini 3.1 Pro ───────────────────────────────────────────────
@@ -82,13 +66,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: [
-      "gemini-3.1-pro-high",
-      "gemini-3-pro-high",
-      "gemini-3-pro-preview",
-      "gemini-3.1-pro-preview",
-      "gemini-3.1-pro-preview-customtools",
-    ],
+    aliases: [],
   },
 
   // ── Gemini 3.1 Pro Low (deprecated, kept for back-compat) ────────
@@ -100,7 +78,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["gemini-3-pro-low"],
+    aliases: [],
   },
 
   // ── Gemini 3.5 Flash ─────────────────────────────────────────────
@@ -110,7 +88,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: false,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["gemini-3.5-flash-high"],
+    aliases: [],
   },
 
   // ── Claude Opus 4.5 ─────────────────────────────────────────────
@@ -131,7 +109,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: BEDROCK_CLAUDE_ALIASES("claude-sonnet-4-5", "claude-sonnet-4-5-20250929"),
+    aliases: [],
   },
 
   // ── Claude Opus 4.5 (full ID — overrides prefix match on claude-opus-4-5) ──
@@ -152,7 +130,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: BEDROCK_CLAUDE_ALIASES("claude-sonnet-4-6", "claude-sonnet-4.6"),
+    aliases: [],
   },
 
   // ── Claude Opus 4.6 ─────────────────────────────────────────────
@@ -167,7 +145,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: BEDROCK_CLAUDE_ALIASES("claude-opus-4-6", "claude-opus-4.6"),
+    aliases: [],
   },
 
   // ── Claude Opus 4.7 ─────────────────────────────────────────────
@@ -184,7 +162,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: BEDROCK_CLAUDE_ALIASES("claude-opus-4-7", "claude-opus-4.7"),
+    aliases: [],
   },
 
   // ── Claude Opus 4.8 ─────────────────────────────────────────────
@@ -198,7 +176,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: BEDROCK_CLAUDE_ALIASES("claude-opus-4-8", "claude-opus-4.8"),
+    aliases: [],
   },
 
   // ── Claude Sonnet 4.5 ───────────────────────────────────────────
@@ -208,7 +186,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["claude-sonnet-4.5"],
+    aliases: [],
   },
 
   // ── Claude Haiku 4.5 ────────────────────────────────────────────
@@ -218,7 +196,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["claude-haiku-4.5"],
+    aliases: [],
   },
 
   // ── Kimi K2.6 (Moonshot Kimi Code OAuth — 262K native) ──────────
@@ -228,7 +206,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["kimi-k2.6-thinking", "kimi-for-coding"],
+    aliases: [],
   },
 
   // ── Kimi K2.5 (Moonshot — 262K native, parity with K2.6) ────────
@@ -238,7 +216,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["kimi-k2.5-thinking"],
+    aliases: [],
   },
 
   // ── Qwen3.x Plus / Max (Bailian — multimodal text/image/video, 1M context) ─
@@ -248,7 +226,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsThinking: true,
     supportsTools: true,
     supportsVision: true,
-    aliases: ["qwen3.7-max", "qwen3-max-2026-01-23"],
+    aliases: [],
   },
   "qwen3.6-plus": {
     maxOutputTokens: 65536,
@@ -322,7 +300,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     contextWindow: 200000,
     supportsThinking: true,
     supportsTools: true,
-    aliases: ["MiniMax-M2.5"],
+    aliases: [],
   },
 
   // ── DeepSeek V4 (1M context, 384K max output) ────────────────────

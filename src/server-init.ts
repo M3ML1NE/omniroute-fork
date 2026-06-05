@@ -13,8 +13,6 @@ import { startRuntimeConfigHotReload } from "./lib/config/hotReload";
 import { startSpendBatchWriter } from "./lib/spend/batchWriter";
 import { registerDefaultGuardrails } from "./lib/guardrails";
 import { ensurePersistentManagementPasswordHash } from "./lib/auth/managementPassword";
-import { skillExecutor } from "./lib/skills/executor";
-import { registerBuiltinSkills } from "./lib/skills/builtins";
 import { createLogger } from "./shared/utils/logger";
 import { getKeyStore } from "@omniroute/open-sse/services/keyStore.ts";
 import { clearPool as clearMtlsPool } from "@omniroute/open-sse/services/mtlsAgent.ts";
@@ -90,10 +88,8 @@ async function startServer() {
     // Initialize cloud sync
     startSpendBatchWriter();
     registerDefaultGuardrails();
-    registerBuiltinSkills(skillExecutor);
     startupLog.info("Spend batch writer started");
     startupLog.info("Guardrail registry initialized");
-    startupLog.info("Builtin skill handlers registered");
     await initializeCloudSync();
     startBudgetResetJob();
     startReasoningCacheCleanupJob();

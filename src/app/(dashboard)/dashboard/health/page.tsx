@@ -193,7 +193,6 @@ export default function HealthPage() {
     learnedLimits,
     lockouts,
     sessions,
-    quotaMonitor,
   } = data;
   const cbEntries = Object.entries(providerHealth || {});
   const lockoutEntries = Object.entries(lockouts || {});
@@ -463,87 +462,7 @@ export default function HealthPage() {
           )}
         </Card>
 
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-text-main flex items-center gap-2">
-              <span className="material-symbols-outlined text-[20px] text-primary">radar</span>
-              Quota Monitors
-            </h2>
-            <span className="text-xs text-text-muted">{quotaMonitor?.active ?? 0} active</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <div className="rounded-xl border border-border/40 bg-surface/30 p-3">
-              <div className="text-xs text-text-muted">Alerting</div>
-              <div className="text-2xl font-semibold text-amber-400 mt-1">
-                {quotaMonitor?.alerting ?? 0}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/40 bg-surface/30 p-3">
-              <div className="text-xs text-text-muted">Exhausted</div>
-              <div className="text-2xl font-semibold text-red-400 mt-1">
-                {quotaMonitor?.exhausted ?? 0}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/40 bg-surface/30 p-3">
-              <div className="text-xs text-text-muted">Errors</div>
-              <div className="text-2xl font-semibold text-orange-400 mt-1">
-                {quotaMonitor?.errors ?? 0}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/40 bg-surface/30 p-3">
-              <div className="text-xs text-text-muted">Providers</div>
-              <div className="text-2xl font-semibold text-text-main mt-1">
-                {Object.keys(quotaMonitor?.byProvider || {}).length}
-              </div>
-            </div>
-          </div>
-          {quotaMonitor?.monitors?.length > 0 ? (
-            <div className="space-y-2">
-              {quotaMonitor.monitors.slice(0, 5).map((monitor: any) => (
-                <div
-                  key={`${monitor.sessionId}:${monitor.accountId}`}
-                  className="rounded-lg border border-border/30 bg-surface/20 p-3 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-text-main truncate">
-                      {monitor.provider} • {monitor.accountId.slice(0, 8)}…
-                    </div>
-                    <div className="text-xs text-text-muted mt-1 truncate">
-                      {monitor.sessionId} • {monitor.status}
-                    </div>
-                  </div>
-                  <div className="text-right text-xs shrink-0">
-                    <div
-                      className={
-                        monitor.status === "exhausted"
-                          ? "text-red-400"
-                          : monitor.status === "warning"
-                            ? "text-amber-400"
-                            : monitor.status === "error"
-                              ? "text-orange-400"
-                              : "text-text-main"
-                      }
-                    >
-                      {typeof monitor.lastQuotaPercent === "number"
-                        ? `${Math.round(monitor.lastQuotaPercent * 100)}%`
-                        : "—"}
-                    </div>
-                    <div className="text-text-muted">
-                      {monitor.nextPollDelayMs
-                        ? `${Math.round(monitor.nextPollDelayMs / 1000)}s`
-                        : "—"}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-text-muted">{t("noSessionQuotaMonitorsActive")}</p>
-          )}
-        </Card>
-      </div>
-
-      {/* Graceful Degradation Status */}
+        {/* Graceful Degradation Status */}
       {degradation && degradation.features && degradation.features.length > 0 && (
         <Card className="p-5" role="region" aria-label={t("gracefulDegradationStatus")}>
           <div className="flex items-center justify-between mb-4">

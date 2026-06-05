@@ -19,8 +19,6 @@ export const KEEP_ENDPOINTS = [
  * Includes Anthropic Messages API and other non-OpenAI-compatible endpoints.
  */
 export const DELETE_ENDPOINTS = [
-  "POST /v1/messages",
-  "POST /v1/messages/count_tokens",
   "POST /v1/files",
   "GET /v1/files",
   "GET /v1/files/[id]",

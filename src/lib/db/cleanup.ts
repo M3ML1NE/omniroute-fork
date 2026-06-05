@@ -18,36 +18,6 @@ function getRetentionSettings() {
 }
 
 /**
- * Clean up old quota_snapshots based on retention settings.
- */
-export async function cleanupQuotaSnapshots(): Promise<CleanupResult> {
-  const db = getDbInstance();
-  const retention = getRetentionSettings();
-
-  const retentionDays = retention.quotaSnapshots;
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-  const cutoffISO = cutoffDate.toISOString();
-
-  const result: CleanupResult = { deleted: 0, errors: 0 };
-
-  try {
-    const stmt = db.prepare("DELETE FROM quota_snapshots WHERE created_at < ?");
-    const runResult = stmt.run(cutoffISO);
-    result.deleted = runResult.changes;
-
-    console.log(
-      `[Cleanup] Deleted ${result.deleted} quota_snapshots older than ${retentionDays} days`
-    );
-  } catch (err: unknown) {
-    console.error("[Cleanup] Error cleaning quota_snapshots:", err);
-    result.errors++;
-  }
-
-  return result;
-}
-
-/**
  * Clean up old call_logs based on retention settings.
  */
 export async function cleanupCallLogs(): Promise<CleanupResult> {
@@ -261,7 +231,6 @@ export async function runAutoCleanup(): Promise<{
   console.log("[Cleanup] Starting auto-cleanup...");
 
   const results: Record<string, CleanupResult> = {
-    quotaSnapshots: await cleanupQuotaSnapshots(),
     callLogs: await cleanupCallLogs(),
     usageHistory: await cleanupUsageHistory(),
     compressionAnalytics: await cleanupCompressionAnalytics(),

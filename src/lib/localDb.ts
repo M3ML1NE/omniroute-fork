@@ -273,33 +273,8 @@ export type { BatchRecord } from "./db/batches";
 
 export type { ModelComboMapping } from "./db/modelComboMappings";
 
-export {
-  // Webhooks
-  getWebhooks,
-  getWebhook,
-  getEnabledWebhooks,
-  createWebhook,
-  updateWebhook as updateWebhookRecord,
-  deleteWebhook,
-  recordWebhookDelivery,
-  disableWebhooksWithHighFailures,
-} from "./db/webhooks";
-
-export type { Webhook, WebhookKind } from "./db/webhooks";
-
-export { insertDelivery, getDeliveries } from "./db/webhookDeliveries";
-export type { WebhookDelivery } from "./db/webhookDeliveries";
-
-export {
-  saveQuotaSnapshot,
-  getQuotaSnapshots,
-  getAggregatedSnapshots,
-  cleanupOldSnapshots,
-} from "./db/quotaSnapshots";
-
+// Webhook subsystem removed — see Wave 1 cleanup
 export * from "./db/sessionAccountAffinity";
-
-export type { QuotaSnapshotRow, ProviderUtilizationPoint } from "@/shared/types/utilization";
 
 export {
   getVersionManagerStatus,

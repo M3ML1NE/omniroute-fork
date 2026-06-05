@@ -10,7 +10,6 @@ import { Badge, Card, Toggle } from "@/shared/components";
 import ProviderTestSlideOver from "@/shared/components/ProviderTestSlideOver";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import {
-  isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 
@@ -171,7 +170,6 @@ export default function ProviderCard({
   const error = Number(stats.error || 0);
   const allDisabled = Boolean(stats.allDisabled);
   const isCompatible = isOpenAICompatibleProvider(providerId);
-  const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const codexServiceTierLabel =
     stats.codexServiceTier === "flex"
       ? providerText(t, "codexTierFlexLabel", "Flex")

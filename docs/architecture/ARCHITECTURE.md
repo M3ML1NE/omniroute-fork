@@ -17,29 +17,18 @@ It provides a single OpenAI-compatible endpoint (`/v1/*`) and routes traffic acr
 
 Core capabilities:
 
-- OpenAI-compatible API surface for CLI/tools (177 providers, 45 executors)
+- OpenAI-compatible API surface for CLI/tools (GigaChat + OpenAI-compatible)
 - Request/response translation across provider formats
 - Model combo fallback (multi-model sequence)
-- Structured combo steps (`provider + model + connection`) with runtime ordering by `compositeTiers`
+- Structured combo steps (`provider + model + connection`)
 - Account-level fallback (multi-account per provider)
-- Quota preflight and quota-aware P2C account selection in the main chat path
-- OAuth + API-key provider connection management (15 OAuth modules)
-- Embedding generation via `/v1/embeddings` (6 providers, 9 models)
-- Image generation via `/v1/images/generations` (10+ providers, 20+ models)
-- Audio transcription via `/v1/audio/transcriptions` (7 providers)
-- Text-to-speech via `/v1/audio/speech` (10 providers)
-- Video generation via `/v1/videos/generations` (ComfyUI + SD WebUI)
-- Music generation via `/v1/music/generations` (ComfyUI)
-- Web search via `/v1/search` (5 providers)
-- Moderations via `/v1/moderations`
-- Reranking via `/v1/rerank`
+- OAuth + API-key provider connection management
+- Embedding generation via `/v1/embeddings`
 - Think tag parsing (`<think>...</think>`) for reasoning models
 - Response sanitization for strict OpenAI SDK compatibility
 - Role normalization (developer→system, system→user) for cross-provider compatibility
-- Structured output conversion (json_schema → Gemini responseSchema)
-- Local persistence for providers, keys, aliases, combos, settings, pricing (26 DB modules)
+- Local persistence for providers, keys, aliases, combos, settings, pricing
 - Usage/cost tracking and request logging
-- Optional cloud sync for multi-device/state sync
 - IP allowlist/blocklist for API access control
 - Thinking budget management (passthrough/auto/custom/adaptive)
 - Global system prompt injection
@@ -49,31 +38,21 @@ Core capabilities:
 - Anti-thundering herd protection with mutex locking
 - Signature-based request deduplication cache
 - Domain layer: cost rules, fallback policy, lockout policy
-- Context Relay: session handoff summaries for account rotation continuity
-- Domain state persistence (SQLite write-through cache for fallbacks, budgets, lockouts, circuit breakers)
+- Domain state persistence (PostgreSQL write-through cache for fallbacks, budgets, lockouts, circuit breakers)
 - Policy engine for centralized request evaluation (lockout → budget → fallback)
 - Request telemetry with p50/p95/p99 latency aggregation
-- Combo target telemetry and historical combo target health via `combo_execution_key` / `combo_step_id`
 - Correlation ID (X-Request-Id) for end-to-end tracing
 - Compliance audit logging with opt-out per API key
 - Eval framework for LLM quality assurance
 - Health dashboard with real-time provider circuit breaker status
-- MCP Server (37 tools) with 3 transports (stdio/SSE/Streamable HTTP)
-- A2A Server (JSON-RPC 2.0 + SSE) with skills and task lifecycle
-- Memory system (extraction, injection, retrieval, summarization)
-- Skills system (registry, executor, sandbox, built-in skills)
-- MITM proxy with certificate management and DNS handling
+- MCP Server (12 Atlassian tools) with 3 transports (stdio/SSE/Streamable HTTP)
+- A2A Server (JSON-RPC 2.0 + SSE)
 - Prompt injection guard middleware
 - Prompt compression pipeline with Caveman, RTK, stacked pipelines, compression combos, language packs, and analytics
 - ACP (Agent Communication Protocol) registry
-- Modular OAuth providers (15 individual modules under `src/lib/oauth/providers/`)
 - Uninstall/full-uninstall scripts
-- OAuth environment repair action
 - WebSocket bridge for OpenAI-compatible WS clients (`/v1/ws`)
 - Sync token management (issue/revoke, ETag-versioned config bundle download)
-- GLM Thinking (`glmt`) first-class provider preset
-- Hybrid token counting (provider-side `/messages/count_tokens` with estimation fallback)
-- Model alias auto-seeding (30+ cross-proxy dialect normalizations at startup)
 - Safe outbound fetch with SSRF guard, private URL blocking, and configurable retry
 - Cooldown-aware chat retries with configurable `requestRetry` and `maxRetryIntervalSec`
 - Runtime environment validation with Zod at startup
@@ -123,32 +102,21 @@ Main pages under `src/app/(dashboard)/dashboard/`:
 - `/dashboard` — quick start + provider overview
 - `/dashboard/endpoint` — endpoint proxy + MCP + A2A + API endpoint tabs
 - `/dashboard/providers` — provider connections and credentials
-- `/dashboard/combos` — combo strategies, templates, step-based builder, model routing rules, manual persisted ordering
-- `/dashboard/auto-combo` — Auto Combo Engine: scoring weights, mode packs, virtual factory presets, telemetry
+- `/dashboard/combos` — combo strategies, templates, step-based builder, model routing rules
 - `/dashboard/costs` — cost aggregation and pricing visibility
-- `/dashboard/analytics` — usage analytics, evaluations, combo target health
-- `/dashboard/limits` — quota/rate controls
+- `/dashboard/analytics` — usage analytics, evaluations
 - `/dashboard/cli-tools` — CLI onboarding, runtime detection, config generation
-- `/dashboard/agents` — detected ACP agents + custom agent registration
-- `/dashboard/cloud-agents` — cloud-hosted agent tasks (Codex Cloud, Devin, Jules) and task lifecycle
-- `/dashboard/skills` — A2A skill registry, sandbox execution, built-in skill catalog
-- `/dashboard/memory` — persistent conversational memory inspection and retrieval
-- `/dashboard/webhooks` — outbound webhook subscriptions, secret rotation, retry stats
 - `/dashboard/batch` — batch job submission and progress
 - `/dashboard/cache` — read-through and reasoning cache statistics, eviction controls
-- `/dashboard/playground` — interactive chat playground against any configured combo/model
 - `/dashboard/changelog` — in-app changelog viewer (renders `CHANGELOG.md`)
 - `/dashboard/system` — runtime diagnostics, version info, environment validation surface
 - `/dashboard/onboarding` — first-run setup wizard for new installations
-- `/dashboard/media` — image/video/music playground
-- `/dashboard/search-tools` — search provider testing and history
-- `/dashboard/health` — uptime, circuit breakers, rate limits, quota-monitored sessions
+- `/dashboard/health` — uptime, circuit breakers, rate limits
 - `/dashboard/logs` — request/proxy/audit/console logs
 - `/dashboard/settings` — system settings tabs (general, routing, combo defaults, etc.)
 - `/dashboard/context/caveman` — Caveman compression rules, language packs, preview, and output mode
 - `/dashboard/context/rtk` — RTK command-output filters, preview, and runtime safety settings
 - `/dashboard/context/combos` — named compression pipelines assigned to routing combos
-- `/dashboard/translator` — translator inspection and request format conversion preview
 - `/dashboard/audit` — compliance audit log browser with pagination and structured metadata
 - `/dashboard/usage` — per-request usage browser tied to `usage_history`
 - `/dashboard/compression` — compression analytics, statistics, and pipeline assignment
@@ -175,9 +143,8 @@ flowchart LR
     end
 
     subgraph Upstreams[Upstream Providers]
-        P1[OAuth Providers\nClaude/Codex/Gemini/Qwen/Qoder/GitHub/Kiro/Cursor/Antigravity]
-        P2[API Key Providers\nOpenAI/Anthropic/OpenRouter/GLM/Kimi/MiniMax\nDeepSeek/Groq/xAI/Mistral/Perplexity\nTogether/Fireworks/Cerebras/Cohere/NVIDIA]
-        P3[Compatible Nodes\nOpenAI-compatible / Anthropic-compatible]
+        P1[GigaChat\nSber GigaChat API]
+        P2[OpenAI-compatible\nAny OpenAI-compatible endpoint]
     end
 
     subgraph Cloud[Optional Cloud Sync]

@@ -13,7 +13,7 @@ export default function BadGatewayPage() {
         "Inspect translator output if format conversion is involved.",
       ]}
       primaryAction={{ href: "/dashboard/providers", label: "Open Providers" }}
-      secondaryAction={{ href: "/dashboard/translator", label: "Open Translator" }}
+      secondaryAction={{ href: "/dashboard/providers", label: "Open Providers" }}
     />
   );
 }

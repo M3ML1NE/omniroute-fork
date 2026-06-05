@@ -38,26 +38,10 @@ type SessionTop = {
   lastActiveAt?: string;
 };
 
-type QuotaMonitor = {
-  sessionId?: string;
-  accountId?: string;
-  provider?: string;
-  window?: string;
-  status?: "ok" | "alerting" | "exhausted" | "error" | string;
-  remainingPercent?: number;
-};
-
 type HealthPayload = {
   timestamp?: string;
   providerBreakers?: ProviderBreaker[];
   lockouts?: Record<string, LockoutEntry>;
-  quotaMonitor?: {
-    active?: number;
-    alerting?: number;
-    exhausted?: number;
-    errors?: number;
-    monitors?: QuotaMonitor[];
-  };
   sessions?: {
     activeCount?: number;
     stickyBoundCount?: number;
@@ -89,10 +73,7 @@ type FeedEventKind =
   | "cooldown-cleared"
   | "lockout-added"
   | "lockout-cleared"
-  | "session-new"
-  | "quota-alert"
-  | "quota-exhausted"
-  | "quota-recovered";
+  | "session-new";
 
 type FeedEvent = {
   id: string;
@@ -102,7 +83,7 @@ type FeedEvent = {
   detail: string;
 };
 
-type FeedFilter = "all" | "circuits" | "cooldowns" | "lockouts" | "sessions" | "quotas";
+type FeedFilter = "all" | "circuits" | "cooldowns" | "lockouts" | "sessions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants & helpers
@@ -147,9 +128,6 @@ const FEED_KIND_META: Record<FeedEventKind, { icon: string; color: string; group
   "lockout-added": { icon: "lock", color: "#f97316", group: "lockouts" },
   "lockout-cleared": { icon: "lock_open", color: "#22c55e", group: "lockouts" },
   "session-new": { icon: "fingerprint", color: "#06b6d4", group: "sessions" },
-  "quota-alert": { icon: "warning", color: "#eab308", group: "quotas" },
-  "quota-exhausted": { icon: "error", color: "#ef4444", group: "quotas" },
-  "quota-recovered": { icon: "check_circle", color: "#22c55e", group: "quotas" },
 };
 
 function fmtMs(ms: number | undefined | null): string {
@@ -314,47 +292,6 @@ function diffSnapshots(
     });
   }
 
-  // Quota monitors (alerting / exhausted transitions)
-  const prevQuota = new Map(
-    (prev.health?.quotaMonitor?.monitors ?? []).map((m) => [
-      `${m.accountId ?? ""}:${m.provider ?? ""}:${m.window ?? ""}`,
-      m,
-    ])
-  );
-  for (const m of next.health?.quotaMonitor?.monitors ?? []) {
-    const key = `${m.accountId ?? ""}:${m.provider ?? ""}:${m.window ?? ""}`;
-    const prevM = prevQuota.get(key);
-    const prevStatus = prevM?.status;
-    if (m.status === prevStatus) continue;
-    if (m.status === "exhausted") {
-      out.push({
-        id: `qe-${key}-${nowTs}`,
-        ts: nowTs,
-        kind: "quota-exhausted",
-        title: `${m.accountId ?? "?"} EXHAUSTED`,
-        detail: `${m.window ?? ""}${m.provider ? ` · ${m.provider}` : ""}`,
-      });
-    } else if (m.status === "alerting") {
-      out.push({
-        id: `qa-${key}-${nowTs}`,
-        ts: nowTs,
-        kind: "quota-alert",
-        title: `${m.accountId ?? "?"} ALERTING`,
-        detail: `${m.window ?? ""}${
-          typeof m.remainingPercent === "number" ? ` · ${Math.round(m.remainingPercent)}% left` : ""
-        }`,
-      });
-    } else if (prevStatus === "exhausted" || prevStatus === "alerting") {
-      out.push({
-        id: `qr-${key}-${nowTs}`,
-        ts: nowTs,
-        kind: "quota-recovered",
-        title: `${m.accountId ?? "?"} recovered`,
-        detail: `${m.window ?? ""} back to OK`,
-      });
-    }
-  }
-
   return out;
 }
 
@@ -435,9 +372,6 @@ export default function RuntimePageClient() {
     const totalBreakers = breakers.length;
     const sessions = health?.sessions?.activeCount ?? 0;
     const lockouts = lockoutEntries.length;
-    const quota = health?.quotaMonitor;
-    const quotaAlertingTotal =
-      (quota?.alerting ?? 0) + (quota?.exhausted ?? 0) + (quota?.errors ?? 0);
     return {
       sessions,
       stickyBound: health?.sessions?.stickyBoundCount ?? 0,
@@ -446,8 +380,6 @@ export default function RuntimePageClient() {
       totalBreakers,
       cooldowns: cooldowns.length,
       lockouts,
-      quotaAlerting: quotaAlertingTotal,
-      quotaExhausted: quota?.exhausted ?? 0,
     };
   }, [breakers, cooldowns, health, lockoutEntries]);
 
@@ -749,8 +681,7 @@ export default function RuntimePageClient() {
                   <option value="circuits">{t("feedFilterCircuits")}</option>
                   <option value="cooldowns">{t("feedFilterCooldowns")}</option>
                   <option value="lockouts">{t("feedFilterLockouts")}</option>
-                  <option value="sessions">{t("feedFilterSessions")}</option>
-                  <option value="quotas">{t("feedFilterQuotas")}</option>
+          <option value="sessions">{t("feedFilterSessions")}</option>
                 </select>
                 <button
                   type="button"
@@ -897,49 +828,6 @@ export default function RuntimePageClient() {
           )}
         </Card>
 
-        <Card padding="md">
-          <SectionHeader
-            icon="radar"
-            title={t("quotaMonitorsTitle")}
-            subtitle={t("quotaMonitorsSubtitle")}
-            trailing={
-              <Link href="/dashboard/quota" className="text-[11px] text-primary hover:underline">
-                {t("openQuota")} →
-              </Link>
-            }
-          />
-
-          {(() => {
-            const monitors = health?.quotaMonitor?.monitors ?? [];
-            const exhausted = monitors.filter((m) => m.status === "exhausted");
-            const alerting = monitors.filter((m) => m.status === "alerting");
-            const errors = monitors.filter((m) => m.status === "error");
-            const total = exhausted.length + alerting.length + errors.length;
-            if (total === 0) {
-              return (
-                <div className="text-center py-8 text-text-muted">
-                  <span className="material-symbols-outlined text-[40px] opacity-30 block mb-2">
-                    radar
-                  </span>
-                  <p className="text-sm">{t("allQuotasHealthy")}</p>
-                </div>
-              );
-            }
-            return (
-              <div className="mt-2 flex flex-col gap-3">
-                {exhausted.length > 0 && (
-                  <QuotaGroup tone="red" label={t("statusExhausted")} items={exhausted} />
-                )}
-                {alerting.length > 0 && (
-                  <QuotaGroup tone="amber" label={t("statusAlerting")} items={alerting} />
-                )}
-                {errors.length > 0 && (
-                  <QuotaGroup tone="orange" label={t("statusError")} items={errors} />
-                )}
-              </div>
-            );
-          })()}
-        </Card>
       </div>
     </div>
   );
@@ -1070,57 +958,4 @@ function EmptyHint({ text }: { text: string }) {
   );
 }
 
-function QuotaGroup({
-  tone,
-  label,
-  items,
-}: {
-  tone: "red" | "amber" | "orange";
-  label: string;
-  items: QuotaMonitor[];
-}) {
-  const t = useTranslations("runtime");
-  const toneMap = {
-    red: { text: "#ef4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.20)" },
-    amber: { text: "#eab308", bg: "rgba(234,179,8,0.08)", border: "rgba(234,179,8,0.20)" },
-    orange: { text: "#f97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.20)" },
-  } as const;
-  const tc = toneMap[tone];
-  return (
-    <div>
-      <div
-        className="text-[10px] font-bold uppercase tracking-wider mb-1.5"
-        style={{ color: tc.text }}
-      >
-        {label}
-      </div>
-      <div className="flex flex-col gap-1">
-        {items.slice(0, 6).map((m, i) => (
-          <div
-            key={`${m.accountId ?? ""}:${m.window ?? ""}:${i}`}
-            className="rounded-md border px-2.5 py-1.5 flex items-center justify-between gap-2"
-            style={{ background: tc.bg, borderColor: tc.border }}
-          >
-            <div className="min-w-0">
-              <div className="text-[11px] font-medium text-text-main truncate">
-                {m.accountId ?? "—"}
-                {m.provider ? ` / ${m.provider}` : ""}
-              </div>
-              <div className="text-[10px] text-text-muted">{m.window ?? ""}</div>
-            </div>
-            {typeof m.remainingPercent === "number" && (
-              <span className="text-[11px] font-bold tabular-nums" style={{ color: tc.text }}>
-                {Math.round(m.remainingPercent)}%
-              </span>
-            )}
-          </div>
-        ))}
-        {items.length > 6 && (
-          <div className="text-[10px] text-text-muted text-center pt-1">
-            {t("moreSuffix", { count: items.length - 6 })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+function QuotaGroup() { return null; }

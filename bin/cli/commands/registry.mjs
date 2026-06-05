@@ -4,7 +4,7 @@ import { registerAudit } from "./audit.mjs";
 import { registerOAuth } from "./oauth.mjs";
 import { registerCloud } from "./cloud.mjs";
 import { registerEval } from "./eval.mjs";
-import { registerWebhooks } from "./webhooks.mjs";
+// Webhook subsystem removed — see Wave 1 cleanup
 import { registerPolicy } from "./policy.mjs";
 import { registerCompression } from "./compression.mjs";
 import { registerFiles } from "./files.mjs";
@@ -61,7 +61,7 @@ export function registerCommands(program) {
   registerOAuth(program);
   registerCloud(program);
   registerEval(program);
-  registerWebhooks(program);
+  // Webhook subsystem removed — see Wave 1 cleanup
   registerPolicy(program);
   registerCompression(program);
   registerFiles(program);

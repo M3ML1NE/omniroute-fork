@@ -13,7 +13,6 @@ import {
 } from "@/models";
 import {
   isOpenAICompatibleProvider,
-  isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { syncToCloud } from "@/lib/cloudSync";
@@ -85,8 +84,7 @@ export async function POST(request: Request) {
     // Business validation
     const isValidProvider =
       isManagedProviderConnectionId(provider) ||
-      isOpenAICompatibleProvider(provider) ||
-      isAnthropicCompatibleProvider(provider);
+      isOpenAICompatibleProvider(provider);
 
     if (!isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -113,26 +111,6 @@ export async function POST(request: Request) {
         ...(providerSpecificData || {}),
         prefix: node.prefix,
         apiType: node.apiType,
-        baseUrl: node.baseUrl,
-        nodeName: node.name,
-        ...(node.chatPath ? { chatPath: node.chatPath } : {}),
-        ...(node.modelsPath ? { modelsPath: node.modelsPath } : {}),
-      };
-    } else if (isAnthropicCompatibleProvider(provider)) {
-      const node: any = await getProviderNodeById(provider);
-      if (!node) {
-        return NextResponse.json(
-          { error: "Anthropic Compatible node not found" },
-          { status: 404 }
-        );
-      }
-
-      const existingConnections = await getProviderConnections({ provider });
-      // Allow multiple connections for compatible nodes exactly like first-party providers
-
-      providerSpecificData = {
-        ...(providerSpecificData || {}),
-        prefix: node.prefix,
         baseUrl: node.baseUrl,
         nodeName: node.name,
         ...(node.chatPath ? { chatPath: node.chatPath } : {}),

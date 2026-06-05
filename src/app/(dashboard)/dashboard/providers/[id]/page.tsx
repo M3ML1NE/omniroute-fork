@@ -38,7 +38,6 @@ import {
   AI_PROVIDERS,
   getProviderAlias,
   isOpenAICompatibleProvider,
-  isAnthropicCompatibleProvider,
   isSelfHostedChatProvider,
   providerAllowsOptionalApiKey,
   supportsApiKeyOnFreeProvider,
@@ -1437,9 +1436,7 @@ export default function ProviderDetailPage() {
   const codexSettingsRequestSeqRef = useRef(0);
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
   const isCommandCode = providerId === "command-code";
-  const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
-  const isCompatible = isOpenAICompatible || isAnthropicCompatible;
-  const isAnthropicProtocolCompatible = isAnthropicCompatible;
+  const isCompatible = isOpenAICompatible;
 
   const setShowOAuthModal = (show: boolean, connectionRow?: ConnectionRowConnection) => {
     _setShowOAuthModal(show);
@@ -10060,8 +10057,7 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
 
   const isOAuth = connection.authType === "oauth";
   const isCompatible =
-    isOpenAICompatibleProvider(connection.provider) ||
-    isAnthropicCompatibleProvider(connection.provider);
+    isOpenAICompatibleProvider(connection.provider);
   const testErrorMeta =
     !testResult?.valid && testResult?.diagnosis?.type
       ? ERROR_TYPE_LABELS[testResult.diagnosis.type] || null

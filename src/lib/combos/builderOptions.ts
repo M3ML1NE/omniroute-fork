@@ -14,7 +14,6 @@ import { getModelsByProviderId } from "@/shared/constants/models";
 import {
   AI_PROVIDERS,
   NOAUTH_PROVIDERS,
-  isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import type { RegistryModel } from "@omniroute/open-sse/config/providerRegistry.ts";
@@ -397,8 +396,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
     const fallbackModels = getCompatibleFallbackModels(providerId, builtInModels);
     const acceptsArbitraryModel =
       Boolean((AI_PROVIDERS[providerId] as JsonRecord | undefined)?.passthroughModels) ||
-      isOpenAICompatibleProvider(providerId) ||
-      isAnthropicCompatibleProvider(providerId);
+      isOpenAICompatibleProvider(providerId);
 
     for (const model of syncedModels) {
       const resolved = getResolvedModelCapabilities({
@@ -529,8 +527,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
     const fallbackModels = getCompatibleFallbackModels(providerId, builtInModels);
     const acceptsArbitraryModel =
       Boolean((AI_PROVIDERS[providerId] as JsonRecord | undefined)?.passthroughModels) ||
-      isOpenAICompatibleProvider(providerId) ||
-      isAnthropicCompatibleProvider(providerId);
+      isOpenAICompatibleProvider(providerId);
 
     for (const model of syncedModels) {
       const resolved = getResolvedModelCapabilities({

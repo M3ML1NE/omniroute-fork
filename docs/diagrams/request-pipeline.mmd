@@ -16,9 +16,9 @@ flowchart LR
   Combo -->|combo| Resolve["resolveComboTargets<br/>(14 strategies)"]
   Resolve --> Single["handleSingleModel<br/>(per target)"]
   Combo -->|single| Single
-  Single --> Translate["translateRequest<br/>(OpenAI↔Claude↔Gemini)"]
-  Translate --> Exec["getExecutor<br/>(31 executors)"]
-  Exec --> Upstream["Upstream Provider<br/>(177 providers)"]
+  Single --> Translate["translateRequest<br/>(OpenAI↔GigaChat)"]
+  Translate --> Exec["getExecutor<br/>(GigaChat + Default)"]
+  Exec --> Upstream["Upstream Provider<br/>(GigaChat + OpenAI-compatible)"]
   Upstream --> Stream["SSE / JSON"]
   Stream --> Transformer["responsesTransformer<br/>(Responses↔Chat)"]
   Transformer --> Client

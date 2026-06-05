@@ -149,7 +149,7 @@
     }
   },
   "usage": {
-    "description": "Analytics de uso, budgets, quotas e logs",
+    "description": "Analytics de uso, budgets e logs",
     "analytics": {
       "description": "Exibir analytics de uso agregados",
       "period": "Período: 1d|7d|30d|90d|ytd|all (padrão: 30d)",
@@ -161,11 +161,6 @@
         "scope": "Escopo do budget (padrão: global)",
         "period": "Período do budget: daily|weekly|monthly (padrão: monthly)"
       }
-    },
-    "quota": {
-      "description": "Exibir uso de quota dos provedores",
-      "provider": "Filtrar por ID de provedor",
-      "check": "Mostrar se há quota disponível para uma nova requisição"
     },
     "logs": {
       "description": "Exibir logs de chamadas",
@@ -288,11 +283,6 @@
     "requests": "Requisições (24h): {count}",
     "cost": "Custo (24h): ${cost}"
   },
-  "quota": {
-    "description": "Exibir uso de cota dos provedores",
-    "noServer": "Servidor não está em execução. Inicie com: omniroute serve",
-    "noData": "Nenhuma informação de cota disponível."
-  },
   "cache": {
     "description": "Gerenciar cache de respostas",
     "noServer": "Servidor não está em execução. Inicie com: omniroute serve",
@@ -308,7 +298,7 @@
     "allProvidersOpt": "Testar todos os provedores configurados",
     "latencyOpt": "Exibir medições de latência (avg/min/max ms)",
     "repeatOpt": "Repetir o teste N vezes e agregar os resultados",
-    "compareOpt": "Modelos separados por vírgula para comparar (ex: gpt-4o,claude-3-5-sonnet)",
+    "compareOpt": "Modelos separados por vírgula para comparar (ex: gpt-4o,llama-3)",
     "saveOpt": "Salvar resultados em arquivo JSON",
     "saved": "Resultados salvos em {path}",
     "compareTitle": "Comparação de Modelos",
@@ -357,11 +347,8 @@
     "restarted": "Servidor MCP reiniciado."
   },
   "a2a": {
-    "skills": {
-      "description": "Listar skills A2A disponíveis na agent card"
-    },
     "invoke": {
-      "description": "Invocar uma skill A2A e retornar o ID da task",
+      "description": "Invocar uma task A2A e retornar o ID da task",
       "input": "Objeto JSON de entrada",
       "input_file": "Caminho para arquivo JSON de entrada",
       "wait": "Aguardar conclusão da task antes de retornar",
@@ -371,7 +358,7 @@
       "description": "Gerenciar tasks A2A",
       "list": {
         "status": "Filtrar por status",
-        "skill": "Filtrar por ID de skill"
+        "id": "Filtrar por ID de task"
       },
       "watch": {
         "description": "Monitorar status da task até conclusão"
@@ -524,79 +511,6 @@
     },
     "get": {
       "description": "Obter uma entrada do log de auditoria por ID"
-    }
-  },
-  "skills": {
-    "description": "Gerenciar skills do OmniRoute (sandbox, builtin, custom, hybrid, skillssh)",
-    "list": {
-      "description": "Listar skills instaladas",
-      "type": "Filtrar por tipo (sandbox|custom|builtin|hybrid|skillssh)",
-      "enabled": "Mostrar apenas skills habilitadas",
-      "disabled": "Mostrar apenas skills desabilitadas",
-      "api_key": "Filtrar por chave de API"
-    },
-    "get": {
-      "description": "Obter detalhes de uma skill por ID"
-    },
-    "install": {
-      "description": "Instalar uma skill a partir de arquivo ou URL",
-      "from_file": "Caminho para o arquivo JSON de definição da skill",
-      "from_url": "URL da definição remota da skill",
-      "type": "Tipo de skill (sandbox|custom|hybrid)",
-      "enable": "Habilitar skill após instalar"
-    },
-    "enable": {
-      "description": "Habilitar uma skill por ID"
-    },
-    "disable": {
-      "description": "Desabilitar uma skill por ID",
-      "yes": "Pular confirmação"
-    },
-    "delete": {
-      "description": "Deletar uma skill por ID",
-      "yes": "Pular confirmação"
-    },
-    "execute": {
-      "description": "Executar uma skill por ID",
-      "input": "Objeto JSON de entrada",
-      "input_file": "Caminho para arquivo JSON de entrada",
-      "timeout": "Timeout de execução em ms (padrão: 30000)"
-    },
-    "executions": {
-      "description": "Listar histórico de execuções de skills",
-      "skill": "Filtrar por ID de skill",
-      "limit": "Máximo de resultados (padrão: 50)",
-      "status": "Filtrar por status (running|completed|failed)"
-    },
-    "skillssh": {
-      "description": "Gerenciar skills instaladas via SSH"
-    },
-    "marketplace": {
-      "description": "Explorar e instalar skills do marketplace"
-    },
-    "mp": {
-      "search": {
-        "description": "Buscar pacotes no marketplace",
-        "category": "Filtrar por categoria",
-        "tag": "Filtrar por tag",
-        "limit": "Máximo de resultados (padrão: 30)",
-        "sort": "Ordenar por: downloads|rating|recent"
-      },
-      "info": {
-        "description": "Exibir detalhes e readme do pacote"
-      },
-      "install": {
-        "description": "Instalar um pacote do marketplace",
-        "version": "Versão do pacote (padrão: latest)",
-        "enable": "Habilitar após instalar",
-        "yes": "Pular confirmação"
-      },
-      "categories": {
-        "description": "Listar categorias do marketplace"
-      },
-      "featured": {
-        "description": "Exibir pacotes em destaque do marketplace"
-      }
     }
   },
   "memory": {
@@ -852,29 +766,6 @@
     },
     "errors": {
       "out": "Salvar erros no caminho"
-    }
-  },
-  "translator": {
-    "description": "Traduzir payloads entre formatos LLM",
-    "detect": {
-      "description": "Detectar formato do body"
-    },
-    "translate": {
-      "description": "Converter body de um formato para outro"
-    },
-    "send": {
-      "description": "Traduzir e despachar para upstream"
-    },
-    "stream": {
-      "description": "Tradução de request em stream"
-    },
-    "from": "Formato de origem (openai|anthropic|gemini|cohere)",
-    "to": "Formato de destino (openai|anthropic|gemini|cohere)",
-    "file": "Caminho para o arquivo JSON do request",
-    "out": "Salvar output em arquivo",
-    "model": "Sobrescrever model",
-    "history": {
-      "limit": "Máximo de resultados"
     }
   },
   "pricing": {

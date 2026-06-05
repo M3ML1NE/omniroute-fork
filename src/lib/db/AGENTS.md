@@ -27,7 +27,7 @@ Each module owns specific tables + CRUD operations:
 | `backup.ts`             | Backup export/import ops  | Serialize/deserialize entire DB state                   |
 | `proxies.ts`            | `proxies`                 | MITM proxy configs and routing rules                    |
 | `prompts.ts`            | `prompts`                 | Reusable prompt templates, versioning                   |
-| `webhooks.ts`           | `webhooks`                | Event-driven webhook subscriptions and logs             |
+| `webhooks.ts`           | `webhooks`                | Removed in Wave 1 cleanup                               |
 | `detailedLogs.ts`       | `detailed_logs`           | Per-request audit logging (optional, high volume)       |
 | `domainState.ts`        | `domain_state`            | Transient runtime state (not persisted across restarts) |
 | `registeredKeys.ts`     | `registered_keys`         | Whitelisted API keys for MCP/A2A access                 |

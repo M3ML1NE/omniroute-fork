@@ -55,10 +55,6 @@ export default function BudgetTelemetryCards() {
               <span className="text-text-muted">{t("activeSessions")}</span>
               <span className="font-mono">{telemetry.sessions?.activeCount ?? 0}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-text-muted">{t("quotaAlerts")}</span>
-              <span className="font-mono">{telemetry.quotaMonitor?.alerting ?? 0}</span>
-            </div>
           </div>
         ) : (
           <p className="text-sm text-text-muted">{t("noDataYet")}</p>

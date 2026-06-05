@@ -627,7 +627,7 @@ test(
       );
 
       INSERT INTO _omniroute_migrations (version, name) VALUES ('001', 'initial_schema');
-      INSERT INTO _omniroute_migrations (version, name) VALUES ('029', 'webhooks_templates');
+      -- Webhook migration removed — Wave 1 cleanup
     `);
     seedDb
       .prepare(

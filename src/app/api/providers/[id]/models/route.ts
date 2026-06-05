@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
   isSelfHostedChatProvider,
 } from "@/shared/constants/providers";
@@ -1872,7 +1871,7 @@ export async function GET(
       });
     }
 
-    if (isAnthropicCompatibleProvider(provider)) {
+    if (isOpenAICompatibleProvider(provider)) {
       const cachedResponse = maybeReturnCachedDiscovery();
       if (cachedResponse) return cachedResponse;
 
@@ -1887,15 +1886,12 @@ export async function GET(
         });
         if (fallback) return fallback;
         return NextResponse.json(
-          { error: "No base URL configured for Anthropic compatible provider" },
+          { error: "No base URL configured for OpenAI compatible provider" },
           { status: 400 }
         );
       }
 
       baseUrl = baseUrl.replace(/\/$/, "");
-      if (baseUrl.endsWith("/messages")) {
-        baseUrl = baseUrl.slice(0, -9);
-      }
 
       // Use modelsPath from provider node if available, otherwise default to /models
       const psd = asRecord(connection.providerSpecificData);
@@ -1912,7 +1908,6 @@ export async function GET(
           headers: {
             "Content-Type": "application/json",
             ...(apiKey ? { "x-api-key": apiKey } : {}),
-            "anthropic-version": "2023-06-01",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         });

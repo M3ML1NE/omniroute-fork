@@ -39,7 +39,6 @@ export interface DatabaseSettings {
 
   /** 5. Retention (per-table cleanup policies) */
   retention: {
-    quotaSnapshots: number;
     compressionAnalytics: number;
     mcpAudit: number;
     a2aEvents: number;
@@ -99,7 +98,6 @@ export const DEFAULT_DATABASE_SETTINGS: Omit<DatabaseSettings, "location" | "sta
     alwaysPreserveClientCache: "auto",
   },
   retention: {
-    quotaSnapshots: 7,
     compressionAnalytics: 30,
     mcpAudit: 30,
     a2aEvents: 30,

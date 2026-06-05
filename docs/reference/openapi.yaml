@@ -25,10 +25,6 @@ servers:
 tags:
   - name: Chat
     description: OpenAI-compatible chat completions
-  - name: Messages
-    description: Anthropic-compatible messages
-  - name: Responses
-    description: OpenAI Responses API
   - name: Embeddings
     description: Text embedding generation
   - name: Images
@@ -148,60 +144,6 @@ paths:
       responses:
         "200":
           description: Chat response (JSON or streaming)
-
-  /api/v1/messages:
-    post:
-      tags: [Messages]
-      summary: Create message (Anthropic-compatible)
-      description: Anthropic Messages API endpoint. Routes to Claude providers.
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MessagesRequest"
-      responses:
-        "200":
-          description: Message response (or SSE stream)
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
-  /api/v1/messages/count_tokens:
-    post:
-      tags: [Messages]
-      summary: Count tokens for a message
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          description: Token count
-
-  /api/v1/responses:
-    post:
-      tags: [Responses]
-      summary: Create response (OpenAI Responses API)
-      description: OpenAI Responses API endpoint.
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          description: Response object or SSE stream
-        "401":
-          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/embeddings:
     post:
@@ -3158,32 +3100,6 @@ components:
               type: integer
             total_tokens:
               type: integer
-
-    MessagesRequest:
-      type: object
-      required: [model, messages, max_tokens]
-      properties:
-        model:
-          type: string
-          example: claude-sonnet-4-5-20250514
-        messages:
-          type: array
-          items:
-            type: object
-            required: [role, content]
-            properties:
-              role:
-                type: string
-                enum: [user, assistant]
-              content:
-                type: string
-        max_tokens:
-          type: integer
-        stream:
-          type: boolean
-          default: false
-        system:
-          type: string
 
     Model:
       type: object

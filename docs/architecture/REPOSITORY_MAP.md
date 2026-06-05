@@ -200,7 +200,7 @@ src/
 
 | Module                           | Purpose                                                                |
 | -------------------------------- | ---------------------------------------------------------------------- |
-| `constants/providers.ts`         | **177 providers** with Zod validation (source of truth)                |
+| `constants/providers.ts`         | **GigaChat + OpenAI-compatible** with Zod validation (source of truth)                |
 | `constants/cliTools.ts`          | External CLI tool registry                                             |
 | `constants/routingStrategies.ts` | **14 routing strategies** with priorities                              |
 | `constants/publicApiRoutes.ts`   | Routes that require Bearer (vs management) auth                        |
@@ -226,7 +226,7 @@ open-sse/
 ├── translator/          # Format converters (9 request, 8 response, 9 helpers)
 ├── transformer/         # Responses API ↔ Chat Completions (TransformStream)
 ├── services/            # ~80+ service modules (combo, accountFallback, autoCombo, reasoningCache, claude code/chatgpt stealth, modelDeprecation, taskAwareRouter, workflowFSM, etc.)
-├── mcp-server/          # MCP server (37 tools, 3 transports, ~13 scopes)
+├── mcp-server/          # MCP server (12 Atlassian tools, 3 transports)
 ├── config/              # Provider/model registries, header config, model aliases
 ├── utils/               # TLS client, proxy fetch/dispatcher, network helpers
 ├── index.ts             # Workspace entry
@@ -357,13 +357,13 @@ open-sse/
 | `CLI-TOOLS.md`              | External CLI integrations + Internal OmniRoute CLI                                    |
 | `I18N.md`                   | i18n architecture, adding a language, 30 locales                                      |
 | `UNINSTALL.md`              | Clean uninstall steps                                                                 |
-| `PROVIDER_REFERENCE.md`     | **Auto-generated** catalog of 177 providers (regen: `npm run gen:provider-reference`) |
+| `PROVIDER_REFERENCE.md`     | **Auto-generated** catalog of providers (regen: `npm run gen:provider-reference`) |
 
 ### Subsystem deep-dives
 
 | Doc                        | Purpose                                                             |
 | -------------------------- | ------------------------------------------------------------------- |
-| `MCP-SERVER.md`            | MCP server: 37 tools, 3 transports, ~13 scopes, REST endpoints      |
+| `MCP-SERVER.md`            | MCP server: 12 Atlassian tools, 3 transports, REST endpoints      |
 | `A2A-SERVER.md`            | A2A v0.3: JSON-RPC, 5 skills, REST helpers, agent card              |
 | `AGENT_PROTOCOLS_GUIDE.md` | Unified guide: A2A vs ACP vs Cloud Agents                           |
 | `CLOUD_AGENT.md`           | Codex Cloud / Devin / Jules orchestration                           |

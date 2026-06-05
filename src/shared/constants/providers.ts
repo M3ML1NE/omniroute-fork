@@ -29,7 +29,7 @@ export const FREE_PROVIDERS = {};
 // No-auth Providers
 export const NOAUTH_PROVIDERS = {};
 
-export const FREE_APIKEY_PROVIDER_IDS = new Set(["qoder"]);
+export const FREE_APIKEY_PROVIDER_IDS = new Set<string>([]);
 
 export function supportsApiKeyOnFreeProvider(providerId: unknown): boolean {
   return typeof providerId === "string" && FREE_APIKEY_PROVIDER_IDS.has(providerId);
@@ -55,70 +55,20 @@ export const APIKEY_PROVIDERS = {
 };
 
 // Sub-categories within APIKEY_PROVIDERS (used by dashboard and catalog views).
-export const IMAGE_ONLY_PROVIDER_IDS = new Set([
-  "nanobanana",
-  "fal-ai",
-  "stability-ai",
-  "black-forest-labs",
-  "recraft",
-  "topaz",
-]);
+export const IMAGE_ONLY_PROVIDER_IDS = new Set<string>([]);
 
-export const AGGREGATOR_PROVIDER_IDS = new Set([
-  "openrouter",
-  "synthetic",
-  "kilo-gateway",
-  "aimlapi",
-  "novita",
-  "piapi",
-  "getgoapi",
-  "laozhang",
-  "vercel-ai-gateway",
-  "agentrouter",
-  "glhf",
-  "cablyai",
-  "thebai",
-  "fenayai",
-  "empower",
-  "poe",
-  "chutes",
-  "hackclub",
-]);
+export const AGGREGATOR_PROVIDER_IDS = new Set<string>([]);
 
-export const ENTERPRISE_CLOUD_PROVIDER_IDS = new Set([
-  "azure-openai",
-  "azure-ai",
-  "bedrock",
-  "watsonx",
-  "oci",
-  "sap",
-  "vertex",
-  "vertex-partner",
-  "databricks",
-  "datarobot",
-  "clarifai",
-  "snowflake",
-  "heroku",
-  "modal",
-]);
+export const ENTERPRISE_CLOUD_PROVIDER_IDS = new Set<string>([]);
 
-export const VIDEO_PROVIDER_IDS = new Set([
-  "runwayml",
-  "veoaifree-web",
-  "pollinations",
-  "minimax",
-  "together",
-  "replicate",
-  "haiper",
-  "leonardo",
-]);
+export const VIDEO_PROVIDER_IDS = new Set<string>([]);
 
 // IDE Providers: editors with built-in AI subscription (separate section in UI).
 // These providers live in OAUTH_PROVIDERS but render under "IDE Providers"
 // instead of "OAuth Providers" to avoid visual duplication.
-export const IDE_PROVIDER_IDS = new Set(["cursor", "zed", "trae"]);
+export const IDE_PROVIDER_IDS = new Set<string>([]);
 
-export const EMBEDDING_RERANK_PROVIDER_IDS = new Set(["voyage-ai", "jina-ai"]);
+export const EMBEDDING_RERANK_PROVIDER_IDS = new Set<string>([]);
 
 // Local / Self-Hosted Providers
 export const LOCAL_PROVIDERS = {};
@@ -130,14 +80,9 @@ export const SEARCH_PROVIDERS = {};
 export const AUDIO_ONLY_PROVIDERS = {};
 
 export const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
-export const ANTHROPIC_COMPATIBLE_PREFIX = "anthropic-compatible-";
 
 export function isOpenAICompatibleProvider(providerId: unknown): providerId is string {
   return typeof providerId === "string" && providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
-}
-
-export function isAnthropicCompatibleProvider(providerId: unknown): providerId is string {
-  return typeof providerId === "string" && providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX);
 }
 
 export const UPSTREAM_PROXY_PROVIDERS = {};
@@ -151,17 +96,7 @@ export function isLocalProvider(providerId: unknown): boolean {
   );
 }
 
-export const SELF_HOSTED_CHAT_PROVIDER_IDS = new Set([
-  "lm-studio",
-  "vllm",
-  "lemonade",
-  "llamafile",
-  "llama-cpp",
-  "triton",
-  "docker-model-runner",
-  "xinference",
-  "oobabooga",
-]);
+export const SELF_HOSTED_CHAT_PROVIDER_IDS = new Set<string>([]);
 
 export function isSelfHostedChatProvider(providerId: unknown): boolean {
   return typeof providerId === "string" && SELF_HOSTED_CHAT_PROVIDER_IDS.has(providerId);
@@ -169,19 +104,9 @@ export function isSelfHostedChatProvider(providerId: unknown): boolean {
 
 export function providerAllowsOptionalApiKey(providerId: unknown): boolean {
   return (
-    providerId === "searxng-search" ||
-    providerId === "petals" ||
-    providerId === "pollinations" ||
-    providerId === "copilot-web" ||
-    providerId === "veoaifree-web" ||
-    providerId === "hackclub" ||
-    providerId === "huggingchat" ||
-    providerId === "gitlawb" ||
-    providerId === "gitlawb-gmi" ||
     isLocalProvider(providerId) ||
     isSelfHostedChatProvider(providerId) ||
-    isOpenAICompatibleProvider(providerId) ||
-    isAnthropicCompatibleProvider(providerId)
+    isOpenAICompatibleProvider(providerId)
   );
 }
 
@@ -189,22 +114,7 @@ export function providerAllowsOptionalApiKey(providerId: unknown): boolean {
  * Providers explicitly excluded from bulk API key add — auth is heterogeneous,
  * OAuth-based, multi-field, or requires manual setup per connection.
  */
-const BULK_API_KEY_EXCLUDED = new Set([
-  "vertex",
-  "vertex-partner",
-  "ollama-local",
-  "grok-web",
-  "perplexity-web",
-  "blackbox-web",
-  "muse-spark-web",
-  "deepseek-web",
-  "inner-ai",
-  "qoder",
-  "google-pse-search",
-  "command-code",
-  "azure",
-  "cloudflare-ai",
-]);
+const BULK_API_KEY_EXCLUDED = new Set<string>([]);
 
 export function supportsBulkApiKey(providerId: unknown): boolean {
   if (typeof providerId !== "string" || !providerId) return false;
@@ -215,18 +125,7 @@ export function supportsBulkApiKey(providerId: unknown): boolean {
 }
 
 // ── System Providers (virtual, not user-connectable) ──────────────────────────
-export const SYSTEM_PROVIDERS = {
-  auto: {
-    id: "auto",
-    alias: "auto",
-    name: "Auto (Zero-Config)",
-    icon: "auto_awesome",
-    color: "#6366F1",
-    textIcon: "Auto",
-    systemOnly: true,
-    description: "Zero-config auto-routing with LKGP across all connected providers",
-  },
-};
+export const SYSTEM_PROVIDERS = {};
 
 const _PROVIDER_SECTIONS = [
   NOAUTH_PROVIDERS,
@@ -404,28 +303,7 @@ export const ID_TO_ALIAS = new Proxy({} as Record<string, string>, {
 });
 
 // Providers that support usage/quota API
-export const USAGE_SUPPORTED_PROVIDERS = [
-  "antigravity",
-  "agy",
-  "gemini-cli",
-  "kiro",
-  "amazon-q",
-  "github",
-  "codex",
-  "claude",
-  "cursor",
-  "kimi-coding",
-  "glm",
-  "glm-cn",
-  "zai",
-  "glmt",
-  "opencode-go",
-  "minimax",
-  "minimax-cn",
-  "crof",
-  "nanogpt",
-  "deepseek",
-];
+export const USAGE_SUPPORTED_PROVIDERS = ["gigachat"];
 
 // ── Zod validation at module load (Phase 7.2) ──
 import { validateProviders } from "../validation/providerSchema";

@@ -41,7 +41,6 @@ const LEGACY_FLAT_KEYS: {
     alwaysPreserveClientCache: ["alwaysPreserveClientCache"],
   },
   retention: {
-    quotaSnapshots: ["quotaSnapshots"],
     compressionAnalytics: ["compressionAnalytics"],
     mcpAudit: ["mcpAudit"],
     a2aEvents: ["a2aEvents"],

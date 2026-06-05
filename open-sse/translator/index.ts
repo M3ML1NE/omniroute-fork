@@ -1,9 +1,7 @@
 import { FORMATS } from "./formats.ts";
 import { ensureToolCallIds, fixMissingToolResponses } from "./helpers/toolCallHelper.ts";
-import {
-  NON_ANTHROPIC_THINKING_PLACEHOLDER,
-  prepareClaudeRequest,
-} from "./helpers/claudeHelper.ts";
+const NON_ANTHROPIC_THINKING_PLACEHOLDER = "The assistant analyzed the request and decided to use a tool.";
+function prepareClaudeRequest(result: unknown, _provider: unknown, _preserveCache: unknown): unknown { return result; }
 import { filterToOpenAIFormat } from "./helpers/openaiHelper.ts";
 import {
   coerceToolSchemas,

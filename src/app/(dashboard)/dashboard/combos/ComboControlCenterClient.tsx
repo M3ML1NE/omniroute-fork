@@ -513,8 +513,7 @@ export default function ComboControlCenterClient({ comboId }: { comboId: string 
             ["Combo Health", "/dashboard/analytics/combo-health"],
             ["Call Logs", "/dashboard/logs"],
             ["Costs", "/dashboard/costs"],
-            ["Quota", "/dashboard/quota"],
-            ["Playground", "/dashboard/playground"],
+            
             ["Providers", "/dashboard/providers"],
           ].map(([label, href]) => (
             <Link

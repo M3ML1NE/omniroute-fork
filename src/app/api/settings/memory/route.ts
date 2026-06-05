@@ -15,7 +15,6 @@ const memorySettingsUpdateSchema = z
     maxTokens: z.number().int().min(0).max(16000).optional(),
     retentionDays: z.number().int().min(1).max(365).optional(),
     strategy: z.enum(["recent", "semantic", "hybrid"]).optional(),
-    skillsEnabled: z.boolean().optional(),
   })
   .strict();
 

@@ -39,25 +39,22 @@ describe("/api/settings/memory", () => {
       memoryMaxTokens: 2000,
       memoryRetentionDays: 30,
       memoryStrategy: "hybrid",
-      skillsEnabled: false,
     });
     (updateSettings as any).mockImplementation(async (updates: Record<string, unknown>) => ({
       memoryEnabled: true,
       memoryMaxTokens: 2000,
       memoryRetentionDays: 30,
       memoryStrategy: "hybrid",
-      skillsEnabled: false,
       ...updates,
     }));
   });
 
-  it("returns normalized memory and skills settings", async () => {
+  it("returns normalized memory settings", async () => {
     (getSettings as any).mockResolvedValue({
       memoryEnabled: false,
       memoryMaxTokens: 3200,
       memoryRetentionDays: 999,
       memoryStrategy: "recent",
-      skillsEnabled: true,
     });
 
     const res = await GET(createRequest("GET") as any);
@@ -68,7 +65,6 @@ describe("/api/settings/memory", () => {
       maxTokens: 3200,
       retentionDays: 365,
       strategy: "recent",
-      skillsEnabled: true,
     });
   });
 
@@ -79,7 +75,6 @@ describe("/api/settings/memory", () => {
         maxTokens: 0,
         retentionDays: 14,
         strategy: "semantic",
-        skillsEnabled: true,
       }) as any
     );
 
@@ -90,7 +85,6 @@ describe("/api/settings/memory", () => {
       memoryMaxTokens: 0,
       memoryRetentionDays: 14,
       memoryStrategy: "semantic",
-      skillsEnabled: true,
     });
     expect(invalidateMemorySettingsCache).toHaveBeenCalledOnce();
     await expect(res.json()).resolves.toEqual({
@@ -98,7 +92,6 @@ describe("/api/settings/memory", () => {
       maxTokens: 0,
       retentionDays: 14,
       strategy: "semantic",
-      skillsEnabled: true,
     });
   });
 });

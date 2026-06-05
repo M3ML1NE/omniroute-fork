@@ -149,7 +149,7 @@
     }
   },
   "usage": {
-    "description": "Usage analytics, budgets, quotas, and logs",
+    "description": "Usage analytics, budgets, and logs",
     "analytics": {
       "description": "Show aggregated usage analytics",
       "period": "Time range: 1d|7d|30d|90d|ytd|all (default: 30d)",
@@ -161,11 +161,6 @@
         "scope": "Budget scope (default: global)",
         "period": "Budget period: daily|weekly|monthly (default: monthly)"
       }
-    },
-    "quota": {
-      "description": "Show provider quota usage",
-      "provider": "Filter by provider ID",
-      "check": "Show whether quota is available for a new request"
     },
     "logs": {
       "description": "Show request call logs",
@@ -288,11 +283,6 @@
     "requests": "Requests (24h): {count}",
     "cost": "Cost (24h): ${cost}"
   },
-  "quota": {
-    "description": "Show provider quota usage",
-    "noServer": "Server not running. Start with: omniroute serve",
-    "noData": "No quota information available."
-  },
   "cache": {
     "description": "Manage response cache",
     "noServer": "Server not running. Start with: omniroute serve",
@@ -308,7 +298,7 @@
     "allProvidersOpt": "Test all configured providers",
     "latencyOpt": "Show latency measurements (avg/min/max ms)",
     "repeatOpt": "Repeat test N times and aggregate results",
-    "compareOpt": "Comma-separated models to compare (e.g. gpt-4o,claude-3-5-sonnet)",
+    "compareOpt": "Comma-separated models to compare (e.g. gpt-4o,llama-3)",
     "saveOpt": "Save results to a JSON file",
     "saved": "Results saved to {path}",
     "compareTitle": "Model Comparison",
@@ -357,11 +347,8 @@
     }
   },
   "a2a": {
-    "skills": {
-      "description": "List available A2A skills from the agent card"
-    },
     "invoke": {
-      "description": "Invoke an A2A skill and return the task ID",
+      "description": "Invoke an A2A task and return the task ID",
       "input": "JSON input object",
       "input_file": "Path to JSON input file",
       "wait": "Wait for task completion before returning",
@@ -371,7 +358,7 @@
       "description": "Manage A2A tasks",
       "list": {
         "status": "Filter by status",
-        "skill": "Filter by skill ID"
+        "id": "Filter by task ID"
       },
       "watch": {
         "description": "Poll task status until completion"
@@ -524,79 +511,6 @@
     },
     "get": {
       "description": "Get a single audit log entry by ID"
-    }
-  },
-  "skills": {
-    "description": "Manage OmniRoute skills (sandbox, builtin, custom, hybrid, skillssh)",
-    "list": {
-      "description": "List installed skills",
-      "type": "Filter by type (sandbox|custom|builtin|hybrid|skillssh)",
-      "enabled": "Show only enabled skills",
-      "disabled": "Show only disabled skills",
-      "api_key": "Filter by API key"
-    },
-    "get": {
-      "description": "Get details for a skill by ID"
-    },
-    "install": {
-      "description": "Install a skill from file or URL",
-      "from_file": "Path to skill JSON definition file",
-      "from_url": "URL of remote skill definition",
-      "type": "Skill type (sandbox|custom|hybrid)",
-      "enable": "Enable skill after install"
-    },
-    "enable": {
-      "description": "Enable a skill by ID"
-    },
-    "disable": {
-      "description": "Disable a skill by ID",
-      "yes": "Skip confirmation prompt"
-    },
-    "delete": {
-      "description": "Delete a skill by ID",
-      "yes": "Skip confirmation prompt"
-    },
-    "execute": {
-      "description": "Execute a skill by ID",
-      "input": "JSON input object",
-      "input_file": "Path to JSON input file",
-      "timeout": "Execution timeout in ms (default: 30000)"
-    },
-    "executions": {
-      "description": "List skill execution history",
-      "skill": "Filter by skill ID",
-      "limit": "Maximum results (default: 50)",
-      "status": "Filter by status (running|completed|failed)"
-    },
-    "skillssh": {
-      "description": "Manage skills installed via SSH"
-    },
-    "marketplace": {
-      "description": "Browse and install skills from the marketplace"
-    },
-    "mp": {
-      "search": {
-        "description": "Search marketplace packages",
-        "category": "Filter by category",
-        "tag": "Filter by tag",
-        "limit": "Maximum results (default: 30)",
-        "sort": "Sort by: downloads|rating|recent"
-      },
-      "info": {
-        "description": "Show package details and readme"
-      },
-      "install": {
-        "description": "Install a marketplace package",
-        "version": "Package version (default: latest)",
-        "enable": "Enable after install",
-        "yes": "Skip confirmation prompt"
-      },
-      "categories": {
-        "description": "List marketplace categories"
-      },
-      "featured": {
-        "description": "Show featured marketplace packages"
-      }
     }
   },
   "memory": {
@@ -852,29 +766,6 @@
     },
     "errors": {
       "out": "Save errors to path"
-    }
-  },
-  "translator": {
-    "description": "Translate request bodies between LLM formats",
-    "detect": {
-      "description": "Detect body format"
-    },
-    "translate": {
-      "description": "Convert body from one format to another"
-    },
-    "send": {
-      "description": "Translate and dispatch upstream"
-    },
-    "stream": {
-      "description": "Stream-translate a request body"
-    },
-    "from": "Source format (openai|anthropic|gemini|cohere)",
-    "to": "Target format (openai|anthropic|gemini|cohere)",
-    "file": "Path to request body JSON file",
-    "out": "Save output to file",
-    "model": "Override model",
-    "history": {
-      "limit": "Max results"
     }
   },
   "pricing": {

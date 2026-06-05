@@ -7,14 +7,12 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "providers",
   "embedded-services",
   "combos",
-  "quota",
   // OmniProxy > Compression Context
   "context-caveman",
   "context-rtk",
   "context-combos",
   // OmniProxy > Integrations
   "api-endpoints",
-  "webhooks",
   // OmniProxy > Proxy
   "proxy",
   "mitm-proxy",
@@ -43,13 +41,8 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "audit",
   "audit-mcp",
   "audit-a2a",
-  // Dev Tools
-  "translator",
-  "playground",
-  "search-tools",
   // Agentic Features
   "memory",
-  "skills",
   "mcp",
   "a2a",
   // Other Features — flat
@@ -77,7 +70,6 @@ export type SidebarSectionId =
   | "omni-proxy"
   | "analytics"
   | "monitoring"
-  | "devtools"
   | "agentic-features"
   | "other-features"
   | "configuration";
@@ -86,6 +78,7 @@ export interface SidebarItemDefinition {
   id: HideableSidebarItemId;
   href: string;
   i18nKey: string;
+  titleFallback?: string;
   subtitleKey?: string;
   icon: string;
   exact?: boolean;
@@ -135,13 +128,6 @@ const HOME_ITEMS: readonly SidebarItemDefinition[] = [
 
 const OMNI_PROXY_ITEMS: readonly SidebarItemDefinition[] = [
   {
-    id: "endpoints",
-    href: "/dashboard/endpoint",
-    i18nKey: "endpoints",
-    subtitleKey: "endpointsSubtitle",
-    icon: "api",
-  },
-  {
     id: "api-manager",
     href: "/dashboard/api-manager",
     i18nKey: "apiManager",
@@ -169,14 +155,24 @@ const OMNI_PROXY_ITEMS: readonly SidebarItemDefinition[] = [
     subtitleKey: "combosSubtitle",
     icon: "layers",
   },
-  {
-    id: "quota",
-    href: "/dashboard/quota",
-    i18nKey: "providerQuota",
-    subtitleKey: "providerQuotaSubtitle",
-    icon: "tune",
-  },
 ];
+
+const COMBOS_GROUP: SidebarItemGroup = {
+  type: "group",
+  id: "combos-group",
+  titleKey: "combosGroup",
+  titleFallback: "Combo",
+  items: [
+    {
+      id: "endpoints",
+      href: "/dashboard/endpoint",
+      i18nKey: "apiDocumentation",
+      titleFallback: "Документация API",
+      subtitleKey: "endpointsSubtitle",
+      icon: "api",
+    },
+  ],
+};
 
 const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
   type: "group",
@@ -221,13 +217,7 @@ const INTEGRATIONS_GROUP: SidebarItemGroup = {
       subtitleKey: "apiEndpointsSubtitle",
       icon: "api",
     },
-    {
-      id: "webhooks",
-      href: "/dashboard/webhooks",
-      i18nKey: "webhooks",
-      subtitleKey: "webhooksSubtitle",
-      icon: "webhook",
-    },
+    // Webhook subsystem removed — see Wave 1 cleanup
   ],
 };
 
@@ -411,30 +401,6 @@ const AUDIT_GROUP: SidebarItemGroup = {
   ],
 };
 
-const DEVTOOLS_ITEMS: readonly SidebarItemDefinition[] = [
-  {
-    id: "translator",
-    href: "/dashboard/translator",
-    i18nKey: "translator",
-    subtitleKey: "translatorSubtitle",
-    icon: "translate",
-  },
-  {
-    id: "playground",
-    href: "/dashboard/playground",
-    i18nKey: "playground",
-    subtitleKey: "playgroundSubtitle",
-    icon: "science",
-  },
-  {
-    id: "search-tools",
-    href: "/dashboard/search-tools",
-    i18nKey: "searchTools",
-    subtitleKey: "searchToolsSubtitle",
-    icon: "manage_search",
-  },
-];
-
 const MCP_GROUP: SidebarItemGroup = {
   type: "group",
   id: "mcp",
@@ -458,13 +424,6 @@ const AGENTIC_FEATURES_ITEMS: readonly SidebarSectionChild[] = [
     i18nKey: "memory",
     subtitleKey: "memorySubtitle",
     icon: "psychology",
-  },
-  {
-    id: "skills",
-    href: "/dashboard/skills",
-    i18nKey: "omniSkills",
-    subtitleKey: "omniSkillsSubtitle",
-    icon: "auto_fix_high",
   },
   MCP_GROUP,
   {
@@ -597,8 +556,9 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     titleFallback: "OmniProxy",
     children: [
       ...OMNI_PROXY_ITEMS,
+      COMBOS_GROUP,
       COMPRESSION_CONTEXT_GROUP,
-        INTEGRATIONS_GROUP,
+      INTEGRATIONS_GROUP,
       PROXY_GROUP,
     ],
     defaultPinned: true,
@@ -614,13 +574,6 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     titleKey: "monitoringSection",
     titleFallback: "Monitoring",
     children: [...MONITORING_ITEMS, COSTS_PARAMS_GROUP, AUDIT_GROUP],
-  },
-  {
-    id: "devtools",
-    titleKey: "devtoolsSection",
-    titleFallback: "Dev Tools",
-    children: DEVTOOLS_ITEMS,
-    visibility: "debug",
   },
   {
     id: "agentic-features",
@@ -680,7 +633,6 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "api-manager",
   "providers",
   "combos",
-  "quota",
   "context-caveman",
   "context-rtk",
   "context-combos",
@@ -692,10 +644,7 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "logs",
   "health",
   "runtime",
-  "translator",
-  "playground",
   "memory",
-  "skills",
   "mcp",
   "a2a",
   "settings",
@@ -710,7 +659,6 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "api-manager",
   "providers",
   "combos",
-  "quota",
   "analytics",
   "analytics-combo-health",
   "analytics-utilization",

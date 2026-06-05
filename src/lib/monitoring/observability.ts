@@ -17,37 +17,6 @@ interface SessionSnapshot {
   ageMs: number;
 }
 
-interface QuotaMonitorSnapshot {
-  sessionId: string;
-  provider: string;
-  accountId: string;
-  status: "starting" | "idle" | "healthy" | "warning" | "exhausted" | "error";
-  startedAt: string;
-  lastPolledAt: string | null;
-  lastSuccessAt: string | null;
-  lastErrorAt: string | null;
-  lastError: string | null;
-  lastQuotaPercent: number | null;
-  lastQuotaUsed: number | null;
-  lastQuotaTotal: number | null;
-  lastResetAt: string | null;
-  lastAlertAt: string | null;
-  nextPollDelayMs: number | null;
-  nextPollAt: string | null;
-  totalPolls: number;
-  totalAlerts: number;
-  consecutiveFailures: number;
-}
-
-interface QuotaMonitorSummary {
-  active: number;
-  alerting: number;
-  exhausted: number;
-  errors: number;
-  statusCounts: Record<QuotaMonitorSnapshot["status"], number>;
-  byProvider: Record<string, number>;
-}
-
 interface BuildSessionsSummaryOptions {
   activeSessions: SessionSnapshot[];
   activeSessionsByKey?: Record<string, number>;
@@ -62,7 +31,6 @@ interface BuildTelemetryPayloadOptions {
     p99: number;
     phaseBreakdown: JsonRecord;
   };
-  quotaMonitorSummary: QuotaMonitorSummary;
   activeSessions: SessionSnapshot[];
 }
 
@@ -77,8 +45,6 @@ interface BuildHealthPayloadOptions {
   lockouts: JsonRecord;
   localProviders: JsonRecord;
   inflightRequests: number;
-  quotaMonitorSummary: QuotaMonitorSummary;
-  quotaMonitorMonitors: QuotaMonitorSnapshot[];
   activeSessions: SessionSnapshot[];
   activeSessionsByKey?: Record<string, number>;
   credentialHealth?: {
@@ -88,10 +54,6 @@ interface BuildHealthPayloadOptions {
     unknown: number;
     stale: number;
   };
-}
-
-function limitMonitors(monitors: QuotaMonitorSnapshot[], maxItems = 8): QuotaMonitorSnapshot[] {
-  return monitors.slice(0, maxItems);
 }
 
 export function buildSessionsSummary({
@@ -119,7 +81,6 @@ export function buildSessionsSummary({
 
 export function buildTelemetryPayload({
   summary,
-  quotaMonitorSummary,
   activeSessions,
 }: BuildTelemetryPayloadOptions) {
   const sessions = buildSessionsSummary({ activeSessions });
@@ -130,13 +91,6 @@ export function buildTelemetryPayload({
     sessions: {
       activeCount: sessions.activeCount,
       stickyBoundCount: sessions.stickyBoundCount,
-    },
-    quotaMonitor: {
-      active: quotaMonitorSummary.active,
-      alerting: quotaMonitorSummary.alerting,
-      exhausted: quotaMonitorSummary.exhausted,
-      errors: quotaMonitorSummary.errors,
-      statusCounts: quotaMonitorSummary.statusCounts,
     },
   };
 }
@@ -152,8 +106,6 @@ export function buildHealthPayload({
   lockouts,
   localProviders,
   inflightRequests,
-  quotaMonitorSummary,
-  quotaMonitorMonitors,
   activeSessions,
   activeSessionsByKey = {},
   credentialHealth,
@@ -242,10 +194,6 @@ export function buildHealthPayload({
     rateLimitStatus,
     learnedLimits,
     lockouts,
-    quotaMonitor: {
-      ...quotaMonitorSummary,
-      monitors: limitMonitors(quotaMonitorMonitors),
-    },
     sessions: buildSessionsSummary({ activeSessions, activeSessionsByKey }),
     credentialHealth, // may be undefined if credentialHealth module not loaded
     dedup: {

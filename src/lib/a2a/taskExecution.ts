@@ -21,10 +21,6 @@ export const A2A_SKILL_HANDLERS: Record<string, A2ASkillHandler> = {
     const skillModule = await import("./skills/smartRouting");
     return skillModule.executeSmartRouting(task);
   },
-  "quota-management": async (task) => {
-    const skillModule = await import("./skills/quotaManagement");
-    return skillModule.executeQuotaManagement(task);
-  },
   "provider-discovery": async (task) => {
     const skillModule = await import("./skills/providerDiscovery");
     return skillModule.executeProviderDiscovery(task);

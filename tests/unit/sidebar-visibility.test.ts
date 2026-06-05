@@ -35,28 +35,29 @@ test("system sidebar items place logs before health", () => {
   );
 });
 
-test("primary sidebar items place limits after cache", () => {
+test("primary sidebar items place endpoints under combos group", () => {
   const items = sectionItems("omni-proxy");
   assert.deepEqual(
     items.map((item) => item.id),
     [
-      "endpoints",
       "api-manager",
       "providers",
       "embedded-services",
       "combos",
-      "quota",
+      "endpoints",
       "context-caveman",
       "context-rtk",
       "context-combos",
-      "cli-tools",
-      "agents",
-      "cloud-agents",
       "api-endpoints",
-      "webhooks",
       "proxy",
     ]
   );
+
+  // Verify endpoints has apiDocumentation i18nKey and Russian fallback
+  const endpoints = items.find((item) => item.id === "endpoints");
+  assert.ok(endpoints);
+  assert.equal(endpoints.i18nKey, "apiDocumentation");
+  assert.equal(endpoints.titleFallback, "Документация API");
 });
 
 test("context sidebar section sits between primary and cli", () => {

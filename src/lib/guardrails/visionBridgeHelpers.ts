@@ -1,14 +1,12 @@
 /**
  * Vision Bridge helper functions for image processing.
  */
-import { fetchRemoteImage } from "@/shared/network/remoteImageFetch";
 import { getRuntimePorts } from "@/lib/runtime/ports";
 
 /**
  * Provider to environment variable mapping for API key resolution.
  */
 const PROVIDER_API_KEY_MAP: Record<string, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
   google: "GOOGLE_API_KEY",
   openai: "OPENAI_API_KEY",
 };
@@ -22,41 +20,36 @@ const PROVIDER_API_KEY_MAP: Record<string, string> = {
  *      per-provider env vars. Used when the operator wants every vision-bridge
  *      call to go through a single OpenAI-compatible endpoint (e.g.,
  *      OmniRoute itself, OpenRouter, a Gemini-OpenAI-compat URL).
- *   3. Per-provider env var (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
+ *   3. Per-provider env var (`GOOGLE_API_KEY`,
  *      `OPENAI_API_KEY`) based on the `provider/` prefix in the model id.
  *   4. `OPENAI_API_KEY` as final fallback when the prefix is unrecognized.
  *
- * @param model - Model identifier (e.g., "anthropic/claude-3-haiku", "openai/gpt-4o-mini")
+ * @param model - Model identifier (e.g., "openai/gpt-4o-mini")
  * @param explicitKey - Explicit API key passed as argument (takes precedence)
  * @returns Resolved API key string
  */
 export function resolveProviderApiKey(model: string, explicitKey?: string): string {
   if (explicitKey) return explicitKey;
-  const isAnthropic = model.startsWith("anthropic/");
-  // VISION_BRIDGE_API_KEY only applies to the OpenAI-compatible branch — the
-  // Anthropic branch keeps its dedicated key, since the wire format differs.
-  if (!isAnthropic) {
-    const bridgeKey = (process.env.VISION_BRIDGE_API_KEY || "").trim();
-    if (bridgeKey) return bridgeKey;
-  }
+  const bridgeKey = (process.env.VISION_BRIDGE_API_KEY || "").trim();
+  if (bridgeKey) return bridgeKey;
   const provider = model.includes("/") ? model.split("/")[0] : "";
   const envVar = PROVIDER_API_KEY_MAP[provider] || "OPENAI_API_KEY";
   return process.env[envVar] || "";
 }
 
 /**
- * Resolve the OpenAI-compatible base URL for non-Anthropic vision bridge calls
+ * Resolve the OpenAI-compatible base URL for vision bridge calls
  * (issue #2232).
  *
  * Priority:
  *   1. `VISION_BRIDGE_BASE_URL` env var — operator-set, e.g. point this at
  *      OmniRoute's own `/v1` so the vision model can be any provider
- *      registered in OmniRoute (`google/gemini-2.0-flash`,
- *      `openrouter/...`, etc.) instead of being limited to OpenAI/Anthropic.
+ *      registered in OmniRoute (google/gemini-2.0-flash,
+ *      `openrouter/...`, etc.).
  *   2. `OPENAI_API_URL` env var (legacy)
  *   3. OmniRoute self-loop (`http://localhost:20128/v1`) — auto-detected when
  *      the model uses a known OmniRoute-internal provider (e.g. `kr/`, `if/`,
- *      `pol/`, `groq/`, etc.) instead of a direct OpenAI/Anthropic endpoint.
+ *      `pol/`, `groq/`, etc.) instead of a direct OpenAI endpoint.
  *   4. `https://api.openai.com/v1` (fallback when the model is `openai/*` or
  *      unprefixed — works only when the operator actually has an OpenAI
  *      account and OPENAI_API_KEY set)
@@ -70,13 +63,13 @@ export function resolveVisionBridgeBaseUrl(model?: string): string {
   const legacy = (process.env.OPENAI_API_URL || "").trim();
   if (legacy) return legacy.replace(/\/+$/, "");
 
-  // When the model has a non-standard provider prefix (not openai/ or
-  // anthropic/), it can only be resolved through OmniRoute's own router,
-  // not through a direct OpenAI/Anthropic endpoint. Use the operator-configured
+  // When the model has a non-standard provider prefix (not openai/),
+  // it can only be resolved through OmniRoute's own router,
+  // not through a direct OpenAI endpoint. Use the operator-configured
   // port via OMNIROUTE_PORT / PORT env vars, falling back to the default 20128.
   if (model && model.includes("/")) {
     const provider = model.split("/")[0].toLowerCase();
-    if (provider !== "openai" && provider !== "anthropic") {
+    if (provider !== "openai") {
       const { port } = getRuntimePorts();
       return `http://localhost:${port}/v1`;
     }
@@ -171,26 +164,13 @@ export function resolveImageAsDataUri(imageUrl: string): string {
   return `data:image/png;base64,${imageUrl}`;
 }
 
-async function fetchRemoteImageAsDataUri(imageUrl: string, signal: AbortSignal): Promise<string> {
-  const remoteImage = await fetchRemoteImage(imageUrl, { signal });
-  const mediaType = remoteImage.contentType.split(";")[0]?.trim() || "image/png";
-  return `data:${mediaType};base64,${remoteImage.buffer.toString("base64")}`;
-}
-
 async function normalizeVisionImageInput(
   imageInput: string,
-  isAnthropic: boolean,
   signal: AbortSignal
 ): Promise<string> {
   const normalizedImage = resolveImageAsDataUri(imageInput);
 
-  if (
-    isAnthropic &&
-    (normalizedImage.startsWith("http://") || normalizedImage.startsWith("https://"))
-  ) {
-    return fetchRemoteImageAsDataUri(normalizedImage, signal);
-  }
-
+  // OpenAI-compatible APIs handle HTTP URLs natively
   return normalizedImage;
 }
 
@@ -203,7 +183,7 @@ export interface VisionModelConfig {
 
 /**
  * Call the vision model to get an image description.
- * Supports both OpenAI-compatible and Anthropic API formats.
+ * Supports OpenAI-compatible API format.
  */
 export async function callVisionModel(
   imageDataUri: string,
@@ -216,120 +196,66 @@ export async function callVisionModel(
   // Resolve API key based on provider
   const resolvedApiKey = resolveProviderApiKey(config.model, apiKey);
 
-  // Detect provider from model identifier
-  const isAnthropic = config.model.startsWith("anthropic/");
-
   try {
     // Extract model name from provider/model format
     const modelName = config.model.includes("/") ? config.model.split("/")[1] : config.model;
     const normalizedImageInput = await normalizeVisionImageInput(
       imageDataUri,
-      isAnthropic,
       controller.signal
     );
 
-    let response: Response;
+    // OpenAI-compatible path — issue #2232: honor
+    // VISION_BRIDGE_BASE_URL so the vision-bridge call can be routed through
+    // OmniRoute itself or any other OpenAI-compatible endpoint instead of
+    // hardcoded api.openai.com.
+    const baseUrl = resolveVisionBridgeBaseUrl(config.model);
 
-    if (isAnthropic) {
-      // Anthropic API path
-      const anthropicBaseUrl = process.env.ANTHROPIC_API_URL || "https://api.anthropic.com";
+    // When routing through the OmniRoute self-loop (non-standard provider),
+    // keep the full provider-prefixed model ID so OmniRoute can resolve the
+    // correct provider backend. Only strip the prefix for direct OpenAI calls.
+    const useFullModelId =
+      baseUrl.startsWith("http://localhost") &&
+      config.model.includes("/") &&
+      !config.model.startsWith("openai/");
+    const requestModel = useFullModelId ? config.model : modelName;
 
-      // Parse data URI to extract media type and base64 data
-      const matches = normalizedImageInput.match(/^data:([^;]+);base64,(.+)$/);
-      let mediaType = "image/png";
-      let base64Data = normalizedImageInput;
-
-      if (matches) {
-        mediaType = matches[1];
-        base64Data = matches[2];
-      }
-
-      response = await fetch(`${anthropicBaseUrl}/v1/messages`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "x-api-key": resolvedApiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: mediaType,
-                    data: base64Data,
-                  },
-                },
-                {
-                  type: "text",
-                  text: config.prompt,
-                },
-              ],
-            },
-          ],
-          max_tokens: 300,
-        }),
-      });
-    } else {
-      // OpenAI-compatible path (default) — issue #2232: honor
-      // VISION_BRIDGE_BASE_URL so the vision-bridge call can be routed through
-      // OmniRoute itself or any other OpenAI-compatible endpoint instead of
-      // hardcoded api.openai.com.
-      const baseUrl = resolveVisionBridgeBaseUrl(config.model);
-
-      // When routing through the OmniRoute self-loop (non-standard provider),
-      // keep the full provider-prefixed model ID so OmniRoute can resolve the
-      // correct provider backend. Only strip the prefix for direct OpenAI calls.
-      const useFullModelId =
-        baseUrl.startsWith("http://localhost") &&
-        config.model.includes("/") &&
-        !config.model.startsWith("openai/");
-      const requestModel = useFullModelId ? config.model : modelName;
-
-      // Build headers with optional recursion guard for self-loop calls.
-      // When routing through OmniRoute's own API, omit the vision-bridge
-      // guardrail on the sub-request to prevent infinite recursion.
-      // Use sk_omniroute as fallback for self-loop if no API key is resolved.
-      const selfLoopApiKey = resolvedApiKey || "sk_omniroute";
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${selfLoopApiKey}`,
-      };
-      if (useFullModelId) {
-        headers["x-omniroute-disabled-guardrails"] = "vision-bridge";
-      }
-
-      response = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        signal: controller.signal,
-        headers,
-        body: JSON.stringify({
-          model: requestModel,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: normalizedImageInput,
-                    detail: "low",
-                  },
-                },
-                { type: "text", text: config.prompt },
-              ],
-            },
-          ],
-          max_tokens: 300,
-        }),
-      });
+    // Build headers with optional recursion guard for self-loop calls.
+    // When routing through OmniRoute's own API, omit the vision-bridge
+    // guardrail on the sub-request to prevent infinite recursion.
+    // Use sk_omniroute as fallback for self-loop if no API key is resolved.
+    const selfLoopApiKey = resolvedApiKey || "sk_omniroute";
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${selfLoopApiKey}`,
+    };
+    if (useFullModelId) {
+      headers["x-omniroute-disabled-guardrails"] = "vision-bridge";
     }
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers,
+      body: JSON.stringify({
+        model: requestModel,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: normalizedImageInput,
+                  detail: "low",
+                },
+              },
+              { type: "text", text: config.prompt },
+            ],
+          },
+        ],
+        max_tokens: 300,
+      }),
+    });
 
     clearTimeout(timeoutId);
 
@@ -340,46 +266,24 @@ export async function callVisionModel(
 
     const data = await response.json();
 
-    if (isAnthropic) {
-      // Anthropic response format: { content: [{ type: "text", text: "..." }] }
-      const anthropicData = data as {
-        content?: Array<{ type?: string; text?: string }>;
-        error?: { message?: string };
-      };
+    // OpenAI-compatible response format: { choices: [{ message: { content: "..." } }] }
+    const openaiData = data as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: { message?: string };
+    };
 
-      if (anthropicData.error) {
-        throw new Error(
-          `Vision API error: ${anthropicData.error.message || JSON.stringify(anthropicData.error)}`
-        );
-      }
-
-      const textContent = anthropicData.content?.find((c) => c.type === "text");
-      const content = textContent?.text;
-      if (!content || typeof content !== "string") {
-        throw new Error("Vision API returned empty or invalid response");
-      }
-
-      return content.trim();
-    } else {
-      // OpenAI-compatible response format: { choices: [{ message: { content: "..." } }] }
-      const openaiData = data as {
-        choices?: Array<{ message?: { content?: string } }>;
-        error?: { message?: string };
-      };
-
-      if (openaiData.error) {
-        throw new Error(
-          `Vision API error: ${openaiData.error.message || JSON.stringify(openaiData.error)}`
-        );
-      }
-
-      const content = openaiData.choices?.[0]?.message?.content;
-      if (!content || typeof content !== "string") {
-        throw new Error("Vision API returned empty or invalid response");
-      }
-
-      return content.trim();
+    if (openaiData.error) {
+      throw new Error(
+        `Vision API error: ${openaiData.error.message || JSON.stringify(openaiData.error)}`
+      );
     }
+
+    const content = openaiData.choices?.[0]?.message?.content;
+    if (!content || typeof content !== "string") {
+      throw new Error("Vision API returned empty or invalid response");
+    }
+
+    return content.trim();
   } catch (error) {
     clearTimeout(timeoutId);
 

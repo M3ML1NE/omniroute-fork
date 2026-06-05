@@ -1,54 +1,18 @@
 import { HTTP_STATUS, FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { applyFingerprint, isCliCompatEnabled } from "../config/cliFingerprints.ts";
-import { supportsClaudeMaxEffort, supportsXHighEffort } from "../config/providerModels.ts";
+import { supportsXHighEffort } from "../config/providerModels.ts";
 import {
-  getRotatingApiKey,
-  getValidApiKey,
   resolveKeyForRequest,
 } from "../services/apiKeyRotator.ts";
 import type { KeyHealth } from "../services/apiKeyRotator.ts";
-import { getOpenAICompatibleType, isClaudeCodeCompatible } from "../services/provider.ts";
+import { getOpenAICompatibleType } from "../services/provider.ts";
 import {
   runWithOnPersist,
   getRefreshLeadMs,
   isUnrecoverableRefreshError,
 } from "../services/tokenRefresh.ts";
 import type { ProviderRequestDefaults } from "../services/providerRequestDefaults.ts";
-import { signRequestBody } from "../services/claudeCodeCCH.ts";
-import {
-  appendAnthropicBetaHeader,
-  CONTEXT_1M_BETA_HEADER,
-  modelSupportsContext1mBeta,
-} from "../services/claudeCodeCompatible.ts";
-import { remapToolNamesInRequest } from "../services/claudeCodeToolRemapper.ts";
-import { obfuscateInBody } from "../services/claudeCodeObfuscation.ts";
 import { sanitizeResponsesInputItems } from "../services/responsesInputSanitizer.ts";
-import { applySystemTransformPipeline, PROVIDER_CLAUDE } from "../services/systemTransforms.ts";
-import {
-  fixToolPairs,
-  fixToolAdjacency,
-  stripTrailingAssistantOrphanToolUse,
-} from "../services/contextManager.ts";
-import { randomUUID } from "node:crypto";
-// Stripdown: claudeIdentity executor removed; provide local no-op stubs for
-// claude/CC-compatible code paths that remain in this base class. These paths
-// are dead in the gigachat-only build but kept compiling for upstream parity.
-const CLAUDE_CODE_VERSION = "0.0.0";
-const CLAUDE_CODE_STAINLESS_VERSION = "0.0.0";
-const buildHashFor = (_version: string, _dayStamp: string): string => "0";
-const buildUserIdJson = (_input: unknown): string => "{}";
-const getSessionId = (_seed: unknown): string => randomUUID();
-const parseUpstreamMetadataUserId = (
-  _tb: unknown,
-): { session_id?: string; device_id?: string; account_uuid?: string } | null => null;
-const passthroughUpstreamSessionId = (..._args: unknown[]): string | null => null;
-const resolveAccountUUID = (..._args: unknown[]): string => randomUUID();
-const resolveCliUserID = (..._args: unknown[]): string => randomUUID();
-const selectBetaFlags = (_tb: unknown): string => "";
-const stainlessArch = (): string => process.arch;
-const stainlessOS = (): string => process.platform;
-const stainlessRuntimeVersion = (): string => process.version;
-const stripProxyToolPrefix = (_tb: unknown): void => {};
 
 /**
  * Sanitizes a custom API path to prevent path traversal attacks.
@@ -199,18 +163,12 @@ export function mergeAbortSignals(primary: AbortSignal, secondary: AbortSignal):
   return controller.signal;
 }
 
-function hasActiveClaudeThinking(body: Record<string, unknown>): boolean {
-  const thinking = body.thinking as Record<string, unknown> | undefined;
-  return thinking?.type === "enabled" || thinking?.type === "adaptive";
-}
-
 /**
  * Sanitize reasoning_effort for providers that don't accept all values.
  *
- * The claude→openai translator may emit reasoning_effort=max/xhigh when the
- * client sends output_config.effort=max on a Claude-shape request. Combined with
- * runtime alias remapping (e.g. claude-opus-4-6 → mimo/mimo-v2.5-pro), this
- * routes xhigh to OpenAI-shape providers that don't accept the value:
+ * Some translators may emit reasoning_effort=max/xhigh. Combined with
+ * runtime alias remapping, this routes xhigh to OpenAI-shape providers
+ * that don't accept the value:
  *
  *   xiaomi-mimo : low|medium|high only — 400 literal_error on xhigh
  *   mistral     : devstral models reject reasoning_effort entirely
@@ -220,21 +178,11 @@ function hasActiveClaudeThinking(body: Record<string, unknown>): boolean {
  * provider. Apply provider-aware sanitation here (after transformRequest, so
  * reintroductions by per-provider transforms are also caught) before fetch.
  * xhigh support is registry-gated: models that genuinely support xhigh pass
- * through unchanged, and Claude models default to xhigh support unless marked
- * as legacy unsupported entries. max support is Claude/CC-compatible only and
- * intentionally separate: older Opus/Sonnet models may support max even when
- * they do not support xhigh. For OpenAI-shape providers, normalize max to
- * xhigh when that top tier is allowed; otherwise downgrade to high.
+ * through unchanged. For OpenAI-shape providers, normalize max to xhigh when
+ * that top tier is allowed; otherwise downgrade to high.
  */
 const MISTRAL_NO_REASONING_EFFORT_PATTERN = /devstral/i;
 const GITHUB_NO_REASONING_EFFORT_PATTERN = /(claude|haiku|oswe)/i;
-
-function supportsMaxEffortForProvider(provider: string, model: string): boolean {
-  return (
-    (provider === PROVIDER_CLAUDE || isClaudeCodeCompatible(provider)) &&
-    supportsClaudeMaxEffort(model)
-  );
-}
 
 export function sanitizeReasoningEffortForProvider(
   body: unknown,
@@ -256,25 +204,7 @@ export function sanitizeReasoningEffortForProvider(
 
   const supportsXHigh = supportsXHighEffort(provider, modelStr);
   const shouldDowngradeXHigh = effortStr === "xhigh" && !supportsXHigh;
-  const shouldNormalizeMaxToXHigh =
-    effortStr === "max" && !supportsMaxEffortForProvider(provider, modelStr) && supportsXHigh;
-  const shouldDowngradeMax =
-    effortStr === "max" && !supportsMaxEffortForProvider(provider, modelStr) && !supportsXHigh;
-
-  if (shouldNormalizeMaxToXHigh) {
-    log?.info?.(
-      "REASONING_SANITIZE",
-      `${provider}/${modelStr}: normalized reasoning_effort max → xhigh`
-    );
-    const next: Record<string, unknown> = { ...b };
-    if (hasTopLevelReasoningEffort) {
-      next.reasoning_effort = "xhigh";
-    }
-    if (reasoning) {
-      next.reasoning = { ...reasoning, effort: "xhigh" };
-    }
-    return next;
-  }
+  const shouldDowngradeMax = effortStr === "max" && !supportsXHigh;
 
   if (shouldDowngradeXHigh || shouldDowngradeMax) {
     log?.info?.(
@@ -704,15 +634,6 @@ export class BaseExecutor {
       const headers = this.buildHeaders(activeCredentials, stream, clientHeaders, model);
       applyConfiguredUserAgent(headers, activeCredentials?.providerSpecificData);
 
-            const shouldForwardExtendedContext =
-        extendedContext &&
-        modelSupportsContext1mBeta(model) &&
-        !isClaudeCodeCompatible(this.provider);
-      const shouldForwardCcCompatibleContext1m = false;
-      if (shouldForwardExtendedContext || shouldForwardCcCompatibleContext1m) {
-        appendAnthropicBetaHeader(headers, CONTEXT_1M_BETA_HEADER);
-      }
-
       const rawTransformedBody = await this.transformRequest(
         model,
         body,
@@ -748,318 +669,14 @@ export class BaseExecutor {
             ? mergeAbortSignals(signal, timeoutSignal)
             : signal || timeoutSignal;
 
-        const isClaudeCodeClient =
-          clientHeaders?.["x-app"] === "cli" ||
-          (clientHeaders?.["user-agent"] &&
-            clientHeaders["user-agent"].toLowerCase().includes("claude-code")) ||
-          (clientHeaders?.["user-agent"] &&
-            clientHeaders["user-agent"].toLowerCase().includes("claude-cli"));
-
-        // Anthropic's user:sessions:claude_code OAuth scope expects CLI-shaped
-        // traffic. Apply the cloak whenever we have an OAuth token, regardless
-        // of upstream client.
-        const hasClaudeOAuthToken =
-          typeof activeCredentials?.accessToken === "string" &&
-          activeCredentials.accessToken.startsWith("sk-ant-oat") &&
-          !activeCredentials?.apiKey;
-
-        if (
-          this.provider === "claude" &&
-          (isClaudeCodeClient || hasClaudeOAuthToken) &&
-          typeof transformedBody === "object" &&
-          transformedBody !== null
-        ) {
-          const tb = transformedBody as Record<string, unknown>;
-
-          stripProxyToolPrefix(tb);
-          remapToolNamesInRequest(tb);
-          obfuscateInBody(tb);
-
-          // NOTE (issue #2260): This is the native `claude` provider OAuth path.
-          // It is intentionally NOT routed through applyCcBridgeTransformPipeline.
-          // The native OAuth path already prepends its own billing line + sentinel
-          // (see lines ~744-773 below, dayStamp-based, cc_entrypoint=cli, cch=00000
-          // placeholder, signed at body level). The CC bridge transforms DSL is
-          // wired into buildAndSignClaudeCodeRequest (claudeCodeCompatible.ts step 5b)
-          // which is the anthropic-compatible-cc-* relay path — a different,
-          // separately classified surface. Do not double-prepend here.
-
-          // Real CLI never sets cache_control on tools.
-          if (Array.isArray(tb.tools)) {
-            for (const t of tb.tools as Array<Record<string, unknown>>) {
-              delete t.cache_control;
-            }
-          }
-
-          // Per-request behavior overrides via custom client headers.
-          //   x-omniroute-effort:   low | medium | high | xhigh | max | off
-          //   x-omniroute-thinking: adaptive | off
-          // A header value applies only when the corresponding body field is
-          // not already set; "off" force-strips the field.
-          const headerEffort = (
-            clientHeaders?.["x-omniroute-effort"] ?? clientHeaders?.["X-OmniRoute-Effort"]
-          )
-            ?.trim()
-            .toLowerCase();
-          const headerThinking = (
-            clientHeaders?.["x-omniroute-thinking"] ?? clientHeaders?.["X-OmniRoute-Thinking"]
-          )
-            ?.trim()
-            .toLowerCase();
-          let appliedEffort: string | null = null;
-          let appliedThinking: string | null = null;
-
-          if (headerEffort === "off") {
-            if (tb.output_config && typeof tb.output_config === "object") {
-              delete (tb.output_config as Record<string, unknown>).effort;
-            }
-            appliedEffort = "off";
-          } else if (
-            headerEffort &&
-            ["low", "medium", "high", "xhigh", "max"].includes(headerEffort)
-          ) {
-            const oc =
-              tb.output_config && typeof tb.output_config === "object"
-                ? (tb.output_config as Record<string, unknown>)
-                : {};
-            if (oc.effort === undefined) {
-              oc.effort = headerEffort;
-              tb.output_config = oc;
-              appliedEffort = headerEffort;
-            }
-          }
-
-          if (headerThinking === "adaptive") {
-            if (tb.thinking === undefined) {
-              tb.thinking = { type: "adaptive" };
-              appliedThinking = "adaptive";
-            }
-            if (tb.context_management === undefined) {
-              tb.context_management = {
-                edits: [{ type: "clear_thinking_20251015", keep: "all" }],
-              };
-            }
-          } else if (headerThinking === "off") {
-            delete tb.thinking;
-            delete tb.context_management;
-            appliedThinking = "off";
-          } else if (!headerThinking && !headerEffort) {
-            // Default CC logic when no override headers are present
-            const isHaiku = typeof tb.model === "string" && tb.model.includes("haiku");
-            if (isHaiku) {
-              // Keep tb.thinking — real Claude Desktop keeps thinking enabled for Haiku
-              // (issue #2454). Only strip output_config (effort) which Haiku rejects;
-              // context_management is re-paired with the preserved thinking below.
-              delete tb.output_config;
-              delete tb.context_management;
-            } else if (tb.thinking === undefined && tb.output_config === undefined) {
-              tb.thinking = { type: "adaptive" };
-              tb.context_management = {
-                edits: [{ type: "clear_thinking_20251015", keep: "all" }],
-              };
-              tb.output_config = { effort: "high" };
-            }
-          }
-
-          // Real CLI always pairs context_management with thinking. Mirror
-          // that invariant so long sessions don't accumulate thinking blocks
-          // toward the context cap.
-          if (hasActiveClaudeThinking(tb) && !tb.context_management) {
-            tb.context_management = {
-              edits: [{ type: "clear_thinking_20251015", keep: "all" }],
-            };
-          }
-
-          const seed = activeCredentials?.accessToken || activeCredentials?.apiKey || "anon";
-          const psd = activeCredentials?.providerSpecificData as
-            | Record<string, unknown>
-            | undefined;
-
-          let identitySource:
-            | "upstream-metadata"
-            | "upstream-header"
-            | "synthesized"
-            | "synthesized-cloaked" = "synthesized";
-          let sessionId: string;
-          let deviceId: string;
-          let accountUUID: string;
-
-          // For any Claude OAuth request, ignore client-supplied metadata.user_id /
-          // X-Claude-Code-Session-Id and synthesize per-account: the CC device_id from
-          // ~/.claude.json is shared across every account on one machine, which lets
-          // Anthropic correlate accounts behind one OmniRoute.
-          const cloakIdentity = isClaudeCodeClient || hasClaudeOAuthToken;
-          const upstreamUserId = cloakIdentity ? null : parseUpstreamMetadataUserId(tb);
-          if (upstreamUserId) {
-            sessionId = upstreamUserId.session_id;
-            deviceId = upstreamUserId.device_id;
-            accountUUID = upstreamUserId.account_uuid;
-            identitySource = "upstream-metadata";
-          } else {
-            const headerSid = cloakIdentity
-              ? null
-              : passthroughUpstreamSessionId(
-                  clientHeaders as Record<string, string | undefined> | undefined
-                );
-            sessionId = headerSid ?? getSessionId(seed);
-            deviceId = resolveCliUserID(psd, seed);
-            accountUUID = resolveAccountUUID(psd, seed, activeCredentials?.accessToken);
-            identitySource = headerSid
-              ? "upstream-header"
-              : cloakIdentity
-                ? "synthesized-cloaked"
-                : "synthesized";
-          }
-
-          // system[0] (billing) and system[1] (sentinel) must not carry
-          // cache_control — that belongs on upstream prompt blocks at [2..].
-          const dayStamp = new Date().toISOString().slice(0, 10);
-          const buildHash = buildHashFor(CLAUDE_CODE_VERSION, dayStamp);
-          const billingLine = `x-anthropic-billing-header: cc_version=${CLAUDE_CODE_VERSION}.${buildHash}; cc_entrypoint=cli; cch=00000;`;
-          const SENTINEL = "You are Claude Code, Anthropic's official CLI for Claude.";
-
-          const sysBlocks: Array<Record<string, unknown>> = Array.isArray(tb.system)
-            ? (tb.system as Array<Record<string, unknown>>)
-            : typeof tb.system === "string"
-              ? [{ type: "text", text: tb.system }]
-              : [];
-
-          // Strip any pre-existing billing/sentinel before re-prepending — keeps
-          // retries idempotent and avoids stacking that breaks prompt-cache prefix
-          // matching (see issue #1712).
-          for (let i = sysBlocks.length - 1; i >= 0; i--) {
-            const t = sysBlocks[i]?.text;
-            if (typeof t === "string" && t.startsWith("x-anthropic-billing-header:")) {
-              sysBlocks.splice(i, 1);
-            }
-          }
-          for (let i = sysBlocks.length - 1; i >= 0; i--) {
-            const t = sysBlocks[i]?.text;
-            if (typeof t === "string" && t.startsWith(SENTINEL)) {
-              sysBlocks.splice(i, 1);
-            }
-          }
-          sysBlocks.unshift({ type: "text", text: billingLine }, { type: "text", text: SENTINEL });
-          tb.system = sysBlocks;
-
-          // Run the configurable system-transforms pipeline for the native
-          // `claude` provider (issue #2260 / comment 4459544580). The default
-          // claude pipeline runs cosmetic ops only (Open WebUI paragraph
-          // anchors, identity-prefix paragraph drop, ZWJ obfuscation of
-          // sensitive words). It deliberately does NOT include
-          // `inject_billing_header` — billing + sentinel are already
-          // prepended above. Users can extend the pipeline via Settings UI.
-          {
-            const transformResult = applySystemTransformPipeline(PROVIDER_CLAUDE, tb);
-            if (transformResult.appliedOpKinds.length > 0) {
-              console.log(
-                `[SystemTransforms] claude-native: ${transformResult.appliedOpKinds.join(", ")}`
-              );
-            }
-          }
-
-          if (!tb.metadata || typeof tb.metadata !== "object") tb.metadata = {};
-          (tb.metadata as Record<string, unknown>).user_id = buildUserIdJson({
-            deviceId,
-            accountUUID,
-            sessionId,
-          });
-
-          // Headers. Accept stays application/json even on streams (Stainless
-          // convention; SSE decoding is gated on body.stream). anthropic-beta
-          // is selected per request shape; the full set on a quota probe is
-          // itself a fingerprint.
-          const ccHeaders: Record<string, string> = {
-            Accept: "application/json",
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": selectBetaFlags(tb),
-            "anthropic-dangerous-direct-browser-access": "true",
-            "x-app": "cli",
-            "User-Agent": `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
-            "X-Stainless-Package-Version": CLAUDE_CODE_STAINLESS_VERSION,
-            "X-Stainless-Timeout": "600",
-            "accept-encoding": "gzip, deflate, br, zstd",
-            connection: "keep-alive",
-            "x-client-request-id": randomUUID(),
-            "X-Claude-Code-Session-Id": sessionId,
-          };
-
-          // Drop case variants of the same header name before merging — undici
-          // would otherwise concatenate them (issue #1454).
-          const ccKeysLower = new Set(Object.keys(ccHeaders).map((k) => k.toLowerCase()));
-          for (const key of Object.keys(headers)) {
-            if (ccKeysLower.has(key.toLowerCase())) delete headers[key];
-          }
-          Object.assign(headers, ccHeaders);
-          delete headers["X-Stainless-Helper-Method"];
-
-          // Stainless OS/Arch/Runtime are host-derived (Stainless SDK does the
-          // same at runtime). Hardcoding them was a unique-per-deployment tell.
-          headers["X-Stainless-Arch"] = stainlessArch();
-          headers["X-Stainless-Lang"] = "js";
-          headers["X-Stainless-OS"] = stainlessOS();
-          headers["X-Stainless-Runtime"] = "node";
-          headers["X-Stainless-Runtime-Version"] = stainlessRuntimeVersion();
-          headers["X-Stainless-Retry-Count"] = "0";
-          delete headers["X-Stainless-Os"];
-
-          const overrideTag =
-            appliedEffort || appliedThinking
-              ? ` overrides=effort:${appliedEffort ?? "-"},thinking:${appliedThinking ?? "-"}`
-              : "";
-          log?.debug?.(
-            "CLAUDE",
-            `identity=${identitySource} sid=${sessionId.slice(0, 8)} dev=${deviceId.slice(0, 8)} acct=${accountUUID.slice(0, 8)}${overrideTag}`
-          );
-        }
-
-        // CLI fingerprint ordering — always-on for native Claude OAuth, opt-in
-        // for other providers. Header + body field order is itself a fingerprint.
         let finalHeaders = headers;
-        // Strip internal sentinel fields set by remapToolNamesInRequest before
-        // serializing — Anthropic rejects unknown top-level fields (issue #2260).
-        delete (transformedBody as Record<string, unknown>)[
-          "_claudeCodeRequiresLowercaseToolNames"
-        ];
-        // Guard against orphan tool_use / tool_result pairs. Clients can ship
-        // truncated histories mid-tool-call which Anthropic rejects with
-        // `messages.N: tool_use ids were found without tool_result blocks
-        // immediately after: toolu_...`. fixToolPairs strips orphans, then
-        // stripTrailingAssistantOrphanToolUse catches the case where the
-        // request body itself ends on an unmatched assistant(tool_use) —
-        // invalid for an upstream-send turn since the body must end on a
-        // user message. Both are idempotent on clean histories.
-        {
-          const tb = transformedBody as Record<string, unknown>;
-          if (Array.isArray(tb?.messages)) {
-            const fixed = fixToolPairs(tb.messages as Record<string, unknown>[]);
-            // fixToolAdjacency enforces Claude's strict adjacency rule
-            // (tool_result must be in immediately next message).
-            // Only apply for Claude/Claude-compatible — OpenAI allows results
-            // spread across multiple subsequent messages.
-            const isClaude = this.provider === "claude" || isClaudeCodeCompatible(this.provider);
-            // For Claude, fixToolAdjacency may strip tool_use blocks whose
-            // tool_result isn't in the next message; re-run fixToolPairs to
-            // drop any tool_result orphaned by that strip (discussion #2410).
-            const adjacent = isClaude ? fixToolPairs(fixToolAdjacency(fixed)) : fixed;
-            tb.messages = stripTrailingAssistantOrphanToolUse(adjacent);
-          }
-        }
         let bodyString = JSON.stringify(transformedBody);
 
-        const shouldFingerprint =
-          isCliCompatEnabled(this.provider) ||
-          (this.provider === "claude" && (isClaudeCodeClient || hasClaudeOAuthToken));
+        const shouldFingerprint = isCliCompatEnabled(this.provider);
         if (shouldFingerprint) {
           const fingerprinted = applyFingerprint(this.provider, headers, transformedBody);
           finalHeaders = fingerprinted.headers;
           bodyString = fingerprinted.bodyString;
-        }
-
-        // CCH signing — replaces the cch=00000 placeholder in the billing
-        // header with an xxHash64 integrity token over the serialized body.
-        if (isClaudeCodeCompatible(this.provider) || this.provider === "claude") {
-          bodyString = await signRequestBody(bodyString);
         }
 
         mergeUpstreamExtraHeaders(finalHeaders, upstreamExtraHeaders);

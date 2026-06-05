@@ -1,18 +1,11 @@
-import { ANTHROPIC_VERSION_HEADER } from "./anthropicHeaders.ts";
-
 type JsonRecord = Record<string, unknown>;
 
 export type GlmApiRegion = "international" | "china";
-export type GlmTransport = "openai" | "anthropic";
+export type GlmTransport = "openai";
 
 export const GLM_DEFAULT_BASE_URLS = Object.freeze({
   international: "https://api.z.ai/api/coding/paas/v4/chat/completions",
   china: "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
-});
-
-export const GLM_ANTHROPIC_DEFAULT_BASE_URLS = Object.freeze({
-  international: "https://api.z.ai/api/anthropic/v1/messages",
-  china: "https://open.bigmodel.cn/api/anthropic/v1/messages",
 });
 
 export const GLM_SHARED_MODELS = Object.freeze([
@@ -126,15 +119,6 @@ export const GLMT_REQUEST_DEFAULTS = Object.freeze({
 });
 
 export const GLM_COUNT_TOKENS_TIMEOUT_MS = 3_000;
-export const GLM_CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.137 (external, sdk-cli)";
-export const GLM_ANTHROPIC_BETA = [
-  "claude-code-20250219",
-  "interleaved-thinking-2025-05-14",
-  "context-management-2025-06-27",
-  "prompt-caching-scope-2026-01-05",
-  "advisor-tool-2026-03-01",
-  "effort-2025-11-24",
-].join(",");
 
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
@@ -157,25 +141,15 @@ export function getGlmApiRegion(providerSpecificData: unknown): GlmApiRegion {
 
 export function buildGlmModelsUrl(
   providerSpecificData: unknown,
-  transport: GlmTransport = "openai",
+  _transport: GlmTransport = "openai",
   fallbackBaseUrl?: string | null
 ): string {
   const data = asRecord(providerSpecificData);
   const customModelsUrl = asString(data.modelsUrl);
   if (customModelsUrl) return customModelsUrl;
 
-  if (transport === "anthropic") {
-    return joinGlmBaseAndPath(
-      getGlmAnthropicBaseUrl(providerSpecificData, fallbackBaseUrl),
-      "/v1/models"
-    );
-  }
-
   const configuredBaseUrl = asString(data.baseUrl);
   if (configuredBaseUrl) {
-    if (isAnthropicGlmBaseUrl(configuredBaseUrl)) {
-      return GLM_MODELS_URLS[getGlmApiRegion(providerSpecificData)];
-    }
     return joinGlmBaseAndPath(configuredBaseUrl, "/models");
   }
   return GLM_MODELS_URLS[getGlmApiRegion(providerSpecificData)];
@@ -192,18 +166,10 @@ function stripKnownGlmEndpointSuffix(baseUrl: string): { base: string; suffix: s
     base = base.slice(0, -1);
   }
 
-  const countTokensMatch = base.match(/\/(?:v\d+\/)?messages\/count_tokens$/i);
-  if (countTokensMatch) {
-    base = base.substring(0, base.length - countTokensMatch[0].length);
-  } else {
-    const messagesMatch = base.match(/\/(?:v\d+\/)?messages$/i);
-    if (messagesMatch) {
-      base = base.substring(0, base.length - messagesMatch[0].length);
-    } else if (base.toLowerCase().endsWith("/chat/completions")) {
-      base = base.substring(0, base.length - "/chat/completions".length);
-    } else if (base.toLowerCase().endsWith("/models")) {
-      base = base.substring(0, base.length - "/models".length);
-    }
+  if (base.toLowerCase().endsWith("/chat/completions")) {
+    base = base.substring(0, base.length - "/chat/completions".length);
+  } else if (base.toLowerCase().endsWith("/models")) {
+    base = base.substring(0, base.length - "/models".length);
   }
   return { base, suffix: parts.suffix };
 }
@@ -227,17 +193,6 @@ function stripQueryAndTrailingSlash(baseUrl: string): string {
     base = base.slice(0, -1);
   }
   return base;
-}
-
-function addBetaQuery(url: string): string {
-  const parsed = new URL(url);
-  parsed.searchParams.set("beta", "true");
-  return parsed.toString();
-}
-
-export function isAnthropicGlmBaseUrl(baseUrl: string): boolean {
-  const base = stripQueryAndTrailingSlash(baseUrl).toLowerCase();
-  return base.includes("/api/anthropic/") || base.endsWith("/api/anthropic");
 }
 
 export function isCodingGlmBaseUrl(baseUrl: string): boolean {
@@ -267,51 +222,11 @@ export function getGlmBaseUrl(
     : GLM_DEFAULT_BASE_URLS.international;
 }
 
-export function getGlmAnthropicBaseUrl(
-  providerSpecificData: unknown,
-  fallbackBaseUrl?: string | null
-): string {
-  const data = asRecord(providerSpecificData);
-  const anthropicBaseUrl = asString(data.anthropicBaseUrl);
-  if (anthropicBaseUrl) return anthropicBaseUrl;
-
-  const configuredBaseUrl = asString(data.baseUrl);
-  if (configuredBaseUrl) {
-    if (isCodingGlmBaseUrl(configuredBaseUrl)) {
-      return GLM_ANTHROPIC_DEFAULT_BASE_URLS[getGlmApiRegion(providerSpecificData)];
-    }
-    return configuredBaseUrl;
-  }
-  if (
-    typeof fallbackBaseUrl === "string" &&
-    fallbackBaseUrl.trim() &&
-    isCodingGlmBaseUrl(fallbackBaseUrl)
-  ) {
-    return GLM_ANTHROPIC_DEFAULT_BASE_URLS[
-      fallbackBaseUrl.includes("open.bigmodel.cn") ? "china" : getGlmApiRegion(providerSpecificData)
-    ];
-  }
-  if (
-    typeof fallbackBaseUrl === "string" &&
-    fallbackBaseUrl.trim() &&
-    !isCodingGlmBaseUrl(fallbackBaseUrl)
-  ) {
-    return fallbackBaseUrl.trim();
-  }
-  return GLM_ANTHROPIC_DEFAULT_BASE_URLS[getGlmApiRegion(providerSpecificData)];
-}
-
 export function getGlmPrimaryTransport(
-  providerSpecificData: unknown,
-  fallbackBaseUrl?: string | null
+  _providerSpecificData: unknown,
+  _fallbackBaseUrl?: string | null
 ): GlmTransport {
-  const data = asRecord(providerSpecificData);
-  const configuredTransport = asString(data.primaryTransport);
-  if (configuredTransport === "anthropic") return "anthropic";
-  if (configuredTransport === "openai") return "openai";
-  return isAnthropicGlmBaseUrl(getGlmBaseUrl(providerSpecificData, fallbackBaseUrl))
-    ? "anthropic"
-    : "openai";
+  return "openai";
 }
 
 export function getGlmTransport(providerSpecificData: unknown, fallbackBaseUrl?: string | null) {
@@ -320,12 +235,9 @@ export function getGlmTransport(providerSpecificData: unknown, fallbackBaseUrl?:
 
 export function buildGlmChatUrl(
   providerSpecificData: unknown,
-  transport: GlmTransport = "openai",
+  _transport: GlmTransport = "openai",
   fallbackBaseUrl?: string | null
 ): string {
-  if (transport === "anthropic") {
-    return buildGlmAnthropicMessagesUrl(providerSpecificData, fallbackBaseUrl);
-  }
   return buildGlmOpenAIChatUrl(providerSpecificData, fallbackBaseUrl);
 }
 
@@ -334,34 +246,7 @@ export function buildGlmOpenAIChatUrl(
   fallbackBaseUrl?: string | null
 ): string {
   const configuredBaseUrl = getGlmBaseUrl(providerSpecificData, fallbackBaseUrl);
-  const baseUrl = isAnthropicGlmBaseUrl(configuredBaseUrl)
-    ? GLM_DEFAULT_BASE_URLS[getGlmApiRegion(providerSpecificData)]
-    : configuredBaseUrl;
-  return joinGlmBaseAndPath(baseUrl, "/chat/completions");
-}
-
-export function buildGlmAnthropicMessagesUrl(
-  providerSpecificData: unknown,
-  fallbackBaseUrl?: string | null
-): string {
-  return addBetaQuery(
-    joinGlmBaseAndPath(
-      getGlmAnthropicBaseUrl(providerSpecificData, fallbackBaseUrl),
-      "/v1/messages"
-    )
-  );
-}
-
-export function buildGlmCountTokensUrl(
-  providerSpecificData: unknown,
-  fallbackBaseUrl?: string | null
-): string {
-  return addBetaQuery(
-    joinGlmBaseAndPath(
-      getGlmAnthropicBaseUrl(providerSpecificData, fallbackBaseUrl),
-      "/v1/messages/count_tokens"
-    )
-  );
+  return joinGlmBaseAndPath(configuredBaseUrl, "/chat/completions");
 }
 
 export function buildGlmCodingHeaders(apiKey: string, stream = true): Record<string, string> {
@@ -369,23 +254,5 @@ export function buildGlmCodingHeaders(apiKey: string, stream = true): Record<str
     "Content-Type": "application/json",
     Accept: stream ? "text/event-stream" : "application/json",
     Authorization: `Bearer ${apiKey}`,
-  };
-}
-
-export function buildGlmBaseHeaders(apiKey: string, stream = true): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    Accept: stream ? "text/event-stream" : "application/json",
-    "x-api-key": apiKey,
-    "anthropic-version": ANTHROPIC_VERSION_HEADER,
-    "anthropic-beta": GLM_ANTHROPIC_BETA,
-    "anthropic-dangerous-direct-browser-access": "true",
-    "User-Agent": GLM_CLAUDE_CODE_USER_AGENT,
-    "X-Stainless-Lang": "js",
-    "X-Stainless-Runtime": "node",
-    "X-Stainless-Retry-Count": "0",
-    "accept-language": "*",
-    "accept-encoding": "gzip, deflate, br, zstd",
-    connection: "keep-alive",
   };
 }

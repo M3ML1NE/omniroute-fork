@@ -4,7 +4,7 @@
  * During the scoped Postgres migration, only ~22 critical-path DB modules have
  * been converted to async Postgres-compatible code. The remaining ~21
  * non-critical modules (gamification, evals, relay*, skills, memory,
- * cloudAgent, webhooks, plugins, batches, files, syncTokens, contextHandoffs,
+ * cloudAgent, plugins, batches, files, syncTokens, contextHandoffs,
  * compression*, freeProxies, oneproxy, upstreamProxy, reasoningCache,
  * versionManager, cliToolState, tierConfig, etc.) still use sync better-sqlite3
  * patterns and SQLite-specific syntax that would break on Postgres.

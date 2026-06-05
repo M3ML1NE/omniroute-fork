@@ -6,7 +6,6 @@ import {
 } from "@/lib/compliance/providerAudit";
 import { createProviderConnection, getProviderNodeById, isCloudEnabled } from "@/models";
 import {
-  isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
   supportsBulkApiKey,
 } from "@/shared/constants/providers";
@@ -58,8 +57,7 @@ export async function POST(request: Request) {
 
   const isManagedOrCompatible =
     isManagedProviderConnectionId(provider) ||
-    isOpenAICompatibleProvider(provider) ||
-    isAnthropicCompatibleProvider(provider);
+    isOpenAICompatibleProvider(provider);
 
   if (!isManagedOrCompatible) {
     return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -73,7 +71,7 @@ export async function POST(request: Request) {
   }
 
   let baseProviderSpecificData: Record<string, unknown> | null = incomingPsd || null;
-  if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
+  if (isOpenAICompatibleProvider(provider)) {
     const node: any = await getProviderNodeById(provider);
     if (!node) {
       return NextResponse.json({ error: "Provider node not found" }, { status: 404 });

@@ -14,7 +14,7 @@ import { copyToClipboard } from "@/shared/utils/clipboard";
 import { useIsElectron, useOpenExternal } from "@/shared/hooks/useElectron";
 
 const ProviderTopology = dynamic(() => import("../home/ProviderTopology"), { ssr: false });
-const ProviderQuotaWidget = dynamic(() => import("../home/ProviderQuotaWidget"), { ssr: false });
+// ProviderQuotaWidget removed (quota subsystem deleted)
 import type { NewsAnnouncement } from "@/shared/utils/releaseNotes";
 
 type UpdateStep = {
@@ -816,16 +816,6 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
             </div>
           )}
 
-      {/* Pinned Provider Quota Limits (compact, no filters) */}
-      {pinProviderQuotaToHome && (
-        <Suspense fallback={<CardSkeleton />}>
-          <ProviderQuotaWidget
-            autoRefreshInterval={
-              autoRefreshProviderQuota ? autoRefreshProviderQuotaInterval : 0
-            }
-          />
-        </Suspense>
-      )}
 
       {/* Quick Start (controlled by Appearance setting, default on) */}
       {showQuickStartOnHome && (

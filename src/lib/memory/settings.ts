@@ -6,7 +6,6 @@ export interface MemorySettings {
   maxTokens: number;
   retentionDays: number;
   strategy: "recent" | "semantic" | "hybrid";
-  skillsEnabled: boolean;
 }
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
@@ -14,7 +13,6 @@ export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   maxTokens: 2000,
   retentionDays: 30,
   strategy: "hybrid",
-  skillsEnabled: true,
 };
 
 let cachedMemorySettings: MemorySettings | null = null;
@@ -50,7 +48,6 @@ export function normalizeMemorySettings(rawSettings: Record<string, unknown> = {
       365
     ),
     strategy: normalizeStrategy(rawSettings.memoryStrategy),
-    skillsEnabled: toBoolean(rawSettings.skillsEnabled, DEFAULT_MEMORY_SETTINGS.skillsEnabled),
   };
 }
 
@@ -63,7 +60,6 @@ export function toMemorySettingsUpdates(
   if (settings.maxTokens !== undefined) updates.memoryMaxTokens = settings.maxTokens;
   if (settings.retentionDays !== undefined) updates.memoryRetentionDays = settings.retentionDays;
   if (settings.strategy !== undefined) updates.memoryStrategy = settings.strategy;
-  if (settings.skillsEnabled !== undefined) updates.skillsEnabled = settings.skillsEnabled;
 
   return updates;
 }

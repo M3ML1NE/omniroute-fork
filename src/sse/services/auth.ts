@@ -11,12 +11,6 @@ import {
   deleteSessionAccountAffinity,
 } from "@/lib/localDb";
 import {
-  DEFAULT_QUOTA_THRESHOLD_PERCENT,
-  getQuotaCache,
-  getQuotaWindowStatus,
-  isAccountQuotaExhausted,
-} from "@/domain/quotaCache";
-import {
   isAccountUnavailable,
   getUnavailableUntil,
   getEarliestRateLimitedUntil,
@@ -31,17 +25,11 @@ import {
 } from "@omniroute/open-sse/services/accountFallback.ts";
 import { isLocalProvider } from "@omniroute/open-sse/config/providerRegistry.ts";
 import { COOLDOWN_MS } from "@omniroute/open-sse/config/constants.ts";
-import {
-  preflightQuota,
-  isQuotaPreflightEnabled,
-} from "@omniroute/open-sse/services/quotaPreflight.ts";
-import { resolveResilienceSettings } from "@/lib/resilience/settings";
 import { syncHealthFromDB, type KeyHealth } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import {
   classifyProviderError,
   PROVIDER_ERROR_TYPES,
 } from "@omniroute/open-sse/services/errorClassifier.ts";
-import { looksLikeQuotaExhausted } from "@/shared/utils/classify429";
 // Stripdown: codex executor removed; stub model-scope helper.
 const getCodexModelScope = (_model: string): string => "default";
 import {
@@ -53,6 +41,12 @@ import { isModelExcludedByConnection } from "@/domain/connectionModelRules";
 import * as log from "../utils/logger";
 import { fisherYatesShuffle, getNextFromDeckSync } from "@/shared/utils/shuffleDeck";
 
+// ── Quota subsystem removed (Wave 1 cleanup) — stubs return neutral values ──
+const DEFAULT_QUOTA_THRESHOLD_PERCENT = 50;
+function getQuotaCache(_connectionId: string): QuotaCacheView | null { return null; }
+function getQuotaWindowStatus(_connectionId: string, _windowName: string, _thresholdPercent: number): { blocked: boolean; remainingPercent: number | null; reachedThreshold: boolean; usedPercentage: number; resetAt: string | null; remainingPercentage: number } { return { blocked: false, remainingPercent: null, reachedThreshold: false, usedPercentage: 0, resetAt: null, remainingPercentage: 100 }; }
+function isAccountQuotaExhausted(_connectionId: string): boolean { return false; }
+function looksLikeQuotaExhausted(_errorText: string): boolean { return false; }
 type JsonRecord = Record<string, unknown>;
 
 interface ProviderConnectionView {
@@ -297,6 +291,7 @@ interface QuotaCacheView {
       resetAt?: string | null;
     }
   >;
+  nextResetAt?: string | null;
 }
 
 function normalizeQuotaThreshold(
@@ -715,37 +710,6 @@ function normalizeExcludedConnectionIds(
   }
 
   return normalized;
-}
-
-function buildQuotaPreflightRateLimitedResult(
-  provider: string,
-  blockedByPreflight: Array<{
-    id: string;
-    quotaPercent?: number;
-    resetAt?: string | null;
-  }>
-) {
-  const retryAfter =
-    getEarliestFutureDate(blockedByPreflight.map((entry) => entry.resetAt ?? null)) ||
-    new Date(Date.now() + 5 * 60 * 1000).toISOString();
-  const blockedSummary = blockedByPreflight
-    .map((entry) => {
-      const percent = Number.isFinite(entry.quotaPercent)
-        ? `${Math.round((entry.quotaPercent as number) * 100)}%`
-        : "quota exhausted";
-      return `${entry.id.slice(0, 8)}(${percent})`;
-    })
-    .join("; ");
-
-  log.info("AUTH", `${provider} | quota preflight filtered account(s): ${blockedSummary}`);
-
-  return {
-    allRateLimited: true,
-    retryAfter,
-    retryAfterHuman: formatRetryAfter(retryAfter),
-    lastError: `All ${provider} accounts blocked by quota preflight`,
-    lastErrorCode: 429,
-  };
 }
 
 // Provider-scoped mutexes prevent race conditions during account selection without
@@ -1414,144 +1378,13 @@ export async function getProviderCredentialsWithQuotaPreflight(
   requestedModel: string | null = null,
   options: CredentialSelectionOptions = {}
 ) {
-  if (options.bypassQuotaPolicy === true) {
-    return getProviderCredentials(
-      provider,
-      excludeConnectionId,
-      allowedConnections,
-      requestedModel,
-      options
-    );
-  }
-
-  const blockedByPreflight: Array<{
-    id: string;
-    quotaPercent?: number;
-    resetAt?: string | null;
-  }> = [];
-  const excludedConnectionIds = normalizeExcludedConnectionIds(
+  return getProviderCredentials(
+    provider,
     excludeConnectionId,
-    options.excludeConnectionIds
+    allowedConnections,
+    requestedModel,
+    options
   );
-
-  const resilience = resolveResilienceSettings(await getCachedSettings());
-  const { defaultThresholdPercent, warnThresholdPercent, providerWindowDefaults } =
-    resilience.quotaPreflight;
-  const providerWindowMap = providerWindowDefaults[provider] || {};
-  const providerHasDefaults = Object.keys(providerWindowMap).length > 0;
-  // The factory default is "block at 2% remaining" — effectively "right
-  // before 429." Skipping preflight at that level is a clean no-op. If an
-  // operator has raised the global to anything stricter (e.g. 20% remaining
-  // = stop at 80% used), preflight needs to run for every connection so the
-  // tighter floor is honored.
-  const FACTORY_NO_OP_REMAINING_PERCENT = 2;
-  const globalDefaultIsRestrictive = defaultThresholdPercent > FACTORY_NO_OP_REMAINING_PERCENT;
-
-  while (true) {
-    const credentials = await getProviderCredentials(
-      provider,
-      null,
-      allowedConnections,
-      requestedModel,
-      {
-        ...options,
-        excludeConnectionIds: Array.from(excludedConnectionIds),
-      }
-    );
-
-    if (!credentials) {
-      if (blockedByPreflight.length > 0) {
-        return buildQuotaPreflightRateLimitedResult(provider, blockedByPreflight);
-      }
-      return null;
-    }
-
-    if (credentials.allRateLimited || credentials.allExpired) {
-      return credentials;
-    }
-
-    const connectionId = credentials.connectionId;
-    if (!connectionId) {
-      return credentials;
-    }
-
-    // Cascading resolver: per-connection override → per-(provider, window)
-    // default → global default. Used per-window when the fetcher exposes
-    // multiple windows, and once (with window=null) for single-signal
-    // fetchers. The warn fallback is uniform — windows don't need their own
-    // warn levels in v1.
-    const perConnectionWindowOverrides =
-      (credentials as { quotaWindowThresholds?: Record<string, number> | null })
-        .quotaWindowThresholds || {};
-
-    // Latency gate: skip the upstream usage fetch entirely when there's
-    // nothing to enforce. Preflight is only worth its cost when at least
-    // one of the following is true:
-    //   • a per-connection override on this row
-    //   • a per-(provider, window) default in resilience settings
-    //   • the legacy `quotaPreflightEnabled` flag in providerSpecificData
-    //   • the global default is stricter than the factory no-op level
-    //     (factory = 2% remaining, basically "right before 429" — anything
-    //     stricter means the operator wants enforcement everywhere)
-    // Otherwise the resolver would return the factory default for every
-    // window, and a near-exhausted account would still be caught by the
-    // normal 429 → cooldown path.
-    // Explicit per-connection opt-out always wins over global/provider defaults.
-    // isQuotaPreflightEnabled is strict-=== true (back-compat), so it returns
-    // false for both "not set" and "explicit false" — we need an explicit check
-    // here to distinguish them.
-    const legacyForceDisable =
-      (credentials as { providerSpecificData?: Record<string, unknown> })
-        .providerSpecificData?.quotaPreflightEnabled === false;
-    if (legacyForceDisable) return credentials;
-
-    const hasConnectionOverrides = Object.keys(perConnectionWindowOverrides).length > 0;
-    const legacyForceEnable = isQuotaPreflightEnabled(credentials);
-    if (
-      !hasConnectionOverrides &&
-      !providerHasDefaults &&
-      !legacyForceEnable &&
-      !globalDefaultIsRestrictive
-    ) {
-      return credentials;
-    }
-
-    // Returns the minimum-remaining cutoff for a window — matches the
-    // dashboard's quota bars so the number the user types in the modal
-    // means the same thing as the percentage rendered on the bar.
-    const resolveMinRemainingPercent = (windowName: string | null): number => {
-      if (windowName !== null) {
-        const override = perConnectionWindowOverrides[windowName];
-        if (typeof override === "number") return override;
-        const providerDefault = providerWindowMap[windowName];
-        if (typeof providerDefault === "number") return providerDefault;
-      }
-      return defaultThresholdPercent;
-    };
-    const preflight = await preflightQuota(provider, connectionId, credentials, {
-      resolveMinRemainingPercent,
-      resolveWarnRemainingPercent: () => warnThresholdPercent,
-    });
-    if (preflight.proceed) {
-      return credentials;
-    }
-
-    blockedByPreflight.push({
-      id: connectionId,
-      quotaPercent: preflight.quotaPercent,
-      resetAt: preflight.resetAt ?? null,
-    });
-    excludedConnectionIds.add(connectionId);
-
-    log.info(
-      "AUTH",
-      `${provider} | preflight blocked ${connectionId.slice(0, 8)}${
-        Number.isFinite(preflight.quotaPercent)
-          ? ` at ${Math.round((preflight.quotaPercent as number) * 100)}%`
-          : ""
-      }`
-    );
-  }
 }
 
 /**

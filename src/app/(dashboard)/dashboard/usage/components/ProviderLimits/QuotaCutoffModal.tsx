@@ -22,8 +22,7 @@ interface QuotaCutoffModalProps {
   provider: string;
   /**
    * Windows this connection exposes — discovered from its live quota cache
-   * so the modal works for any provider with usage data, not just providers
-   * that registered with quotaPreflight at startup.
+   * so the modal works for any provider with usage data.
    */
   windows: QuotaCutoffModalWindow[];
   /** Currently persisted per-window overrides on the connection. */

@@ -1,33 +1,14 @@
 // @ts-nocheck
 import { PROVIDERS } from "../config/constants.ts";
 import { getRegistryEntry } from "../config/providerRegistry.ts";
-import {
-  buildClaudeCodeCompatibleHeaders,
-  CLAUDE_CODE_COMPATIBLE_DEFAULT_CHAT_PATH,
-  joinClaudeCodeCompatibleUrl,
-} from "./claudeCodeCompatible.ts";
 
 const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
 const OPENAI_COMPATIBLE_DEFAULTS = {
   baseUrl: "https://api.openai.com/v1",
 };
 
-const ANTHROPIC_COMPATIBLE_PREFIX = "anthropic-compatible-";
-const CLAUDE_CODE_COMPATIBLE_PREFIX = "anthropic-compatible-cc-";
-const ANTHROPIC_COMPATIBLE_DEFAULTS = {
-  baseUrl: "https://api.anthropic.com/v1",
-};
-
 function isOpenAICompatible(provider) {
   return typeof provider === "string" && provider.startsWith(OPENAI_COMPATIBLE_PREFIX);
-}
-
-function isAnthropicCompatible(provider) {
-  return typeof provider === "string" && provider.startsWith(ANTHROPIC_COMPATIBLE_PREFIX);
-}
-
-export function isClaudeCodeCompatible(provider) {
-  return typeof provider === "string" && provider.startsWith(CLAUDE_CODE_COMPATIBLE_PREFIX);
 }
 
 export function getOpenAICompatibleType(
@@ -74,11 +55,6 @@ function buildOpenAICompatibleUrl(baseUrl, apiType) {
     path = "/images/generations";
   }
   return `${normalized}${path}`;
-}
-
-function buildAnthropicCompatibleUrl(baseUrl) {
-  const normalized = baseUrl.replace(/\/$/, "");
-  return `${normalized}/messages`;
 }
 
 // Detect request format from endpoint first when the route is known.
@@ -209,13 +185,6 @@ export function getProviderConfig(provider, providerSpecificData = null) {
       baseUrl: OPENAI_COMPATIBLE_DEFAULTS.baseUrl,
     };
   }
-  if (isAnthropicCompatible(provider)) {
-    return {
-      ...PROVIDERS.anthropic, // Use Anthropic defaults (header: x-api-key)
-      format: "claude",
-      baseUrl: ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl,
-    };
-  }
   return PROVIDERS[provider] || PROVIDERS.openai;
 }
 
@@ -245,14 +214,6 @@ export function buildProviderUrl(
       OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
     return buildOpenAICompatibleUrl(baseUrl, apiType);
   }
-  if (isAnthropicCompatible(provider)) {
-    const baseUrl = options?.baseUrl || ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl;
-    if (isClaudeCodeCompatible(provider)) {
-      return joinClaudeCodeCompatibleUrl(baseUrl, CLAUDE_CODE_COMPATIBLE_DEFAULT_CHAT_PATH);
-    }
-    return buildAnthropicCompatibleUrl(baseUrl);
-  }
-
   const entry = getRegistryEntry(provider);
   const config = getProviderConfig(provider);
 
@@ -292,25 +253,7 @@ export function buildProviderHeaders(provider, credentials, stream = true, body 
   };
 
   // Add auth header
-  // Specific override for Anthropic Compatible
-  if (isClaudeCodeCompatible(provider)) {
-    const token = credentials.apiKey || credentials.accessToken || "";
-    return buildClaudeCodeCompatibleHeaders(
-      token,
-      stream,
-      credentials?.providerSpecificData?.ccSessionId
-    );
-  }
-  if (isAnthropicCompatible(provider)) {
-    if (credentials.apiKey) {
-      headers["x-api-key"] = credentials.apiKey;
-    } else if (credentials.accessToken) {
-      headers["Authorization"] = `Bearer ${credentials.accessToken}`;
-    }
-    if (!headers["anthropic-version"]) {
-      headers["anthropic-version"] = "2023-06-01";
-    }
-  } else if (provider === "github") {
+  if (provider === "github") {
     // GitHub Copilot requires special dynamic headers (x-request-id)
     const githubToken = credentials.copilotToken || credentials.accessToken;
     headers["Authorization"] = `Bearer ${githubToken}`;
@@ -366,9 +309,6 @@ export function getTargetFormat(provider, providerSpecificData = null) {
     return getOpenAICompatibleType(provider, providerSpecificData) === "responses"
       ? "openai-responses"
       : "openai";
-  }
-  if (isAnthropicCompatible(provider)) {
-    return "claude";
   }
   // Registry-driven format lookup
   const entry = getRegistryEntry(provider);

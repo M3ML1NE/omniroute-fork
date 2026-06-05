@@ -18,7 +18,6 @@ import {
 import {
   AI_PROVIDERS,
   isOpenAICompatibleProvider,
-  isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
 import { providerModelMutationSchema } from "@/shared/validation/schemas";
@@ -196,8 +195,7 @@ export async function PUT(request) {
             AI_PROVIDERS as Record<string, unknown>,
             provider
           ) ||
-            isOpenAICompatibleProvider(provider) ||
-            isAnthropicCompatibleProvider(provider));
+            isOpenAICompatibleProvider(provider));
         if (!knownProvider) {
           return Response.json(
             { error: { message: "Unknown provider", type: "validation_error" } },

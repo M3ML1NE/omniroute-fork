@@ -4,7 +4,6 @@ import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance/index";
 import { getProviderNodeById } from "@/models";
 import {
   isOpenAICompatibleProvider,
-  isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
 import { validateProviderApiKey } from "@/lib/providers/validation";
 import { getProxyForLevel, resolveProxyForProvider } from "@/lib/localDb";
@@ -72,12 +71,11 @@ export async function POST(request) {
       providerSpecificData.cx = cx;
     }
 
-    if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
+    if (isOpenAICompatibleProvider(provider)) {
       const node: any = await getProviderNodeById(provider);
       if (!node) {
-        const typeName = isOpenAICompatibleProvider(provider) ? "OpenAI" : "Anthropic";
         return NextResponse.json(
-          { error: `${typeName} Compatible node not found` },
+          { error: "OpenAI Compatible node not found" },
           { status: 404 }
         );
       }

@@ -46,8 +46,7 @@ export interface ProviderAutopilotIssue {
     | "stale_connection_error"
     | "terminal_connection_error"
     | "inactive_connection"
-    | "model_lockout"
-    | "quota_monitor_warning";
+    | "model_lockout";
   title: string;
   recommendation: string;
   target: ProviderAutopilotTarget;
@@ -70,7 +69,6 @@ export interface ProviderAutopilotProvider {
       staleErrors: number;
     };
     modelLockouts: number;
-    quotaMonitor: JsonRecord | null;
   };
   issues: ProviderAutopilotIssue[];
 }
@@ -255,11 +253,10 @@ export async function buildProviderHealthAutopilotReport(
   const includeActions = options.includeActions !== false;
   const providerFilter = toString(options.provider);
 
-  const [{ getAllCircuitBreakerStatuses }, { getAllModelLockouts }, quotaMonitor] =
+  const [{ getAllCircuitBreakerStatuses }, { getAllModelLockouts }] =
     await Promise.all([
       import("@/shared/utils/circuitBreaker"),
       import("@omniroute/open-sse/services/accountFallback"),
-      import("@omniroute/open-sse/services/quotaMonitor.ts").catch(() => null),
     ]);
 
   const connections = (await getProviderConnections(
@@ -274,13 +271,6 @@ export async function buildProviderHealthAutopilotReport(
     const provider = providerFromLockout(lockout);
     return provider && (!providerFilter || provider === providerFilter);
   });
-  const quotaSnapshots = quotaMonitor?.getQuotaMonitorSnapshots
-    ? (quotaMonitor.getQuotaMonitorSnapshots() as JsonRecord[]).filter((snapshot) => {
-        const provider = toString(snapshot.provider);
-        return provider && (!providerFilter || provider === providerFilter);
-      })
-    : [];
-
   const providerIds = new Set<string>();
   for (const connection of connections) {
     const provider = toString(connection.provider);
@@ -292,10 +282,6 @@ export async function buildProviderHealthAutopilotReport(
   }
   for (const lockout of lockouts) {
     const provider = providerFromLockout(lockout);
-    if (provider) providerIds.add(provider);
-  }
-  for (const snapshot of quotaSnapshots) {
-    const provider = toString(snapshot.provider);
     if (provider) providerIds.add(provider);
   }
   if (providerFilter) providerIds.add(providerFilter);
@@ -311,7 +297,6 @@ export async function buildProviderHealthAutopilotReport(
     const providerLockouts = lockouts.filter(
       (lockout) => providerFromLockout(lockout) === provider
     );
-    const providerQuota = quotaSnapshots.filter((snapshot) => snapshot.provider === provider);
     const issues: ProviderAutopilotIssue[] = [];
 
     if (breaker && OPEN_BREAKER_STATES.has(String(breaker.state))) {
@@ -478,32 +463,6 @@ export async function buildProviderHealthAutopilotReport(
       });
     }
 
-    for (const snapshot of providerQuota) {
-      const status = toString(snapshot.status);
-      if (!status || !["warning", "exhausted", "error"].includes(status)) continue;
-      const connectionId = toString(snapshot.accountId) ?? undefined;
-      const sessionId = toString(snapshot.sessionId) ?? undefined;
-      const target = { provider, ...(connectionId ? { connectionId } : {}) };
-      issues.push({
-        id: issueId("quota_monitor_warning", {
-          ...target,
-          ...(sessionId ? { model: sessionId } : {}),
-        }),
-        severity: status === "warning" ? "warning" : "critical",
-        kind: "quota_monitor_warning",
-        title: `Quota monitor reports ${status}`,
-        recommendation:
-          "Review quota usage and rotate traffic to another healthy connection if needed.",
-        target,
-        evidence: {
-          status,
-          lastQuotaPercent: snapshot.lastQuotaPercent ?? null,
-          consecutiveFailures: snapshot.consecutiveFailures ?? null,
-        },
-        actions: [],
-      });
-    }
-
     const activeConnections = providerConnections.filter(
       (connection) => connection.isActive !== false
     );
@@ -559,13 +518,6 @@ export async function buildProviderHealthAutopilotReport(
           staleErrors,
         },
         modelLockouts: providerLockouts.length,
-        quotaMonitor: providerQuota.length
-          ? {
-              warning: providerQuota.filter((snapshot) => snapshot.status === "warning").length,
-              exhausted: providerQuota.filter((snapshot) => snapshot.status === "exhausted").length,
-              errors: providerQuota.filter((snapshot) => snapshot.status === "error").length,
-            }
-          : null,
       },
       issues,
     };

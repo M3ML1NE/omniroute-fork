@@ -86,7 +86,6 @@ export async function registerNodejs(): Promise<void> {
   const [
     { initGracefulShutdown },
     { initApiBridgeServer },
-    { startBackgroundRefresh },
     { ensureCloudSyncInitialized },
     { startProviderLimitsSyncScheduler },
     { getSettings },
@@ -95,12 +94,9 @@ export async function registerNodejs(): Promise<void> {
     { startSpendBatchWriter },
     { registerDefaultGuardrails },
     { ensurePersistentManagementPasswordHash },
-    { skillExecutor },
-    { registerBuiltinSkills },
   ] = await Promise.all([
     import("@/lib/gracefulShutdown"),
     import("@/lib/apiBridgeServer"),
-    import("@/domain/quotaCache"),
     import("@/lib/initCloudSync"),
     import("@/shared/services/providerLimitsSyncScheduler"),
     import("@/lib/db/settings"),
@@ -109,21 +105,15 @@ export async function registerNodejs(): Promise<void> {
     import("@/lib/spend/batchWriter"),
     import("@/lib/guardrails"),
     import("@/lib/auth/managementPassword"),
-    import("@/lib/skills/executor"),
-    import("@/lib/skills/builtins"),
   ]);
 
   initGracefulShutdown();
   initApiBridgeServer();
   startSpendBatchWriter();
   registerDefaultGuardrails();
-  registerBuiltinSkills(skillExecutor);
   console.log("[STARTUP] Spend batch writer started");
   console.log("[STARTUP] Guardrail registry initialized");
-  console.log("[STARTUP] Builtin skill handlers registered");
   if (!isBackgroundServicesDisabled()) {
-    startBackgroundRefresh();
-    console.log("[STARTUP] Quota cache background refresh started");
     startProviderLimitsSyncScheduler();
     console.log("[STARTUP] Provider limits sync scheduler started");
     const cloudSyncInitialized = await ensureCloudSyncInitialized();

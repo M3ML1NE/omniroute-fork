@@ -25,7 +25,6 @@ export const ENDPOINT_CATEGORIES: readonly EndpointCategory[] = [
     prefixes: [
       "/v1/chat/completions",
       "/v1/completions",
-      "/v1/messages",
     ],
   },
   {

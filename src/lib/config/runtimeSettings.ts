@@ -14,7 +14,6 @@ export type RuntimeReloadSection =
   | "modelsDevSync"
   | "corsOrigins"
   | "ccBridgeTransforms"
-  | "systemTransforms"
   | "authzBypass";
 
 export interface RuntimeReloadChange {
@@ -40,7 +39,6 @@ interface RuntimeSettingsSnapshot {
   modelsDevSyncInterval: number | null;
   corsOrigins: string;
   ccBridgeTransforms: unknown;
-  systemTransforms: unknown;
   authzBypass: AuthzBypassSnapshot;
 }
 
@@ -65,7 +63,6 @@ const DEFAULT_RUNTIME_SETTINGS_SNAPSHOT: RuntimeSettingsSnapshot = {
   modelsDevSyncInterval: null,
   corsOrigins: "",
   ccBridgeTransforms: null,
-  systemTransforms: null,
   authzBypass: DEFAULT_AUTHZ_BYPASS_SNAPSHOT,
 };
 
@@ -244,7 +241,6 @@ export function buildRuntimeSettingsSnapshot(
     modelsDevSyncInterval: normalizeNumber(settings.modelsDevSyncInterval),
     corsOrigins: typeof settings.corsOrigins === "string" ? settings.corsOrigins : "",
     ccBridgeTransforms: parseStoredJson(settings.ccBridgeTransforms, "ccBridgeTransforms"),
-    systemTransforms: parseStoredJson(settings.systemTransforms, "systemTransforms"),
     authzBypass: normalizeAuthzBypass(settings),
   };
 }
@@ -324,45 +320,11 @@ async function applyCorsOriginsSection(corsOrigins: string) {
 }
 
 /**
- * Legacy alias for the v2 systemTransforms config. The `ccBridgeTransforms`
- * settings field carried the single-provider shape `{ enabled, pipeline }`
- * during Phase 2 (commit e3e962db, pre-release). v2 unifies everything under
- * `systemTransforms.providers[*]`. We migrate the legacy shape into the v2
- * registry on every reload so users with persisted Phase-2 data keep working.
- *
- * `setSystemTransformsConfig` accepts both shapes and routes legacy into
- * `providers[PROVIDER_CC_BRIDGE]`.
- */
-async function applyCcBridgeTransformsSection(ccBridgeTransforms: unknown) {
-  const { setSystemTransformsConfig } =
-    await import("@omniroute/open-sse/services/systemTransforms.ts");
-  if (ccBridgeTransforms && typeof ccBridgeTransforms === "object") {
-    setSystemTransformsConfig(ccBridgeTransforms);
-  }
-}
-
-/**
  * Swap the in-process bypass policy. Synchronous, O(1), no I/O — the SLA
  * (<50 ms hot-reload) is structurally satisfied by this shape.
  */
 function applyAuthzBypassSection(snapshot: AuthzBypassSnapshot) {
   currentAuthzBypass = { enabled: snapshot.enabled, prefixes: [...snapshot.prefixes] };
-}
-
-async function applySystemTransformsSection(systemTransforms: unknown) {
-  const { setSystemTransformsConfig, resetSystemTransformsConfig } =
-    await import("@omniroute/open-sse/services/systemTransforms.ts");
-
-  if (
-    systemTransforms === null ||
-    systemTransforms === undefined ||
-    typeof systemTransforms !== "object"
-  ) {
-    resetSystemTransformsConfig();
-    return;
-  }
-
-  setSystemTransformsConfig(systemTransforms);
 }
 
 async function applyModelsDevSyncSection(
@@ -498,19 +460,6 @@ export async function applyRuntimeSettings(
   if (force || hasChanged(currentSnapshot.corsOrigins, previousSnapshot.corsOrigins)) {
     await applyCorsOriginsSection(currentSnapshot.corsOrigins);
     markChanged("corsOrigins");
-  }
-
-  if (
-    force ||
-    hasChanged(currentSnapshot.ccBridgeTransforms, previousSnapshot.ccBridgeTransforms)
-  ) {
-    await applyCcBridgeTransformsSection(currentSnapshot.ccBridgeTransforms);
-    markChanged("ccBridgeTransforms");
-  }
-
-  if (force || hasChanged(currentSnapshot.systemTransforms, previousSnapshot.systemTransforms)) {
-    await applySystemTransformsSection(currentSnapshot.systemTransforms);
-    markChanged("systemTransforms");
   }
 
   if (force || hasChanged(currentSnapshot.authzBypass, previousSnapshot.authzBypass)) {

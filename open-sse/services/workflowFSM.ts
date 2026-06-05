@@ -75,7 +75,7 @@ const MED_KEYWORDS = [
   "model",
   "api",
   "integration",
-  "webhook",
+  // "webhook" removed — Wave 1 cleanup
   "middleware",
   "route",
 ];

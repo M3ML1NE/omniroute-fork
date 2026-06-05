@@ -13,7 +13,7 @@ export default function BadRequestPage() {
         "If this keeps happening, open the request in Translator Playground to inspect the payload.",
       ]}
       primaryAction={{ href: "/docs", label: "Open Documentation" }}
-      secondaryAction={{ href: "/dashboard/translator", label: "Open Translator" }}
+      secondaryAction={{ href: "/dashboard/providers", label: "Open Providers" }}
     />
   );
 }

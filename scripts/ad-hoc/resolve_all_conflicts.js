@@ -237,10 +237,10 @@ RUN --mount=type=cache,target=/root/.npm \\
   if (fs.existsSync(openSseCombo)) {
     let content = fs.readFileSync(openSseCombo, "utf-8");
 
-    // IntentClassifierConfig imports
+    // IntentClassifierConfig imports (webhook import removed — Wave 1 cleanup)
     content = content.replace(
-      /<<<<<<< HEAD\r?\nimport \{\r?\n\s+classifyWithConfig,\r?\n\s+DEFAULT_INTENT_CONFIG,\r?\n\s+type IntentClassifierConfig,\r?\n\} from "\.\/intentClassifier\.ts";\r?\n=======\r?\nimport \{ notifyWebhookEvent \} from "\.\.\/\.\.\/src\/lib\/webhookDispatcher";\r?\nimport \{ classifyWithConfig, DEFAULT_INTENT_CONFIG \} from "\.\/intentClassifier\.ts";\r?\n>>>>>>> release\/v3\.8\.4/g,
-      'import { notifyWebhookEvent } from "../../src/lib/webhookDispatcher";\nimport {\n  classifyWithConfig,\n  DEFAULT_INTENT_CONFIG,\n  type IntentClassifierConfig,\n} from "./intentClassifier.ts";'
+      /<<<<<<< HEAD\r?\nimport \{\r?\n\s+classifyWithConfig,\r?\n\s+DEFAULT_INTENT_CONFIG,\r?\n\s+type IntentClassifierConfig,\r?\n\} from "\.\/intentClassifier\.ts";\r?\n=======\r?\nimport \{ classifyWithConfig, DEFAULT_INTENT_CONFIG \} from "\.\/intentClassifier\.ts";\r?\n>>>>>>> release\/v3\.8\.4/g,
+      'import {\n  classifyWithConfig,\n  DEFAULT_INTENT_CONFIG,\n  type IntentClassifierConfig,\n} from "./intentClassifier.ts";'
     );
 
     // handlePipelineCombo call

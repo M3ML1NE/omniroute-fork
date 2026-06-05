@@ -13,7 +13,6 @@ import {
   CLOUD_AGENT_PROVIDERS,
   IDE_PROVIDER_IDS,
   OPENAI_COMPATIBLE_PREFIX,
-  ANTHROPIC_COMPATIBLE_PREFIX,
 } from "@/shared/constants/providers";
 import { testSingleConnection } from "../[id]/test/route";
 import { providersBatchTestSchema } from "@/shared/validation/schemas";
@@ -33,8 +32,7 @@ function getAuthGroup(providerId) {
   if (APIKEY_PROVIDERS[providerId]) return "apikey";
   if (
     typeof providerId === "string" &&
-    (providerId.startsWith(OPENAI_COMPATIBLE_PREFIX) ||
-      providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX))
+    providerId.startsWith(OPENAI_COMPATIBLE_PREFIX)
   )
     return "compatible";
   return "unknown";
@@ -47,8 +45,7 @@ function providerHasFreeTier(providerId) {
 function isCompatibleProvider(providerId) {
   return (
     typeof providerId === "string" &&
-    (providerId.startsWith(OPENAI_COMPATIBLE_PREFIX) ||
-      providerId.startsWith(ANTHROPIC_COMPATIBLE_PREFIX))
+    providerId.startsWith(OPENAI_COMPATIBLE_PREFIX)
   );
 }
 

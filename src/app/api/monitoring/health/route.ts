@@ -24,22 +24,12 @@ export async function GET() {
     }
   };
 
-  const fallbackQuotaMonitorSummary = {
-    active: 0,
-    alerting: 0,
-    exhausted: 0,
-    errors: 0,
-    statusCounts: { starting: 0, idle: 0, healthy: 0, warning: 0, exhausted: 0, error: 0 },
-    byProvider: {},
-  };
-
   try {
     const [
       circuitBreakerModule,
       rateLimitModule,
       accountFallbackModule,
       requestDedupModule,
-      quotaMonitorModule,
       sessionManagerModule,
       credentialHealthModule,
       localHealthModule,
@@ -50,7 +40,6 @@ export async function GET() {
       import("@omniroute/open-sse/services/rateLimitManager"),
       import("@omniroute/open-sse/services/accountFallback"),
       import("@omniroute/open-sse/services/requestDedup.ts"),
-      import("@omniroute/open-sse/services/quotaMonitor.ts"),
       import("@omniroute/open-sse/services/sessionManager.ts"),
       import("@/lib/credentialHealth/cache"),
       import("@/lib/localHealthCheck"),
@@ -79,22 +68,6 @@ export async function GET() {
         ? readHealthValue(
             "model lockouts",
             () => accountFallbackModule.value.getAllModelLockouts(),
-            []
-          )
-        : [];
-    const quotaMonitorSummary =
-      quotaMonitorModule.status === "fulfilled"
-        ? readHealthValue(
-            "quota monitor summary",
-            () => quotaMonitorModule.value.getQuotaMonitorSummary(),
-            fallbackQuotaMonitorSummary
-          )
-        : fallbackQuotaMonitorSummary;
-    const quotaMonitorMonitors =
-      quotaMonitorModule.status === "fulfilled"
-        ? readHealthValue(
-            "quota monitor snapshots",
-            () => quotaMonitorModule.value.getQuotaMonitorSnapshots(),
             []
           )
         : [];
@@ -151,8 +124,6 @@ export async function GET() {
               0
             )
           : 0,
-      quotaMonitorSummary,
-      quotaMonitorMonitors,
       activeSessions,
       activeSessionsByKey,
       credentialHealth,
@@ -170,7 +141,6 @@ export async function GET() {
       rateLimitStatus: {},
       learnedLimits: {},
       lockouts: [],
-      quotaMonitor: { ...fallbackQuotaMonitorSummary, monitors: [] },
       sessions: { activeCount: 0, stickyBoundCount: 0, byApiKey: {}, top: [] },
       dedup: { inflightRequests: 0 },
     });

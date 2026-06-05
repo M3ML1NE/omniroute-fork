@@ -5,7 +5,7 @@ const errorPages = [
     path: "/400",
     heading: "Bad Request",
     primaryHref: "/docs",
-    secondaryHref: "/dashboard/translator",
+    secondaryHref: "/dashboard/providers",
   },
   {
     path: "/401",
@@ -41,7 +41,7 @@ const errorPages = [
     path: "/502",
     heading: "Bad Gateway",
     primaryHref: "/dashboard/providers",
-    secondaryHref: "/dashboard/translator",
+    secondaryHref: "/dashboard/providers",
   },
   {
     path: "/503",

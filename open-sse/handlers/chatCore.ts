@@ -4,7 +4,6 @@ import { detectFormatFromEndpoint, getTargetFormat } from "../services/provider.
 import { injectSystemPrompt } from "../services/systemPrompt.ts";
 import { translateRequest, needsTranslation } from "../translator/index.ts";
 import { FORMATS } from "../translator/formats.ts";
-import { splitMisplacedToolResults } from "../translator/helpers/claudeHelper.ts";
 import {
   createSSETransformStreamWithLogger,
   createPassthroughStreamWithLogger,
@@ -23,7 +22,6 @@ import {
 } from "../services/tokenRefresh.ts";
 import { createRequestLogger } from "../utils/requestLogger.ts";
 import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.ts";
-import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../config/defaultThinkingSignature.ts";
 import {
   getStripTypesForProviderModel,
   stripIncompatibleMessageContent,
@@ -97,7 +95,6 @@ import {
 import { recordCost } from "@/domain/costRules";
 import { calculateCost } from "@/lib/usage/costCalculator";
 import { buildOmniRouteResponseMetaHeaders } from "@/domain/omnirouteResponseMeta";
-import { CLAUDE_OAUTH_TOOL_PREFIX } from "../translator/request/openai-to-claude.ts";
 import {
   getModelNormalizeToolCallId,
   getModelPreserveOpenAIDeveloperRole,
@@ -119,10 +116,6 @@ import {
 } from "../utils/cacheControlPolicy.ts";
 import { getCachedSettings } from "@/lib/db/readCache";
 import { applyCodexGlobalFastServiceTier } from "@/lib/providers/codexFastTier";
-import {
-  CPA_FORCE_FAST_MODE_HEADER,
-  shouldRequestClaudeFastMode,
-} from "@/lib/providers/claudeFastMode";
 import {
   getCodexRequestDefaults,
   normalizeCodexServiceTier,
@@ -219,22 +212,25 @@ import {
   getMemorySettings,
   toMemoryRetrievalConfig,
 } from "@/lib/memory/settings";
-import { injectSkills } from "@/lib/skills/injection";
-import { handleToolCallExecution } from "@/lib/skills/interception";
 import { OMNIROUTE_RESPONSE_HEADERS } from "@/shared/constants/headers";
-import {
-  buildClaudeCodeCompatibleRequest,
-  isClaudeCodeCompatibleProvider,
-  resolveClaudeCodeCompatibleSessionId,
-} from "../services/claudeCodeCompatible.ts";
 import { setGeminiThoughtSignatureMode } from "../services/geminiThoughtSignatureStore.ts";
 import { fetchLiveProviderLimits } from "@/lib/usage/providerLimits";
-import { isClaudeExtraUsageBlockEnabled } from "@/lib/providers/claudeExtraUsage";
 import {
   classifyModelScope429,
   getModelScopeRetryDelayMs,
   isModelScopeProvider,
 } from "../services/modelscopePolicy.ts";
+
+// ── Claude stubs (GigaChat fork) ──
+const CLAUDE_OAUTH_TOOL_PREFIX = "__claude_oauth_";
+const CPA_FORCE_FAST_MODE_HEADER = "x-cpa-force-fast-mode";
+const DEFAULT_THINKING_CLAUDE_SIGNATURE = "";
+function splitMisplacedToolResults(msgs: unknown[]): unknown[] { return msgs; }
+function shouldRequestClaudeFastMode(..._args: unknown[]): boolean { return false; }
+function isClaudeCodeCompatibleProvider(_provider: unknown): boolean { return false; }
+function resolveClaudeCodeCompatibleSessionId(_headers: unknown): string | null { return null; }
+function buildClaudeCodeCompatibleRequest(opts: Record<string, unknown>): Record<string, unknown> { return opts.normalizedBody as Record<string, unknown> || {}; }
+function isClaudeExtraUsageBlockEnabled(..._args: unknown[]): boolean { return false; }
 
 const MEMORY_EXTRACTION_TEXT_LIMIT = 64 * 1024;
 
@@ -641,28 +637,6 @@ function materializeDeduplicatedExecutionResult<T extends Record<string, unknown
       headers: snapshot.headers,
     }),
   } as T;
-}
-
-function getSkillsProviderForFormat(format: string): "openai" | "anthropic" | "google" | "other" {
-  switch (format) {
-    case FORMATS.CLAUDE:
-      return "anthropic";
-    case FORMATS.GEMINI:
-      return "google";
-    default:
-      return "openai";
-  }
-}
-
-function getSkillsModelIdForFormat(format: string): string {
-  switch (format) {
-    case FORMATS.CLAUDE:
-      return "claude";
-    case FORMATS.GEMINI:
-      return "gemini";
-    default:
-      return "openai";
-  }
 }
 
 function parseNonStreamingSSEPayload(
@@ -2319,32 +2293,6 @@ export async function handleChatCore({
         "MEMORY",
         `Memory injection skipped: ${memErr instanceof Error ? memErr.message : String(memErr)}`
       );
-    }
-  }
-
-  if (memoryOwnerId && memorySettings?.skillsEnabled) {
-    const existingTools = Array.isArray(body.tools) ? body.tools : [];
-    const mergedTools = injectSkills({
-      provider: getSkillsProviderForFormat(sourceFormat),
-      existingTools,
-      apiKeyId: memoryOwnerId,
-      model: typeof effectiveModel === "string" ? effectiveModel : undefined,
-      sourceFormat,
-      targetFormat,
-      backgroundReason,
-      messages: Array.isArray(body.messages)
-        ? body.messages
-        : Array.isArray(body.input)
-          ? body.input
-          : undefined,
-    });
-
-    if (mergedTools.length > existingTools.length) {
-      body = {
-        ...body,
-        tools: mergedTools,
-      };
-      log?.debug?.("SKILLS", `Injected ${mergedTools.length - existingTools.length} skills`);
     }
   }
 
@@ -5064,25 +5012,6 @@ export async function handleChatCore({
       if (memoryText) {
         extractFacts(memoryText, memoryOwnerId, pipelineSessionId);
       }
-    }
-
-    const customSkillExecutionEnabled =
-      Boolean(memoryOwnerId) && memorySettings?.skillsEnabled === true;
-    const builtinToolNames = webSearchFallbackPlan.toolName ? [webSearchFallbackPlan.toolName] : [];
-    if (customSkillExecutionEnabled || builtinToolNames.length > 0) {
-      const skillSessionId = pipelineSessionId;
-
-      translatedResponse = await handleToolCallExecution(
-        translatedResponse,
-        getSkillsModelIdForFormat(sourceFormat),
-        {
-          apiKeyId: memoryOwnerId || "local",
-          sessionId: skillSessionId,
-          requestId: skillRequestId,
-          builtinToolNames,
-          customSkillExecutionEnabled,
-        }
-      );
     }
 
     const guardrailContext = {

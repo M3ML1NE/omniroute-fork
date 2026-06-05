@@ -21,7 +21,6 @@ import {
   APIKEY_PROVIDERS,
   NOAUTH_PROVIDERS,
   OPENAI_COMPATIBLE_PREFIX,
-  ANTHROPIC_COMPATIBLE_PREFIX,
 } from "@/shared/constants/providers";
 import {
   SIDEBAR_SECTIONS,
@@ -57,7 +56,7 @@ const HEADER_DESCRIPTIONS: Partial<Record<HideableSidebarItemId, string>> = {
   "search-tools": "searchToolsDescription",
   logs: "logsDescription",
   audit: "auditDescription",
-  webhooks: "webhooksDescription",
+  // Webhook subsystem removed — see Wave 1 cleanup
   health: "healthDescription",
   proxy: "proxyDescription",
   changelog: "changelogDescription",
@@ -146,8 +145,6 @@ function usePageInfo(pathname: string | null): PageInfo {
     if (info) return { title: info.name, description: "", providerId: info.id };
     if (pid.startsWith(OPENAI_COMPATIBLE_PREFIX))
       return { title: th("openaiCompatible"), description: "", providerId: "oai-cc" };
-    if (pid.startsWith(ANTHROPIC_COMPATIBLE_PREFIX))
-      return { title: th("anthropicCompatible"), description: "", providerId: "anthropic-m" };
   }
 
   // Derive from sidebar

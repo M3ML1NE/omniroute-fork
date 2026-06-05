@@ -274,12 +274,7 @@ function ResultSummary({
           >
             {providerText(t, "backToProviders", "Back to providers")}
           </Link>
-          <Link
-            href="/dashboard/playground"
-            className="inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-bg-subtle hover:text-text-main"
-          >
-            {providerText(t, "onboardingTryInPlayground", "Try in playground")}
-          </Link>
+          
         </div>
       </div>
     </Card>

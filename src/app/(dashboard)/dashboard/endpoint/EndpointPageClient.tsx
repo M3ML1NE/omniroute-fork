@@ -1807,18 +1807,6 @@ export default function APIPageClient({ machineId }: Readonly<APIPageClientProps
               baseUrl={currentEndpoint}
               modelsLoading={modelsLoading}
             />
-            <EndpointCard
-              icon="psychology"
-              iconColor="text-violet-500"
-              iconBg="bg-violet-500/10"
-              title={t("messagesApi") || "Messages"}
-              path="/v1/messages"
-              models={null}
-              badge="Anthropic"
-              copy={copy}
-              copied={copied}
-              baseUrl={currentEndpoint}
-            />
           </div>
         </div>
 

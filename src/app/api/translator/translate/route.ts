@@ -100,7 +100,7 @@ export async function POST(request) {
 
         result = {
           timestamp: body.timestamp || new Date().toISOString(),
-          endpoint: body.endpoint || "/v1/messages",
+          endpoint: body.endpoint || "/v1/chat/completions",
           headers: body.headers || {},
           body: actualBody,
           _detectedFormat: sourceFormat,

@@ -8,11 +8,9 @@ import {
 } from "../services/auth";
 import {
   getRuntimeProviderProfile,
-  shouldMarkAccountExhaustedFrom429,
   clearModelLock,
   lockModel,
   recordModelLockoutFailure,
-  isDailyQuotaExhausted,
 } from "@omniroute/open-sse/services/accountFallback.ts";
 import { getModelInfo, getComboForModel } from "../services/model";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
@@ -59,7 +57,6 @@ import { connectionHasExtraKeys } from "@omniroute/open-sse/services/apiKeyRotat
 import { classify429FromError, type FailureKind } from "@/shared/utils/classify429";
 import { resolveUseUpstream429BreakerHints } from "@/shared/utils/providerHints";
 import { getCircuitBreaker } from "../../shared/utils/circuitBreaker";
-import { markAccountExhaustedFrom429 } from "../../domain/quotaCache";
 import { RequestTelemetry, recordTelemetry } from "../../shared/utils/requestTelemetry";
 import { generateRequestId } from "../../shared/utils/requestId";
 import { logAuditEvent } from "../../lib/compliance/index";
@@ -77,52 +74,16 @@ import {
   registerKeySession,
   isSessionRegisteredForKey,
 } from "@omniroute/open-sse/services/sessionManager.ts";
-import { startQuotaMonitor } from "@omniroute/open-sse/services/quotaMonitor.ts";
 import {
   isFallbackDecision,
   shouldUseFallback,
 } from "@omniroute/open-sse/services/emergencyFallback.ts";
-import {
-  registerCodexConnection,
-  registerCodexQuotaFetcher,
-} from "@omniroute/open-sse/services/codexQuotaFetcher.ts";
-import { registerBailianCodingPlanQuotaFetcher } from "@omniroute/open-sse/services/bailianQuotaFetcher.ts";
-import { registerCrofUsageFetcher } from "@omniroute/open-sse/services/crofUsageFetcher.ts";
-import { registerDeepseekQuotaFetcher } from "@omniroute/open-sse/services/deepseekQuotaFetcher.ts";
-import { registerOpencodeQuotaFetcher } from "@omniroute/open-sse/services/opencodeQuotaFetcher.ts";
-import { registerGenericQuotaFetchers } from "@omniroute/open-sse/services/genericQuotaFetcher.ts";
 import {
   getCooldownAwareRetryDecision,
   resolveCooldownAwareRetrySettings,
   waitForCooldownAwareRetry,
 } from "../services/cooldownAwareRetry";
 
-registerCodexQuotaFetcher();
-
-// Register Bailian Coding Plan quota fetcher at module load (once per server start).
-// This hooks into the quotaPreflight + quotaMonitor systems so that combos
-// can proactively switch accounts before quota is exhausted.
-registerBailianCodingPlanQuotaFetcher();
-
-// Register CrofAI usage fetcher (subscription requests + credits balance).
-// Surfaces usable_requests + credits in the monitor and only blocks (preflight
-// opt-in) when the active bucket reaches zero.
-registerCrofUsageFetcher();
-
-// Register DeepSeek balance quota fetcher.
-// Hooks into quotaPreflight + quotaMonitor so combos can switch accounts before balance is exhausted.
-registerDeepseekQuotaFetcher();
-
-// Register OpenCode quota fetcher (opencode-go / opencode / opencode-zen).
-// Surfaces the $12/5h, $30/wk, $60/mo windows in the limits page and enables
-// quota-aware preflight switching between connections. (#2852)
-registerOpencodeQuotaFetcher();
-
-// Register the generic quota fetcher for every other provider that has a
-// usage implementation in usage.ts but no bespoke preflight fetcher. This is
-// what lets the per-window cutoff modal in Dashboard › Limits actually
-// enforce thresholds for Claude / GLM / Cursor / etc., not just Codex.
-registerGenericQuotaFetchers();
 let combosCachePromise: Promise<unknown[]> | null = null;
 let combosCacheTs = 0;
 const COMBOS_CACHE_TTL_MS = 10_000;
@@ -922,28 +883,8 @@ async function handleSingleModelChat(
       if (provider === "codex" && storeEnabled && runtimeOptions.sessionId) {
         requestBody = ensureOpenAIStoreSessionFallback(requestBody, runtimeOptions.sessionId);
       }
-      if (provider === "codex" && refreshedCredentials?.accessToken && credentials.connectionId) {
-        const workspaceId =
-          typeof refreshedCredentials?.providerSpecificData?.workspaceId === "string" &&
-          refreshedCredentials.providerSpecificData.workspaceId.trim().length > 0
-            ? refreshedCredentials.providerSpecificData.workspaceId
-            : typeof credentials?.providerSpecificData?.workspaceId === "string" &&
-                credentials.providerSpecificData.workspaceId.trim().length > 0
-              ? credentials.providerSpecificData.workspaceId
-              : undefined;
-        registerCodexConnection(credentials.connectionId, {
-          accessToken: refreshedCredentials.accessToken,
-          ...(workspaceId ? { workspaceId } : {}),
-        });
-      }
       if (runtimeOptions.sessionId && body?._omnirouteInternalRequest !== "context-handoff") {
         touchSession(runtimeOptions.sessionId, credentials.connectionId);
-        startQuotaMonitor(
-          runtimeOptions.sessionId,
-          provider,
-          credentials.connectionId,
-          refreshedCredentials
-        );
       }
       const proxyInfo = await safeResolveProxy(credentials.connectionId);
       const proxyStartTime = Date.now();
@@ -1202,58 +1143,7 @@ async function handleSingleModelChat(
         }
       }
 
-      // 6. Daily quota error check - must be executed before markAccountUnavailable
-      // Check if it's a daily quota exhausted error (e.g., ModelScope/Kimi "today's quota for model")
-      // Daily quota lockout overrides subsequent rate_limited lockout, ensuring lockout until tomorrow 0:00
-      let dailyQuotaExhausted = false;
-      const errorStr = String(result.error || "");
-      const failureKind =
-        result.status === 429
-          ? classify429FromError({ status: result.status, message: errorStr })
-          : undefined;
-      if (result.status === 429 && isDailyQuotaExhausted(errorStr)) {
-        // Parse which model is quota-limited
-        const match = errorStr.match(/today's quota for model ([^,]+)/);
-        const limitedModel = match ? match[1].trim() : model;
-
-        // Lock this model on this connection until tomorrow 00:00
-        const lockResult = recordModelLockoutFailure(
-          provider,
-          credentials.connectionId,
-          limitedModel,
-          "quota_exhausted",
-          result.status,
-          0,
-          providerProfile
-        );
-
-        log.info(
-          "MODEL_DAILY_QUOTA",
-          JSON.stringify({
-            connection: credentials.connectionId.slice(0, 8),
-            model: limitedModel,
-            cooldownMs: lockResult.cooldownMs,
-            failureCount: lockResult.failureCount,
-          })
-        );
-
-        dailyQuotaExhausted = true;
-      }
-
-      // 7. Mark account as quota-exhausted only for explicit long-window quota signals.
-      // A plain 429/high-traffic response should trigger fallback/cooldown, not poison
-      // quotaCache as exhausted for 5 minutes while usage quota may still be available.
-      if (!dailyQuotaExhausted) {
-        const passthroughModels = credentials.providerSpecificData?.passthroughModels;
-        if (
-          result.status === 429 &&
-          shouldMarkAccountExhaustedFrom429(provider, model, passthroughModels, failureKind)
-        ) {
-          markAccountExhaustedFrom429(credentials.connectionId, provider);
-        }
-      }
-
-      // 8. Fallback to next account
+      // 6. Fallback to next account
       // A3 guard: if 401 and connection has extra keys, skip connection-level disable
       // (key-level failure already recorded in chatCore.ts via T07)
       // Check extra keys directly from credentials for reliability across restarts

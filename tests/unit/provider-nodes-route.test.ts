@@ -10,7 +10,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const providerNodesRoute = await import("../../src/app/api/provider-nodes/route.ts");
-const { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX } =
+const { OPENAI_COMPATIBLE_PREFIX } =
   await import("../../src/shared/constants/providers.ts");
 
 async function resetStorage() {
@@ -107,7 +107,7 @@ test("provider nodes route creates OpenAI-compatible nodes with normalized defau
   assert.equal(body.node.modelsPath, null);
 });
 
-test("provider nodes route creates Anthropics-compatible nodes and sanitizes messages URLs", async () => {
+test("provider nodes route rejects unknown node type", async () => {
   const response = await providerNodesRoute.POST(
     makeRequest({
       type: "anthropic-compatible",
@@ -119,11 +119,6 @@ test("provider nodes route creates Anthropics-compatible nodes and sanitizes mes
   );
   const body = (await response.json()) as any;
 
-  assert.equal(response.status, 201);
-  assert.match(body.node.id, new RegExp(`^${ANTHROPIC_COMPATIBLE_PREFIX}`));
-  assert.equal(body.node.type, "anthropic-compatible");
-  assert.equal(body.node.name, "Anthropic Gateway");
-  assert.equal(body.node.prefix, "anthropicx");
-  assert.equal(body.node.baseUrl, "https://anthropic.example.com/v1");
-  assert.equal(body.node.modelsPath, "/models");
+  assert.equal(response.status, 400);
+  assert.equal(body.error, "Invalid provider node type");
 });

@@ -23,9 +23,6 @@ type TelemetryPayload = {
   sessions?: {
     activeCount?: number;
   };
-  quotaMonitor?: {
-    errors?: number;
-  };
 };
 
 type HealthPayload = {
@@ -185,13 +182,10 @@ export default function TelemetryCard() {
     const totalRequests = telemetry?.totalRequests ?? telemetry?.count ?? 0;
     const avgLatency = telemetry?.avgLatencyMs ?? telemetry?.avg ?? telemetry?.p50;
     const p95Latency = telemetry?.p95 ?? avgLatency ?? 0;
-    const quotaErrors = telemetry?.quotaMonitor?.errors ?? 0;
     const errorRate =
       typeof telemetry?.errorRate === "number"
         ? telemetry.errorRate
-        : totalRequests > 0
-          ? (quotaErrors / Math.max(totalRequests, 1)) * 100
-          : 0;
+        : 0;
 
     return {
       uptime: telemetry?.uptime ?? health?.system?.uptime ?? 0,

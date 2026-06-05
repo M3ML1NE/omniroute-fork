@@ -30,11 +30,6 @@ export default function SystemStorageTab() {
   const [purgeLogsStatus, setPurgeLogsStatus] = useState({ type: "", message: "" });
   const [cleanupBackupsLoading, setCleanupBackupsLoading] = useState(false);
   const [cleanupBackupsStatus, setCleanupBackupsStatus] = useState({ type: "", message: "" });
-  const [purgeQuotaSnapshotsLoading, setPurgeQuotaSnapshotsLoading] = useState(false);
-  const [purgeQuotaSnapshotsStatus, setPurgeQuotaSnapshotsStatus] = useState({
-    type: "",
-    message: "",
-  });
   const [purgeCallLogsLoading, setPurgeCallLogsLoading] = useState(false);
   const [purgeCallLogsStatus, setPurgeCallLogsStatus] = useState({ type: "", message: "" });
   const [purgeDetailedLogsLoading, setPurgeDetailedLogsLoading] = useState(false);
@@ -1063,39 +1058,6 @@ export default function SystemStorageTab() {
           <Button
             variant="outline"
             size="sm"
-            loading={purgeQuotaSnapshotsLoading}
-            onClick={async () => {
-              setPurgeQuotaSnapshotsLoading(true);
-              setPurgeQuotaSnapshotsStatus({ type: "", message: "" });
-              try {
-                const res = await fetch("/api/settings/purge-quota-snapshots", { method: "POST" });
-                const data = await res.json();
-                if (res.ok) {
-                  setPurgeQuotaSnapshotsStatus({
-                    type: "success",
-                    message: `Purged ${data.deleted} quota snapshots`,
-                  });
-                } else {
-                  setPurgeQuotaSnapshotsStatus({
-                    type: "error",
-                    message: data.error || "Failed to purge quota snapshots",
-                  });
-                }
-              } catch {
-                setPurgeQuotaSnapshotsStatus({ type: "error", message: t("errorOccurred") });
-              } finally {
-                setPurgeQuotaSnapshotsLoading(false);
-              }
-            }}
-          >
-            <span className="material-symbols-outlined text-[14px] mr-1" aria-hidden="true">
-              delete_sweep
-            </span>
-            Purge Quota Snapshots
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
             loading={purgeCallLogsLoading}
             onClick={async () => {
               setPurgeCallLogsLoading(true);
@@ -1160,27 +1122,9 @@ export default function SystemStorageTab() {
             Purge Detailed Logs
           </Button>
         </div>
-        {(purgeQuotaSnapshotsStatus.message ||
-          purgeCallLogsStatus.message ||
+        {(purgeCallLogsStatus.message ||
           purgeDetailedLogsStatus.message) && (
           <div className="flex flex-col gap-2 mt-3">
-            {purgeQuotaSnapshotsStatus.message && (
-              <div
-                className={`p-3 rounded-lg text-sm ${
-                  purgeQuotaSnapshotsStatus.type === "success"
-                    ? "bg-green-500/10 text-green-500 border border-green-500/20"
-                    : "bg-red-500/10 text-red-500 border border-red-500/20"
-                }`}
-                role="alert"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
-                    {purgeQuotaSnapshotsStatus.type === "success" ? "check_circle" : "error"}
-                  </span>
-                  {purgeQuotaSnapshotsStatus.message}
-                </div>
-              </div>
-            )}
             {purgeCallLogsStatus.message && (
               <div
                 className={`p-3 rounded-lg text-sm ${
@@ -1389,28 +1333,7 @@ export default function SystemStorageTab() {
             </span>
             Retention Policy Settings
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-text-muted mb-1">
-                {t("retentionQuotaSnapshots")}
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="365"
-                value={dbSettings.retention.quotaSnapshots}
-                onChange={(e) =>
-                  setDbSettings({
-                    ...dbSettings,
-                    retention: {
-                      ...dbSettings.retention,
-                      quotaSnapshots: parseInt(e.target.value) || 7,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-text-muted mb-1">
                 Compression Analytics (days)

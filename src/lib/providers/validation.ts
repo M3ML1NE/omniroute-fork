@@ -3,7 +3,6 @@ import { getEmbeddingProvider } from "@omniroute/open-sse/config/embeddingRegist
 import { getRerankProvider } from "@omniroute/open-sse/config/rerankRegistry.ts";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
 import {
-  isAnthropicCompatibleProvider,
   isLocalProvider,
   isOpenAICompatibleProvider,
   isSelfHostedChatProvider,
@@ -3263,74 +3262,8 @@ async function validateAdaptaWebProvider({ apiKey, providerSpecificData = {} }: 
   }
 }
 
-async function validateClaudeWebProvider({ apiKey, providerSpecificData = {} }: any) {
-  try {
-    const cookieHeader = normalizeSessionCookieHeader(String(apiKey || ""), "sessionKey");
-    if (!cookieHeader) {
-      return { valid: false, error: "Paste your sessionKey cookie from claude.ai" };
-    }
-
-    const { tlsFetchClaude, TlsClientUnavailableError } = await import(
-      "@omniroute/open-sse/services/claudeTlsClient.ts"
-    );
-
-    let response: { status: number; text: string | null };
-    try {
-      response = await tlsFetchClaude("https://claude.ai/api/organizations", {
-        method: "GET",
-        headers: applyCustomUserAgent(
-          {
-            Accept: "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Cache-Control": "no-cache",
-            Cookie: cookieHeader,
-            Origin: "https://claude.ai",
-            Pragma: "no-cache",
-            Referer: "https://claude.ai/new",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-            "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "anthropic-client-platform": "web_claude_ai",
-          },
-          providerSpecificData
-        ),
-        timeoutMs: 30_000,
-      });
-    } catch (err: any) {
-      if (err instanceof TlsClientUnavailableError) {
-        return {
-          valid: false,
-          error: `${err.message} (claude-web requires this — without it, Cloudflare blocks every request)`,
-        };
-      }
-      throw err;
-    }
-
-    if (response.status === 200) {
-      return { valid: true, error: null };
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      return {
-        valid: false,
-        error: "Invalid or expired session cookie — re-paste sessionKey from claude.ai DevTools → Cookies",
-      };
-    }
-
-    if (response.status === 429) {
-      return { valid: true, error: null };
-    }
-
-    if (response.status >= 500) {
-      return { valid: false, error: `Claude.ai unavailable (${response.status})` };
-    }
-
-    return { valid: false, error: `Claude.ai validation failed (${response.status})` };
-  } catch (error: any) {
-    return toValidationErrorResult(error);
-  }
+async function validateClaudeWebProvider(_opts: any) {
+  return { valid: false, error: "Claude Web provider removed (GigaChat fork)" };
 }
 
 // ── Gemini Web cookie validator ──
@@ -3609,18 +3542,6 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
   if (isOpenAICompatibleProvider(provider)) {
     try {
       return await validateOpenAICompatibleProvider({ apiKey, providerSpecificData });
-    } catch (error: any) {
-      return toValidationErrorResult(error);
-    }
-  }
-
-  if (isAnthropicCompatibleProvider(provider)) {
-    try {
-      return await validateAnthropicCompatibleProvider({
-        apiKey,
-        providerSpecificData,
-        isLocal,
-      });
     } catch (error: any) {
       return toValidationErrorResult(error);
     }

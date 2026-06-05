@@ -11,12 +11,7 @@ import { isUserCallableAntigravityModelId } from "../config/antigravityModelAlia
 import { getGlmQuotaUrl } from "../config/glmProvider.ts";
 import { getGitHubCopilotInternalUserHeaders } from "../config/providerHeaderProfiles.ts";
 import { safePercentage } from "@/shared/utils/formatting";
-import { fetchBailianQuota, type BailianTripleWindowQuota } from "./bailianQuotaFetcher.ts";
-import { fetchDeepseekQuota, type DeepseekQuota } from "./deepseekQuotaFetcher.ts";
-import {
-  fetchOpencodeQuota,
-  type OpencodeTripleWindowQuota,
-} from "./opencodeQuotaFetcher.ts";
+// Quota fetchers removed (Wave 1 cleanup) — stubs inline below
 import {
   applyAntigravityClientProfileHeaders,
   getAntigravityBootstrapHeaders,
@@ -966,160 +961,15 @@ async function getOpenCodeGoUsage(apiKey: string) {
   return { plan, quotas: orderOpenCodeGoQuotas(quotas) };
 }
 
-/**
- * Bailian (Alibaba Coding Plan) Usage
- * Fetches triple-window quota (5h, weekly, monthly) and returns worst-case.
- */
-async function getBailianCodingPlanUsage(
-  connectionId: string,
-  apiKey: string,
-  providerSpecificData?: Record<string, unknown>
-) {
-  try {
-    const connection = { apiKey, providerSpecificData };
-    const quota = await fetchBailianQuota(connectionId, connection);
-
-    if (!quota) {
-      return { message: "Bailian Coding Plan connected. Unable to fetch quota." };
-    }
-
-    const bailianQuota = quota as BailianTripleWindowQuota;
-    const used = bailianQuota.used;
-    const total = bailianQuota.total;
-    const remaining = Math.max(0, total - used);
-    const remainingPercentage = Math.round(remaining);
-
-    return {
-      plan: "Alibaba Coding Plan",
-      used,
-      total,
-      remaining,
-      remainingPercentage,
-      resetAt: bailianQuota.resetAt,
-      unlimited: false,
-      displayName: "Alibaba Coding Plan",
-    };
-  } catch (error) {
-    return { message: `Bailian Coding Plan error: ${(error as Error).message}` };
-  }
+// Quota fetchers removed (Wave 1 cleanup) — stubs
+async function getBailianCodingPlanUsage() {
+  return { message: "Bailian Coding Plan connected. Quota tracking removed." };
 }
-
-/**
- * DeepSeek Usage
- * Fetches balance from the DeepSeek balance API.
- * Returns all balances (USD and CNY) as "credits" for credits-style UI display.
- */
-async function getDeepseekUsage(connectionId: string, apiKey: string) {
-  try {
-    const connection = { apiKey };
-    const quota = await fetchDeepseekQuota(connectionId, connection);
-
-    if (!quota) {
-      return { message: "DeepSeek API key not available. Add a key to view usage." };
-    }
-
-    const deepseekQuota = quota as DeepseekQuota;
-    const { balances, isAvailable, limitReached } = deepseekQuota;
-
-    const quotas: Record<string, UsageQuota> = {};
-
-    // Show all balances as credits-style entries (e.g., credits_usd, credits_cny)
-    // The UI will display them as "🪙 Balance (USD) $50.00"
-    for (const balanceInfo of balances) {
-      const key = `credits_${balanceInfo.currency.toLowerCase()}`;
-      quotas[key] = {
-        used: 0,
-        total: 0,
-        remaining: balanceInfo.balance,
-        remainingPercentage: 100,
-        resetAt: null,
-        unlimited: true,
-        currency: balanceInfo.currency,
-        grantedBalance: balanceInfo.grantedBalance,
-        toppedUpBalance: balanceInfo.toppedUpBalance,
-      };
-    }
-
-    const plan = isAvailable ? "DeepSeek" : "DeepSeek (Insufficient Balance)";
-
-    return {
-      plan,
-      quotas,
-      isAvailable,
-      limitReached,
-    };
-  } catch (error) {
-    return { message: `DeepSeek error: ${(error as Error).message}` };
-  }
+async function getDeepseekUsage() {
+  return { message: "DeepSeek connected. Quota tracking removed." };
 }
-
-/**
- * OpenCode Go / OpenCode / OpenCode Zen Usage
- * Delegates to the dedicated opencodeQuotaFetcher and shapes the result into
- * the standard `{ plan, quotas }` usage response expected by the limits page.
- *
- * Three rolling windows are surfaced: $12/5h, $30/wk, $60/mo.
- */
-async function getOpencodeUsage(connectionId: string, apiKey: string) {
-  if (!apiKey) {
-    return { message: "OpenCode API key not available. Add a key to view usage." };
-  }
-
-  try {
-    const quota = (await fetchOpencodeQuota(connectionId, { apiKey })) as OpencodeTripleWindowQuota | null;
-
-    if (!quota) {
-      return { message: "OpenCode connected. Unable to fetch quota data." };
-    }
-
-    const { window5h, windowWeekly, windowMonthly, limitReached } = quota;
-
-    const quotas: Record<string, UsageQuota> = {};
-
-    // $12 / 5-hour rolling window
-    quotas["window_5h"] = {
-      used: window5h.percentUsed * 12,
-      total: 12,
-      remaining: (1 - window5h.percentUsed) * 12,
-      remainingPercentage: (1 - window5h.percentUsed) * 100,
-      resetAt: window5h.resetAt,
-      unlimited: false,
-      displayName: "$12 / 5-hour",
-      currency: "USD",
-    };
-
-    // $30 / weekly window
-    quotas["window_weekly"] = {
-      used: windowWeekly.percentUsed * 30,
-      total: 30,
-      remaining: (1 - windowWeekly.percentUsed) * 30,
-      remainingPercentage: (1 - windowWeekly.percentUsed) * 100,
-      resetAt: windowWeekly.resetAt,
-      unlimited: false,
-      displayName: "$30 / week",
-      currency: "USD",
-    };
-
-    // $60 / monthly window
-    quotas["window_monthly"] = {
-      used: windowMonthly.percentUsed * 60,
-      total: 60,
-      remaining: (1 - windowMonthly.percentUsed) * 60,
-      remainingPercentage: (1 - windowMonthly.percentUsed) * 100,
-      resetAt: windowMonthly.resetAt,
-      unlimited: false,
-      displayName: "$60 / month",
-      currency: "USD",
-    };
-
-    return {
-      plan: "OpenCode Go",
-      quotas,
-      limitReached,
-    };
-  } catch (error) {
-    return { message: `OpenCode error: ${sanitizeErrorMessage(error)}` };
-  }
+async function getOpencodeUsage() {
+  return { message: "OpenCode connected. Quota tracking removed." };
 }
 
 /**

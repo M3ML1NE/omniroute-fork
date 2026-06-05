@@ -12,7 +12,6 @@ import {
   type ProviderLimitsCacheEntry,
 } from "@/lib/localDb";
 import { syncToCloud } from "@/lib/cloudSync";
-import { setQuotaCache } from "@/domain/quotaCache";
 import { buildClaudeExtraUsageConnectionUpdate } from "@/lib/providers/claudeExtraUsage";
 import { getMachineId } from "@/shared/utils/machine";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
@@ -354,9 +353,6 @@ async function fetchLiveProviderLimitsWithOptions(
 
   if (connection.authType !== "oauth") {
     const usage = (await getUsageForProvider(connection, options)) as JsonRecord;
-    if (isRecord(usage.quotas)) {
-      setQuotaCache(connectionId, connection.provider, usage.quotas);
-    }
     await syncExpiredStatusIfNeeded(connection, usage);
     connection = await syncClaudeExtraUsageStateIfNeeded(connection, usage);
     connection = await syncClaudeBootstrapIfNeeded(connection, usage);
@@ -415,9 +411,6 @@ async function fetchLiveProviderLimitsWithOptions(
     result = await fetchUsageWithContext(null);
   }
 
-  if (isRecord(result.usage.quotas)) {
-    setQuotaCache(connectionId, connection.provider, result.usage.quotas);
-  }
   await syncExpiredStatusIfNeeded(connection, result.usage);
   connection = await syncClaudeExtraUsageStateIfNeeded(connection, result.usage);
   connection = await syncClaudeBootstrapIfNeeded(connection, result.usage);

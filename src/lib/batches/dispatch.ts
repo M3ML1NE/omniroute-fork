@@ -5,7 +5,6 @@ type BatchRouteHandler = (request: Request) => Promise<Response> | Response;
 const handlerLoaders: Record<SupportedBatchEndpoint, () => Promise<BatchRouteHandler>> = {
   "/v1/chat/completions": async () => (await import("@/app/api/v1/chat/completions/route")).POST,
   "/v1/embeddings": async () => (await import("@/app/api/v1/embeddings/route")).POST,
-  "/v1/completions": async () => (await import("@/app/api/v1/completions/route")).POST,
   "/v1/moderations": async () => (await import("@/app/api/v1/moderations/route")).POST,
 };
 

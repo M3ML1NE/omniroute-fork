@@ -1,21 +1,89 @@
 {
-  "active_plan": "/home/openclaw/projects/OmniRoute/.sisyphus/plans/deepseek-web-integration.md",
-  "started_at": "2026-05-15T23:30:00.000Z",
+  "active_plan": "/root/omniroute-fork/.omo/plans/omniroute-cleanup.md",
+  "started_at": "2026-06-05T17:55:28.830Z",
   "session_ids": [
-    "ses_1d3b79a24ffejmwfbiNyIIWzb0",
-    "ses_1d37fac1effep8c5sYc2o95T9y",
-    "ses_1d37f832effesYLZN8s5nVNGyv",
-    "ses_1d37f7c28ffeE125WYb5z8co9D",
-    "ses_1d37f758affe7hYAlkECTzxViF"
+    "opencode:ses_1671302f7ffeALEsIAgK7cBlqH"
   ],
-  "plan_name": "deepseek-web-integration",
+  "plan_name": "omniroute-cleanup",
   "worktree_path": null,
   "session_origins": {
-    "ses_1d3b79a24ffejmwfbiNyIIWzb0": "direct",
-    "ses_1d37fac1effep8c5sYc2o95T9y": "appended",
-    "ses_1d37f832effesYLZN8s5nVNGyv": "appended",
-    "ses_1d37f7c28ffeE125WYb5z8co9D": "appended",
-    "ses_1d37f758affe7hYAlkECTzxViF": "appended"
+    "opencode:ses_1671302f7ffeALEsIAgK7cBlqH": "direct"
   },
-  "task_sessions": {}
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "src/shared/constants/config.ts — PROVIDER_ENDPOINTS replaced with GigaChat-only",
+      "session_id": "opencode:ses_1664e5f93ffenoI8HfSb12ClNR",
+      "agent": "oracle",
+      "started_at": "2026-06-05T18:16:45.179Z",
+      "ended_at": "2026-06-05T21:32:23.039Z",
+      "elapsed_ms": 11737860,
+      "status": "completed",
+      "updated_at": "2026-06-05T21:32:23.039Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "opencode:ses_16679d9dfffeKyUZieaeDz6dqV",
+      "agent": "oracle",
+      "started_at": "2026-06-05T18:29:19.963Z",
+      "status": "completed",
+      "updated_at": "2026-06-05T20:59:55.693Z",
+      "ended_at": "2026-06-05T20:59:55.692Z",
+      "elapsed_ms": 9035729
+    }
+  },
+  "schema_version": 2,
+  "works": {
+    "omniroute-cleanup-legacy": {
+      "work_id": "omniroute-cleanup-legacy",
+      "active_plan": "/root/omniroute-fork/.omo/plans/omniroute-cleanup.md",
+      "plan_name": "omniroute-cleanup",
+      "started_at": "2026-06-05T17:55:28.830Z",
+      "updated_at": "2026-06-05T22:40:45.377Z",
+      "session_ids": [
+        "opencode:ses_1671302f7ffeALEsIAgK7cBlqH"
+      ],
+      "session_origins": {
+        "opencode:ses_1671302f7ffeALEsIAgK7cBlqH": "direct"
+      },
+      "worktree_path": null,
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "src/shared/constants/config.ts — PROVIDER_ENDPOINTS replaced with GigaChat-only",
+          "session_id": "opencode:ses_1664e5f93ffenoI8HfSb12ClNR",
+          "agent": "oracle",
+          "started_at": "2026-06-05T18:16:45.179Z",
+          "ended_at": "2026-06-05T21:32:23.039Z",
+          "elapsed_ms": 11737860,
+          "status": "completed",
+          "updated_at": "2026-06-05T21:32:23.039Z"
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "**Plan Compliance Audit** — `oracle`",
+          "session_id": "opencode:ses_16679d9dfffeKyUZieaeDz6dqV",
+          "agent": "oracle",
+          "started_at": "2026-06-05T18:29:19.963Z",
+          "status": "completed",
+          "updated_at": "2026-06-05T20:59:55.693Z",
+          "ended_at": "2026-06-05T20:59:55.692Z",
+          "elapsed_ms": 9035729
+        }
+      },
+      "ended_at": "2026-06-05T22:40:45.377Z",
+      "elapsed_ms": 17116547,
+      "status": "completed"
+    }
+  },
+  "active_work_id": "omniroute-cleanup-legacy",
+  "updated_at": "2026-06-05T22:40:45.377Z",
+  "status": "completed",
+  "ended_at": "2026-06-05T22:40:45.377Z",
+  "elapsed_ms": 17116547
 }

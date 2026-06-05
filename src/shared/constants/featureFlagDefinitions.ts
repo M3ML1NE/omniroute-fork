@@ -291,15 +291,4 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     requiresRestart: false,
     warningLevel: "info",
   },
-  {
-    key: "SKILLS_SANDBOX_NETWORK_ENABLED",
-    label: "Skills Sandbox Network",
-    description: "Enable network access in the skills sandbox environment",
-    descriptionI18nKey: "featureFlagSkillsSandboxNetworkEnabledDescription",
-    category: "health",
-    defaultValue: "false",
-    type: "boolean",
-    requiresRestart: false,
-    warningLevel: "caution",
-  },
 ];
