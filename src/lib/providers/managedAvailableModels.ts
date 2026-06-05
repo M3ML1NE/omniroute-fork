@@ -1,5 +1,4 @@
 import { getModelsByProviderId } from "@/shared/constants/models";
-import { isClaudeCodeCompatibleProvider } from "@/shared/constants/providers";
 
 type ManagedAvailableModel = {
   id?: string;
@@ -12,10 +11,9 @@ export function getCompatibleFallbackModels(
   fallbackModels: ManagedAvailableModel[] = []
 ): ManagedAvailableModel[] | undefined {
   if (providerId === "openrouter") return fallbackModels;
-  if (isClaudeCodeCompatibleProvider(providerId)) return getModelsByProviderId("claude");
   return undefined;
 }
 
-export function compatibleProviderSupportsModelImport(providerId: string): boolean {
-  return !isClaudeCodeCompatibleProvider(providerId);
+export function compatibleProviderSupportsModelImport(_providerId: string): boolean {
+  return true;
 }

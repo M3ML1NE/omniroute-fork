@@ -23,20 +23,19 @@ const {
   resolveFeatureFlag,
   isFeatureFlagEnabled,
   resolveAllFeatureFlags,
-  isCcCompatibleProviderEnabled,
 } = await import("../../src/shared/utils/featureFlags.ts");
 
 // ──────────────────────────────────────────────────────
 // Test group 1 — Flag definitions registry
 // ──────────────────────────────────────────────────────
 describe("featureFlagDefinitions", () => {
-  it("has exactly 26 flag definitions", () => {
-    assert.strictEqual(FEATURE_FLAG_DEFINITIONS.length, 26);
+  it("has exactly 25 flag definitions", () => {
+    assert.strictEqual(FEATURE_FLAG_DEFINITIONS.length, 25);
   });
 
   it("has unique keys for all flags", () => {
     const keys = FEATURE_FLAG_DEFINITIONS.map((d) => d.key);
-    assert.strictEqual(new Set(keys).size, 26);
+    assert.strictEqual(new Set(keys).size, 25);
   });
 
   it("has valid categories for all flags", () => {
@@ -221,9 +220,9 @@ describe("resolveFeatureFlag", () => {
   });
 
   describe("resolveAllFeatureFlags", () => {
-    it("returns all 26 flags", () => {
+    it("returns all 25 flags", () => {
       const all = resolveAllFeatureFlags();
-      assert.strictEqual(all.length, 26);
+      assert.strictEqual(all.length, 25);
     });
 
     it("marks DB-overridden flags with source 'db'", () => {
@@ -248,12 +247,6 @@ describe("resolveFeatureFlag", () => {
     });
   });
 
-  describe("backward compatibility", () => {
-    it("isCcCompatibleProviderEnabled still works", () => {
-      const result = isCcCompatibleProviderEnabled();
-      assert.strictEqual(typeof result, "boolean");
-    });
-  });
 });
 
 // ──────────────────────────────────────────────────────

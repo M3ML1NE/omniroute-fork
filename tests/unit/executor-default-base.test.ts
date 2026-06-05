@@ -11,11 +11,6 @@ import {
 } from "../../open-sse/executors/base.ts";
 import { DefaultExecutor } from "../../open-sse/executors/default.ts";
 import { PROVIDERS } from "../../open-sse/config/constants.ts";
-import {
-  CLAUDE_CODE_COMPATIBLE_ANTHROPIC_VERSION,
-  CLAUDE_CODE_COMPATIBLE_DEFAULT_CHAT_PATH,
-  CONTEXT_1M_BETA_HEADER,
-} from "../../open-sse/services/claudeCodeCompatible.ts";
 
 class TestExecutor extends BaseExecutor {
   constructor(config = {}) {
@@ -114,7 +109,6 @@ test("DefaultExecutor.buildUrl handles openai-compatible and anthropic-compatibl
   const openAIResponsesCompat = new DefaultExecutor("openai-compatible-responses-test");
   const openAILegacyResponsesCompat = new DefaultExecutor("openai-compatible-sp-openai");
   const anthropicCompat = new DefaultExecutor("anthropic-compatible-test");
-  const anthropicCcCompat = new DefaultExecutor("anthropic-compatible-cc-test");
 
   assert.equal(
     openAICompat.buildUrl("gpt-4.1", true, 0, {
@@ -160,14 +154,6 @@ test("DefaultExecutor.buildUrl handles openai-compatible and anthropic-compatibl
       },
     }),
     "https://anthropic.example/v1/custom/messages"
-  );
-  assert.equal(
-    anthropicCcCompat.buildUrl("claude-sonnet-4", true, 0, {
-      providerSpecificData: {
-        baseUrl: "https://cc.example/v1/messages",
-      },
-    }),
-    `https://cc.example${CLAUDE_CODE_COMPATIBLE_DEFAULT_CHAT_PATH}`
   );
 });
 
@@ -439,9 +425,8 @@ test("DefaultExecutor.buildHeaders strips DashScope headers for Qwen API keys an
   assert.equal(oauthHeaders["X-Dashscope-CacheControl"], "enable");
 });
 
-test("DefaultExecutor.buildHeaders rotates extra API keys and builds Claude Code compatible headers", () => {
+test("DefaultExecutor.buildHeaders rotates extra API keys", () => {
   const openai = new DefaultExecutor("openai");
-  const cc = new DefaultExecutor("anthropic-compatible-cc-test");
 
   const first = openai.buildHeaders(
     {
@@ -459,32 +444,12 @@ test("DefaultExecutor.buildHeaders rotates extra API keys and builds Claude Code
     },
     false
   );
-  const ccHeaders = cc.buildHeaders(
-    {
-      apiKey: "cc-key",
-      providerSpecificData: { ccSessionId: "session-1" },
-    },
-    true
-  );
-  const ccJsonHeaders = cc.buildHeaders(
-    {
-      apiKey: "cc-key",
-      providerSpecificData: { ccSessionId: "session-1" },
-    },
-    false
-  );
 
   assert.equal(first.Authorization, "Bearer primary");
   assert.equal(second.Authorization, "Bearer extra-1");
-  assert.equal(ccHeaders.Authorization, "Bearer cc-key");
-  assert.equal(ccHeaders["x-api-key"], undefined);
-  assert.equal(ccHeaders["anthropic-version"], CLAUDE_CODE_COMPATIBLE_ANTHROPIC_VERSION);
-  assert.equal(ccHeaders["X-Claude-Code-Session-Id"], "session-1");
-  assert.equal(ccHeaders.Accept, "application/json");
-  assert.equal(ccJsonHeaders.Accept, "application/json");
 });
 
-test("DefaultExecutor.execute uses CC-compatible connection defaults to append 1M beta", async () => {
+test("DefaultExecutor.execute does not inject anthropic-beta for anthropic-compatible providers without extendedContext", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const toPlainHeaders = (headers) =>
@@ -506,45 +471,6 @@ test("DefaultExecutor.execute uses CC-compatible connection defaults to append 1
   };
 
   try {
-    const cc = new DefaultExecutor("anthropic-compatible-cc-test");
-    await cc.execute({
-      model: "claude-sonnet-4-6",
-      body: {
-        model: "claude-sonnet-4-6",
-        messages: [{ role: "user", content: "hi" }],
-        max_tokens: 1,
-      },
-      stream: false,
-      credentials: {
-        apiKey: "cc-key",
-        providerSpecificData: {
-          ccSessionId: "session-1",
-        },
-      },
-      clientHeaders: {
-        "x-app": "cli",
-        "user-agent": "claude-cli/2.1.116 (external, cli)",
-      },
-      extendedContext: false,
-    });
-    await cc.execute({
-      model: "claude-sonnet-4-6",
-      body: {
-        model: "claude-sonnet-4-6",
-        messages: [{ role: "user", content: "hi" }],
-        max_tokens: 1,
-      },
-      stream: false,
-      credentials: {
-        apiKey: "cc-key",
-        providerSpecificData: {
-          ccSessionId: "session-1",
-          requestDefaults: { context1m: true },
-        },
-      },
-      extendedContext: false,
-    });
-
     const anthropicCompat = new DefaultExecutor("anthropic-compatible-test");
     await anthropicCompat.execute({
       model: "claude-sonnet-4-6",
@@ -566,9 +492,7 @@ test("DefaultExecutor.execute uses CC-compatible connection defaults to append 1
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(calls[0].headers["anthropic-beta"].includes(CONTEXT_1M_BETA_HEADER), false);
-  assert.equal(calls[1].headers["anthropic-beta"].includes(CONTEXT_1M_BETA_HEADER), true);
-  assert.equal(calls[2].headers["anthropic-beta"], undefined);
+  assert.equal(calls[0].headers["anthropic-beta"], undefined);
 });
 
 test("DefaultExecutor.execute only injects adaptive thinking defaults for Claude models that support x-high effort", async () => {
@@ -594,10 +518,7 @@ test("DefaultExecutor.execute only injects adaptive thinking defaults for Claude
       },
       stream: false,
       credentials: {
-        apiKey: "cc-key",
-        providerSpecificData: {
-          ccSessionId: "session-1",
-        },
+        apiKey: "claude-key",
       },
       clientHeaders: {
         "x-app": "cli",
@@ -615,10 +536,7 @@ test("DefaultExecutor.execute only injects adaptive thinking defaults for Claude
       },
       stream: false,
       credentials: {
-        apiKey: "cc-key",
-        providerSpecificData: {
-          ccSessionId: "session-1",
-        },
+        apiKey: "claude-key",
       },
       clientHeaders: {
         "x-app": "cli",
@@ -637,10 +555,7 @@ test("DefaultExecutor.execute only injects adaptive thinking defaults for Claude
       },
       stream: false,
       credentials: {
-        apiKey: "cc-key",
-        providerSpecificData: {
-          ccSessionId: "session-1",
-        },
+        apiKey: "claude-key",
       },
       clientHeaders: {
         "x-app": "cli",
@@ -713,18 +628,12 @@ test("DefaultExecutor.transformRequest respects disableStreamOptions for OpenAI 
 
 test("DefaultExecutor.transformRequest strips stream_options from Anthropic-compatible targets", () => {
   const anthropicCompat = new DefaultExecutor("anthropic-compatible-test");
-  const anthropicCcCompat = new DefaultExecutor("anthropic-compatible-cc-test");
 
   const anthropicBody = {
     model: "claude-sonnet-4-6",
     messages: [{ role: "user", content: "hi" }],
     max_tokens: 1,
     stream_options: { include_usage: true },
-  };
-  const ccBody = {
-    model: "claude-sonnet-4-6",
-    messages: [{ role: "user", content: "hi" }],
-    max_tokens: 1,
   };
 
   const anthropicResult = anthropicCompat.transformRequest(
@@ -733,11 +642,9 @@ test("DefaultExecutor.transformRequest strips stream_options from Anthropic-comp
     true,
     {}
   );
-  const ccResult = anthropicCcCompat.transformRequest("claude-sonnet-4-6", ccBody, true, {});
 
   assert.notEqual(anthropicResult, anthropicBody);
   assert.equal((anthropicResult as any).stream_options, undefined);
-  assert.equal((ccResult as any).stream_options, undefined);
 });
 
 test("DefaultExecutor.transformRequest neutralizes incompatible tool_choice for Qwen thinking", () => {

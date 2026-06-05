@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 
 import { Badge, Button, Input, Modal, Select } from "@/shared/components";
 
-type CompatibleMode = "openai" | "anthropic" | "cc";
+type CompatibleMode = "openai" | "anthropic";
 type CompatibleProviderNode = { id: string } & Record<string, unknown>;
 
 interface AddCompatibleProviderModalProps {
@@ -25,18 +25,14 @@ interface CompatibleFormState {
   modelsPath: string;
 }
 
-const CC_DEFAULT_CHAT_PATH = "/v1/messages?beta=true";
-
 const MODE_DEFAULTS: Record<
   CompatibleMode,
   {
     baseUrl: string;
     type: "openai-compatible" | "anthropic-compatible";
-    compatMode?: "cc";
     chatPath: string;
     hasApiType: boolean;
     hasModelsPath: boolean;
-    hasWarning: boolean;
   }
 > = {
   openai: {
@@ -45,7 +41,6 @@ const MODE_DEFAULTS: Record<
     chatPath: "",
     hasApiType: true,
     hasModelsPath: true,
-    hasWarning: false,
   },
   anthropic: {
     baseUrl: "https://api.anthropic.com/v1",
@@ -53,16 +48,6 @@ const MODE_DEFAULTS: Record<
     chatPath: "",
     hasApiType: false,
     hasModelsPath: true,
-    hasWarning: false,
-  },
-  cc: {
-    baseUrl: "",
-    type: "anthropic-compatible",
-    compatMode: "cc",
-    chatPath: CC_DEFAULT_CHAT_PATH,
-    hasApiType: false,
-    hasModelsPath: false,
-    hasWarning: true,
   },
 };
 
@@ -118,39 +103,27 @@ export default function AddCompatibleProviderModal({
     title ||
     (mode === "openai"
       ? t("addOpenAICompatible")
-      : mode === "anthropic"
-        ? t("addAnthropicCompatible")
-        : t("addCcCompatible"));
+      : t("addAnthropicCompatible"));
 
-  const namePlaceholder =
-    mode === "cc"
-      ? t("ccCompatibleNamePlaceholder")
-      : t("compatibleProdPlaceholder", {
-          type: mode === "openai" ? t("openai") : t("anthropic"),
-        });
-  const nameHint = mode === "cc" ? t("ccCompatibleNameHint") : t("nameHint");
+  const namePlaceholder = t("compatibleProdPlaceholder", {
+    type: mode === "openai" ? t("openai") : t("anthropic"),
+  });
+  const nameHint = t("nameHint");
   const prefixPlaceholder =
     mode === "openai"
       ? t("openaiPrefixPlaceholder")
-      : mode === "cc"
-        ? t("ccCompatiblePrefixPlaceholder")
-        : t("anthropicPrefixPlaceholder");
-  const prefixHint = mode === "cc" ? t("ccCompatiblePrefixHint") : t("prefixHint");
+      : t("anthropicPrefixPlaceholder");
+  const prefixHint = t("prefixHint");
   const baseUrlPlaceholder =
     mode === "openai"
       ? t("openaiBaseUrlPlaceholder")
-      : mode === "cc"
-        ? t("ccCompatibleBaseUrlPlaceholder")
-        : t("anthropicBaseUrlPlaceholder");
-  const baseUrlHint =
-    mode === "cc"
-      ? t("ccCompatibleBaseUrlHint")
-      : t("compatibleBaseUrlHint", {
-          type: mode === "openai" ? t("openai") : t("anthropic"),
-        });
+      : t("anthropicBaseUrlPlaceholder");
+  const baseUrlHint = t("compatibleBaseUrlHint", {
+    type: mode === "openai" ? t("openai") : t("anthropic"),
+  });
   const chatPathPlaceholder =
-    mode === "openai" ? "/v1/chat/completions" : mode === "cc" ? CC_DEFAULT_CHAT_PATH : "/messages";
-  const chatPathHint = mode === "cc" ? t("ccCompatibleChatPathHint") : t("chatPathHint");
+    mode === "openai" ? "/v1/chat/completions" : "/messages";
+  const chatPathHint = t("chatPathHint");
   const advancedId = `advanced-settings-${mode}`;
   const hasRequiredFields = Boolean(
     formData.name.trim() && formData.prefix.trim() && formData.baseUrl.trim()
@@ -173,11 +146,10 @@ export default function AddCompatibleProviderModal({
         prefix: formData.prefix,
         baseUrl: formData.baseUrl,
         type: defaults.type,
-        chatPath: formData.chatPath || (mode === "cc" ? CC_DEFAULT_CHAT_PATH : ""),
+        chatPath: formData.chatPath || "",
       };
       if (defaults.hasApiType) body.apiType = formData.apiType;
       if (defaults.hasModelsPath) body.modelsPath = formData.modelsPath || "";
-      if (defaults.compatMode) body.compatMode = defaults.compatMode;
 
       const res = await fetch("/api/provider-nodes", {
         method: "POST",
@@ -205,10 +177,6 @@ export default function AddCompatibleProviderModal({
         type: defaults.type,
       };
       if (defaults.hasModelsPath) body.modelsPath = formData.modelsPath || "";
-      if (defaults.compatMode) {
-        body.compatMode = defaults.compatMode;
-        body.chatPath = formData.chatPath || CC_DEFAULT_CHAT_PATH;
-      }
 
       const res = await fetch("/api/provider-nodes/validate", {
         method: "POST",
@@ -227,17 +195,6 @@ export default function AddCompatibleProviderModal({
   return (
     <Modal isOpen={isOpen} title={modalTitle} onClose={onClose}>
       <div className="flex flex-col gap-4">
-        {defaults.hasWarning && (
-          <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-text-muted">
-            <div className="flex items-start gap-2">
-              <span className="material-symbols-outlined mt-0.5 text-[18px] text-amber-500">
-                warning
-              </span>
-              <p>{t("ccCompatibleValidationHint")}</p>
-            </div>
-          </div>
-        )}
-
         <Input
           label={t("nameLabel")}
           value={formData.name}

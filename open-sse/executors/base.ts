@@ -20,7 +20,6 @@ import {
   CONTEXT_1M_BETA_HEADER,
   modelSupportsContext1mBeta,
 } from "../services/claudeCodeCompatible.ts";
-import { getClaudeCodeCompatibleRequestDefaults } from "@/lib/providers/requestDefaults";
 import { remapToolNamesInRequest } from "../services/claudeCodeToolRemapper.ts";
 import { obfuscateInBody } from "../services/claudeCodeObfuscation.ts";
 import { sanitizeResponsesInputItems } from "../services/responsesInputSanitizer.ts";
@@ -705,15 +704,11 @@ export class BaseExecutor {
       const headers = this.buildHeaders(activeCredentials, stream, clientHeaders, model);
       applyConfiguredUserAgent(headers, activeCredentials?.providerSpecificData);
 
-      const ccRequestDefaults = isClaudeCodeCompatible(this.provider)
-        ? getClaudeCodeCompatibleRequestDefaults(activeCredentials?.providerSpecificData)
-        : {};
-      const shouldForwardExtendedContext =
+            const shouldForwardExtendedContext =
         extendedContext &&
         modelSupportsContext1mBeta(model) &&
         !isClaudeCodeCompatible(this.provider);
-      const shouldForwardCcCompatibleContext1m =
-        isClaudeCodeCompatible(this.provider) && ccRequestDefaults.context1m === true;
+      const shouldForwardCcCompatibleContext1m = false;
       if (shouldForwardExtendedContext || shouldForwardCcCompatibleContext1m) {
         appendAnthropicBetaHeader(headers, CONTEXT_1M_BETA_HEADER);
       }

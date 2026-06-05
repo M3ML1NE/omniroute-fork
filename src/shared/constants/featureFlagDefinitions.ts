@@ -126,17 +126,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     requiresRestart: false,
     warningLevel: "caution",
   },
-  {
-    key: "ENABLE_CC_COMPATIBLE_PROVIDER",
-    label: "CC Compatible Provider",
-    description: "Enable Claude Code compatible provider mode",
-    descriptionI18nKey: "featureFlagEnableCcCompatibleProviderDescription",
-    category: "network",
-    defaultValue: "false",
-    type: "boolean",
-    requiresRestart: true,
-    warningLevel: "info",
-  },
+
 
   // ──────────────── Policies (3) ────────────────
   {

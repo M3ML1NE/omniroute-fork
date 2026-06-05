@@ -25,7 +25,7 @@ export type OnboardingTestResult = {
   [key: string]: unknown;
 };
 
-export type CompatibleNodeMode = "openai" | "anthropic" | "cc";
+export type CompatibleNodeMode = "openai" | "anthropic";
 
 export type CompatibleProviderNode = {
   id: string;
@@ -35,7 +35,8 @@ export type CompatibleProviderNode = {
 };
 
 export type OnboardingProviderNodes = {
-  ccCompatibleProviderEnabled: boolean;
+  openaiCompatibleProviderEnabled?: boolean;
+  anthropicCompatibleProviderEnabled?: boolean;
 };
 
 export type CreateCompatibleProviderNodeInput = {
@@ -59,7 +60,7 @@ export type CreateOnboardingConnectionInput = {
 };
 
 const compatibleProviderNodeInputSchema = z.object({
-  mode: z.enum(["openai", "anthropic", "cc"]),
+  mode: z.enum(["openai", "anthropic"]),
   name: z.string().trim().min(1, "Name is required"),
   prefix: z.string().trim().min(1, "Prefix is required"),
   baseUrl: z.string().trim().min(1, "Base URL is required"),
@@ -79,7 +80,8 @@ const compatibleProviderNodeInputSchema = z.object({
 
 const providerNodesResponseSchema = z
   .object({
-    ccCompatibleProviderEnabled: z.boolean().optional(),
+    openaiCompatibleProviderEnabled: z.boolean().optional(),
+    anthropicCompatibleProviderEnabled: z.boolean().optional(),
   })
   .catchall(z.unknown());
 
@@ -145,7 +147,10 @@ export async function fetchOnboardingProviderNodes(): Promise<OnboardingProvider
   const response = await fetch("/api/provider-nodes");
   const data = await expectOk<Record<string, unknown>>(response, "Failed to load provider nodes");
   const parsed = parseOrThrow(providerNodesResponseSchema, data, "Invalid provider node response");
-  return { ccCompatibleProviderEnabled: parsed.ccCompatibleProviderEnabled === true };
+  return {
+    openaiCompatibleProviderEnabled: parsed.openaiCompatibleProviderEnabled === true,
+    anthropicCompatibleProviderEnabled: parsed.anthropicCompatibleProviderEnabled === true,
+  };
 }
 
 export async function validateOnboardingApiKey(
@@ -229,13 +234,7 @@ export function buildCompatibleNodeRequest(input: CreateCompatibleProviderNodeIn
       hasModelsPath: true,
       chatPath: "",
     },
-    cc: {
-      type: "anthropic-compatible",
-      compatMode: "cc",
-      hasApiType: false,
-      hasModelsPath: false,
-      chatPath: "/v1/messages?beta=true",
-    },
+
   } as const;
   const defaults = modeDefaults[sanitizedInput.mode];
   const body: Record<string, unknown> = {
@@ -247,7 +246,6 @@ export function buildCompatibleNodeRequest(input: CreateCompatibleProviderNodeIn
   };
   if (defaults.hasApiType) body.apiType = sanitizedInput.apiType || "chat";
   if (defaults.hasModelsPath) body.modelsPath = sanitizedInput.modelsPath || "";
-  if ("compatMode" in defaults) body.compatMode = defaults.compatMode;
   return parseOrThrow(createProviderNodeSchema, body, "Compatible provider data is invalid");
 }
 

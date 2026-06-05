@@ -5,8 +5,8 @@
  */
 
 import { z } from "zod";
-import { ConfluenceClient } from "../../../services/atlassian/confluenceClient.js";
-import { getAtlassianConfig } from "../../../services/atlassianConfig.js";
+import { ConfluenceClient } from "../../../services/atlassian/confluenceClient";
+import { getAtlassianConfig } from "../../../services/atlassianConfig";
 
 // ============ Lazy client resolver ============
 

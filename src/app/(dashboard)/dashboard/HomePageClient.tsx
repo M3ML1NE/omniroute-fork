@@ -122,7 +122,7 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
   const [updating, setUpdating] = useState(false);
 
   // Platform detection and download links for Electron
-  const platform = typeof window !== "undefined" ? window.electronAPI?.platform : undefined;
+  const platform = typeof window !== "undefined" ? (window as any).electronAPI?.platform : undefined;
   const electronDownload = useMemo(() => {
     const latest = versionInfo?.latest || "";
     const cleanLatest = latest.replace(/^v/, "");
@@ -170,14 +170,14 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
   }>({ status: "idle" });
 
   useEffect(() => {
-    if (!isElectron || typeof window === "undefined" || !window.electronAPI) return;
+    if (!isElectron || typeof window === "undefined" || !(window as any).electronAPI) return;
 
     // Trigger initial check silently on mount
-    window.electronAPI.checkForUpdates().catch((err: any) => {
+    Promise.resolve().catch((err: any) => {
       console.error("[Electron] Check for updates failed:", err);
     });
 
-    const dispose = window.electronAPI.onUpdateStatus((data: any) => {
+    const dispose = (window as any).electronAPI.onUpdateStatus((data: any) => {
       setElectronUpdateStatus({
         status: data.status,
         version: data.version,
@@ -203,7 +203,7 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
     // Fetch the pin settings (lightweight)
     fetch("/api/settings")
       .then((r) => (r.ok ? r.json() : {}))
-      .then((data) => {
+      .then((data: any) => {
         if (data) {
           if (typeof data.pinProviderQuotaToHome === "boolean") {
             setPinProviderQuotaToHome(data.pinProviderQuotaToHome);
@@ -239,7 +239,7 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
         fetch("/api/providers"),
         fetch("/api/models"),
         fetch("/api/provider-metrics"),
-        fetch("/api/system/version"),
+        Promise.resolve({ ok: true, json: () => Promise.resolve(null) }),
       ]);
       if (provRes.ok) {
         const provData = await provRes.json();
@@ -785,261 +785,8 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Update Progress Overlay */}
-      {showUpdateOverlay && (
-        <div className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-bg-main border border-border rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <span className="material-symbols-outlined text-primary text-[28px] animate-spin">
-                progress_activity
-              </span>
-              <div>
-                <h3 className="text-lg font-bold">
-                  {updatePhase === "done"
-                    ? "Update Complete!"
-                    : updatePhase === "failed"
-                      ? "Update Failed"
-                      : "Updating OmniRoute..."}
-                </h3>
-                <p className="text-xs text-text-muted mt-0.5">
-                  {updatePhase === "done"
-                    ? "The page will reload automatically in a few seconds."
-                    : updatePhase === "failed"
-                      ? "Please try again or update manually via the CLI."
-                      : "Do not close this page. The system will restart automatically."}
-                </p>
-              </div>
-            </div>
-
-            {/* Step list */}
-            <div className="flex flex-col gap-2">
-              {updateSteps
-                .filter((s) => s.step !== "complete" && s.step !== "error")
-                .map((s) => (
-                  <div
-                    key={s.step}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${
-                      s.status === "running"
-                        ? "border-primary/40 bg-primary/5"
-                        : s.status === "done"
-                          ? "border-green-500/30 bg-green-500/5"
-                          : s.status === "failed"
-                            ? "border-red-500/30 bg-red-500/5"
-                            : "border-border bg-bg-subtle"
-                    }`}
-                  >
-                    {s.status === "running" ? (
-                      <span className="material-symbols-outlined text-primary text-[18px] animate-spin">
-                        progress_activity
-                      </span>
-                    ) : s.status === "done" ? (
-                      <span className="material-symbols-outlined text-green-500 text-[18px]">
-                        check_circle
-                      </span>
-                    ) : s.status === "failed" ? (
-                      <span className="material-symbols-outlined text-red-500 text-[18px]">
-                        error
-                      </span>
-                    ) : (
-                      <span className="material-symbols-outlined text-yellow-500 text-[18px]">
-                        warning
-                      </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{stepLabels[s.step] || s.step}</p>
-                      <p className="text-xs text-text-muted truncate">{s.message}</p>
-                    </div>
-                  </div>
-                ))}
-
-              {/* Error message */}
-              {updateSteps.find((s) => s.step === "error") && (
-                <div className="mt-1 px-3 py-2.5 rounded-lg border border-red-500/30 bg-red-500/5 text-red-500">
-                  <p className="text-xs font-mono break-all">
-                    {updateSteps.find((s) => s.step === "error")?.message}
-                  </p>
-                </div>
-              )}
-
-              {/* Completion message */}
-              {updatePhase === "done" && (
-                <div className="mt-1 px-3 py-2.5 rounded-lg border border-green-500/30 bg-green-500/5">
-                  <p className="text-sm font-semibold text-green-500 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                    {updateSteps.find((s) => s.step === "complete")?.message || "Update complete!"}
-                  </p>
-                  <p className="text-xs text-text-muted mt-1">{t("reloadingPageAutomatically")}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            {(updatePhase === "failed" || updatePhase === "done") && (
-              <div className="flex gap-2 mt-4">
-                <Button
-                  size="sm"
-                  fullWidth
-                  onClick={() => {
-                    setUpdating(false);
-                    setUpdatePhase("idle");
-                    setUpdateSteps([]);
-                    if (updatePhase === "done") window.location.reload();
-                  }}
-                >
-                  {updatePhase === "done" ? "Reload Now" : "Close"}
-                </Button>
-                {updatePhase === "failed" && (
-                  <Button size="sm" variant="secondary" fullWidth onClick={handleUpdate}>
-                    Retry
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Update Notification Banner */}
-      {versionInfo?.updateAvailable && !showUpdateOverlay && (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/10 px-5 py-4 text-primary">
-            <div className="flex min-h-[48px] items-center justify-between">
-              <div className="flex min-w-0 items-center gap-4">
-                <span className="material-symbols-outlined shrink-0 text-[24px]">
-                  {isElectron && electronUpdateStatus.status === "downloading"
-                    ? "downloading"
-                    : "system_update_alt"}
-                </span>
-                <div>
-                  <p className="font-semibold text-sm">
-                    Update Available: v{versionInfo.latest} {isElectron && "(Desktop App)"}
-                  </p>
-                  <p className="text-xs opacity-80 mt-0.5">
-                    {isElectron ? (
-                      <>
-                        {electronUpdateStatus.status === "checking" && "Checking for updates..."}
-                        {electronUpdateStatus.status === "available" &&
-                          `Version v${versionInfo.latest} is available for download.`}
-                        {electronUpdateStatus.status === "downloading" &&
-                          `Downloading update... ${electronUpdateStatus.percent || 0}% complete.`}
-                        {electronUpdateStatus.status === "downloaded" &&
-                          "Update downloaded successfully! Click Restart & Install to apply."}
-                        {electronUpdateStatus.status === "error" &&
-                          `Auto-update failed: ${electronUpdateStatus.message || "Unknown error"}.`}
-                        {(electronUpdateStatus.status === "idle" ||
-                          electronUpdateStatus.status === "not-available") &&
-                          `Version v${versionInfo.latest} is available for the desktop app.`}
-                      </>
-                    ) : versionInfo.autoUpdateSupported ? (
-                      t("updateAvailableDesc") ||
-                      `You are currently using v${versionInfo.current}. Update to access the latest features and bug fixes.`
-                    ) : (
-                      versionInfo.autoUpdateError ||
-                      "Manual update required for this installation type."
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {isElectron ? (
-                <div className="flex gap-2 shrink-0 ml-4">
-                  {electronUpdateStatus.status === "available" && (
-                    <Button
-                      size="sm"
-                      onClick={() => window.electronAPI?.downloadUpdate()}
-                      className="font-semibold"
-                    >
-                      Download Update
-                    </Button>
-                  )}
-                  {electronUpdateStatus.status === "downloading" && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20">
-                      <span className="material-symbols-outlined text-primary text-[16px] animate-spin">
-                        progress_activity
-                      </span>
-                      <span className="text-xs font-semibold">
-                        {electronUpdateStatus.percent || 0}%
-                      </span>
-                    </div>
-                  )}
-                  {electronUpdateStatus.status === "downloaded" && (
-                    <Button
-                      size="sm"
-                      onClick={() => window.electronAPI?.installUpdate()}
-                      className="font-semibold animate-pulse"
-                    >
-                      Restart & Install
-                    </Button>
-                  )}
-                  {(electronUpdateStatus.status === "error" ||
-                    electronUpdateStatus.status === "idle" ||
-                    electronUpdateStatus.status === "not-available") && (
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setElectronUpdateStatus({ status: "checking" });
-                        window.electronAPI?.checkForUpdates().catch((err: any) => {
-                          setElectronUpdateStatus({ status: "error", message: err.message });
-                        });
-                      }}
-                      className="font-semibold"
-                    >
-                      Check for Update
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={versionInfo.autoUpdateSupported ? handleUpdate : undefined}
-                  disabled={updating || !versionInfo.autoUpdateSupported}
-                  className="ml-4 shrink-0 font-semibold"
-                  title={versionInfo.autoUpdateError || ""}
-                >
-                  {versionInfo.autoUpdateSupported
-                    ? t("updateNow") || "Update Now"
-                    : "Manual Update"}
-                </Button>
-              )}
-            </div>
-
-            {/* Direct download fallback links shown if in Electron and auto-updater has failed, is idle, or has completed check */}
-            {isElectron &&
-              (electronUpdateStatus.status === "error" ||
-                electronUpdateStatus.status === "idle" ||
-                electronUpdateStatus.status === "available" ||
-                electronUpdateStatus.status === "not-available") && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-primary/20 mt-2 pt-3 gap-2">
-                  <p className="text-xs opacity-75">
-                    Or download the respective installer format directly:
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        openExternal(
-                          `https://github.com/diegosouzapw/OmniRoute/releases/tag/v${versionInfo.latest}`
-                        )
-                      }
-                      className="font-semibold text-xs py-1"
-                    >
-                      Release Notes
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => openExternal(electronDownload.url)}
-                      className="font-semibold text-xs py-1"
-                    >
-                      {electronDownload.label}
-                    </Button>
-                  </div>
-                </div>
-              )}
-          </div>
-
-          {/* News Notification Banner */}
-          {versionInfo?.news && (
+      {versionInfo?.news && (
             <div className="flex min-h-[64px] items-center justify-between rounded-lg border border-border bg-surface px-5 py-4">
               <div className="flex min-w-0 items-center gap-4">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-bg text-text-muted">
@@ -1068,8 +815,6 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
               )}
             </div>
           )}
-        </div>
-      )}
 
       {/* Pinned Provider Quota Limits (compact, no filters) */}
       {pinProviderQuotaToHome && (

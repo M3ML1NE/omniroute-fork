@@ -55,7 +55,4 @@ export function resolveAllFeatureFlags(): Array<{
   });
 }
 
-// Backward-compatible wrappers
-export function isCcCompatibleProviderEnabled(): boolean {
-  return isFeatureFlagEnabled("ENABLE_CC_COMPATIBLE_PROVIDER");
-}
+

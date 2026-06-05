@@ -1,0 +1,12 @@
+
+> omniroute@3.8.7 build
+> node scripts/build/build-next-isolated.mjs
+
+▲ Next.js 16.2.6 (webpack)
+- Environments: .env
+- Experiments (use with caution):
+  · serverActions
+
+  Creating an optimized production build ...
+(node:223517) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `node --trace-warnings ...` to show where the warning was created)

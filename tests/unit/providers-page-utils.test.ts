@@ -609,7 +609,6 @@ test("compatible catalog entries keep dynamic compatible metadata", () => {
         baseUrl: "https://example.test",
       },
       compatibleLabels: {
-        ccCompatibleName: "CC Compatible",
         anthropicCompatibleName: "Anthropic Compatible",
         openAiCompatibleName: "OpenAI Compatible",
       },

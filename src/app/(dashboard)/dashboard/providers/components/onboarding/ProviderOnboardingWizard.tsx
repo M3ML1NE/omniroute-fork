@@ -308,33 +308,9 @@ export default function ProviderOnboardingWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [knownOAuthConnectionIds, setKnownOAuthConnectionIds] = useState<Set<string>>(new Set());
-  const [ccCompatibleProviderEnabled, setCcCompatibleProviderEnabled] = useState(false);
-
   const providerOptions = kind === "oauth" ? oauthOptions : apiKeyOptions;
   const filteredOptions = filterWizardProviderOptions(providerOptions, query);
   const currentStepIndex = ["type", "provider", "credentials", "oauth", "result"].indexOf(step);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchOnboardingProviderNodes()
-      .then((data) => {
-        if (!cancelled) {
-          setCcCompatibleProviderEnabled(data.ccCompatibleProviderEnabled);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCcCompatibleProviderEnabled(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!ccCompatibleProviderEnabled && customForm.mode === "cc") {
-      setCustomForm((prev) => ({ ...prev, mode: "openai", baseUrl: "https://api.openai.com/v1" }));
-    }
-  }, [ccCompatibleProviderEnabled, customForm.mode]);
 
   const resetProviderSelection = (nextKind: WizardKind) => {
     setKind(nextKind);
@@ -760,7 +736,7 @@ export default function ProviderOnboardingWizard() {
                           : event.target.value === "anthropic"
                             ? "https://api.anthropic.com/v1"
                             : "",
-                      chatPath: event.target.value === "cc" ? "/v1/messages?beta=true" : "",
+                      chatPath: "",
                     })
                   }
                 >
@@ -770,11 +746,6 @@ export default function ProviderOnboardingWizard() {
                   <option value="anthropic">
                     {text("onboardingAnthropicCompatible", "Anthropic-compatible")}
                   </option>
-                  {ccCompatibleProviderEnabled && (
-                    <option value="cc">
-                      {text("onboardingClaudeCodeCompatible", "Claude Code-compatible")}
-                    </option>
-                  )}
                 </select>
               </label>
               <Input
@@ -810,20 +781,16 @@ export default function ProviderOnboardingWizard() {
                 label={text("onboardingChatPath", "Chat path")}
                 value={customForm.chatPath}
                 onChange={(event) => setCustomForm({ ...customForm, chatPath: event.target.value })}
-                placeholder={
-                  customForm.mode === "cc" ? "/v1/messages?beta=true" : text("optional", "Optional")
-                }
+                placeholder={text("optional", "Optional")}
               />
-              {customForm.mode !== "cc" && (
-                <Input
-                  label={text("onboardingModelsPath", "Models path")}
-                  value={customForm.modelsPath}
-                  onChange={(event) =>
-                    setCustomForm({ ...customForm, modelsPath: event.target.value })
-                  }
-                  placeholder={text("optional", "Optional")}
-                />
-              )}
+              <Input
+                label={text("onboardingModelsPath", "Models path")}
+                value={customForm.modelsPath}
+                onChange={(event) =>
+                  setCustomForm({ ...customForm, modelsPath: event.target.value })
+                }
+                placeholder={text("optional", "Optional")}
+              />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={submitCustomProvider} disabled={!customReady || submitting}>

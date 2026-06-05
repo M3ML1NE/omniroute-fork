@@ -5,8 +5,8 @@
  */
 
 import { z } from "zod";
-import { BitbucketClient } from "../../../services/atlassian/bitbucketClient.js";
-import { getAtlassianConfig } from "../../../services/atlassianConfig.js";
+import { BitbucketClient } from "../../../services/atlassian/bitbucketClient";
+import { getAtlassianConfig } from "../../../services/atlassianConfig";
 
 // ============ Lazy client resolver ============
 

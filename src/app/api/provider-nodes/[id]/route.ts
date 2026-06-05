@@ -7,7 +7,6 @@ import {
   updateProviderConnection,
   updateProviderNode,
 } from "@/models";
-import { isClaudeCodeCompatibleProvider } from "@/shared/constants/providers";
 import { updateProviderNodeSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
@@ -22,13 +21,6 @@ function sanitizeAnthropicBaseUrl(baseUrl: string) {
     .trim()
     .replace(/\/$/, "")
     .replace(/\/messages(?:\?[^#]*)?$/i, "");
-}
-
-function sanitizeClaudeCodeCompatibleBaseUrl(baseUrl: string) {
-  return (baseUrl || "")
-    .trim()
-    .replace(/\/$/, "")
-    .replace(/\/(?:v\d+\/)?messages(?:\?[^#]*)?$/i, "");
 }
 
 // PUT /api/provider-nodes/[id] - Update provider node
@@ -78,9 +70,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     // Sanitize Base URL for Anthropic Compatible
     if (node.type === "anthropic-compatible") {
-      sanitizedBaseUrl = isClaudeCodeCompatibleProvider(id)
-        ? sanitizeClaudeCodeCompatibleBaseUrl(sanitizedBaseUrl)
-        : sanitizeAnthropicBaseUrl(sanitizedBaseUrl);
+      sanitizedBaseUrl = sanitizeAnthropicBaseUrl(sanitizedBaseUrl);
     }
 
     const updates: Record<string, unknown> = {
@@ -88,7 +78,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       prefix: prefix.trim(),
       baseUrl: sanitizedBaseUrl,
       chatPath: chatPath || null,
-      modelsPath: isClaudeCodeCompatibleProvider(id) ? null : modelsPath || null,
+      modelsPath: modelsPath || null,
     };
 
     if (node.type === "openai-compatible") {

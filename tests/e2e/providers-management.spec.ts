@@ -71,7 +71,6 @@ async function installProviderFetchMock(page: Page) {
       if (path === "/api/provider-nodes") {
         return jsonResponse({
           nodes: [],
-          ccCompatibleProviderEnabled: false,
         });
       }
 

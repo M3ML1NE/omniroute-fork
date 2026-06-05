@@ -5,8 +5,8 @@
  */
 
 import { z } from "zod";
-import { JiraClient } from "../../../services/atlassian/jiraClient.js";
-import { getAtlassianConfig } from "../../../services/atlassianConfig.js";
+import { JiraClient } from "../../../services/atlassian/jiraClient";
+import { getAtlassianConfig } from "../../../services/atlassianConfig";
 
 // ============ Lazy client resolver ============
 

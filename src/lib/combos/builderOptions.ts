@@ -15,7 +15,6 @@ import {
   AI_PROVIDERS,
   NOAUTH_PROVIDERS,
   isAnthropicCompatibleProvider,
-  isClaudeCodeCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import type { RegistryModel } from "@omniroute/open-sse/config/providerRegistry.ts";
@@ -179,9 +178,6 @@ function getCompatibleProviderVisual(providerNodeType: string | null): ProviderV
   }
   if (providerNodeType === "anthropic-compatible") {
     return { icon: "api", color: "#D97757", source: "provider-node" };
-  }
-  if (providerNodeType === "anthropic-compatible-cc") {
-    return { icon: "smart_toy", color: "#D97757", source: "provider-node" };
   }
   return { icon: "api", color: "#6B7280", source: "provider-node" };
 }
@@ -402,8 +398,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
     const acceptsArbitraryModel =
       Boolean((AI_PROVIDERS[providerId] as JsonRecord | undefined)?.passthroughModels) ||
       isOpenAICompatibleProvider(providerId) ||
-      isAnthropicCompatibleProvider(providerId) ||
-      isClaudeCodeCompatibleProvider(providerId);
+      isAnthropicCompatibleProvider(providerId);
 
     for (const model of syncedModels) {
       const resolved = getResolvedModelCapabilities({
@@ -535,8 +530,7 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
     const acceptsArbitraryModel =
       Boolean((AI_PROVIDERS[providerId] as JsonRecord | undefined)?.passthroughModels) ||
       isOpenAICompatibleProvider(providerId) ||
-      isAnthropicCompatibleProvider(providerId) ||
-      isClaudeCodeCompatibleProvider(providerId);
+      isAnthropicCompatibleProvider(providerId);
 
     for (const model of syncedModels) {
       const resolved = getResolvedModelCapabilities({

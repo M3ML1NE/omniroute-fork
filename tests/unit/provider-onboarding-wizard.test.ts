@@ -207,13 +207,16 @@ test("provider onboarding loads provider node feature flags through the API help
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
-    return Response.json({ ccCompatibleProviderEnabled: true });
+    return Response.json({});
   };
 
   try {
     const result = await api.fetchOnboardingProviderNodes();
 
-    assert.deepEqual(result, { ccCompatibleProviderEnabled: true });
+    assert.deepEqual(result, {
+      openaiCompatibleProviderEnabled: false,
+      anthropicCompatibleProviderEnabled: false,
+    });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "/api/provider-nodes");
   } finally {
@@ -271,22 +274,6 @@ test("provider onboarding API builds compatible provider node request bodies", (
     }
   );
 
-  assert.deepEqual(
-    api.buildCompatibleNodeRequest({
-      mode: "cc",
-      name: "CC Gateway",
-      prefix: "cc-gw",
-      baseUrl: "https://cc.example",
-    }),
-    {
-      name: "CC Gateway",
-      prefix: "cc-gw",
-      baseUrl: "https://cc.example",
-      type: "anthropic-compatible",
-      chatPath: "/v1/messages?beta=true",
-      compatMode: "cc",
-    }
-  );
 });
 
 test("provider onboarding validates compatible provider node request bodies", () => {

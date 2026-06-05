@@ -29,16 +29,6 @@ test("defaultUseUpstream429BreakerHints: self-hosted chat providers default fals
   }
 });
 
-test("defaultUseUpstream429BreakerHints: claude-code-* prefix defaults false", () => {
-  for (const id of [
-    "anthropic-compatible-cc-direct",
-    "anthropic-compatible-cc-bedrock",
-    "anthropic-compatible-cc-vertex",
-  ]) {
-    assert.equal(defaultUseUpstream429BreakerHints(id), false, `expected false for ${id}`);
-  }
-});
-
 test("resolveUseUpstream429BreakerHints: user override wins (both directions)", () => {
   // Cloud provider with user override OFF → false
   assert.equal(resolveUseUpstream429BreakerHints("openai", false), false);

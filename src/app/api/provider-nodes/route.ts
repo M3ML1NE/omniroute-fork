@@ -3,10 +3,8 @@ import { createProviderNode, getProviderNodes } from "@/models";
 import {
   OPENAI_COMPATIBLE_PREFIX,
   ANTHROPIC_COMPATIBLE_PREFIX,
-  CLAUDE_CODE_COMPATIBLE_PREFIX,
 } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
-import { isCcCompatibleProviderEnabled } from "@/shared/utils/featureFlags";
 import { createProviderNodeSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
@@ -25,20 +23,12 @@ function sanitizeAnthropicBaseUrl(baseUrl: string) {
     .replace(/\/messages(?:\?[^#]*)?$/i, "");
 }
 
-function sanitizeClaudeCodeCompatibleBaseUrl(baseUrl: string) {
-  return (baseUrl || "")
-    .trim()
-    .replace(/\/$/, "")
-    .replace(/\/(?:v\d+\/)?messages(?:\?[^#]*)?$/i, "");
-}
-
 // GET /api/provider-nodes - List all provider nodes
 export async function GET() {
   try {
     const nodes = await getProviderNodes();
     return NextResponse.json({
       nodes,
-      ccCompatibleProviderEnabled: isCcCompatibleProviderEnabled(),
     });
   } catch (error) {
     console.log("Error fetching provider nodes:", error);
@@ -68,7 +58,7 @@ export async function POST(request) {
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { name, prefix, apiType, baseUrl, type, compatMode, chatPath, modelsPath } =
+    const { name, prefix, apiType, baseUrl, type, chatPath, modelsPath } =
       validation.data;
 
     // Determine type
@@ -89,27 +79,17 @@ export async function POST(request) {
     }
 
     if (nodeType === "anthropic-compatible") {
-      if (compatMode === "cc" && !isCcCompatibleProviderEnabled()) {
-        return NextResponse.json({ error: "CC Compatible provider is disabled" }, { status: 403 });
-      }
-
       const rawBaseUrl = baseUrl || ANTHROPIC_COMPATIBLE_DEFAULTS.baseUrl;
-      const sanitizedBaseUrl =
-        compatMode === "cc"
-          ? sanitizeClaudeCodeCompatibleBaseUrl(rawBaseUrl)
-          : sanitizeAnthropicBaseUrl(rawBaseUrl);
+      const sanitizedBaseUrl = sanitizeAnthropicBaseUrl(rawBaseUrl);
 
       const node = await createProviderNode({
-        id:
-          compatMode === "cc"
-            ? `${CLAUDE_CODE_COMPATIBLE_PREFIX}${generateId()}`
-            : `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,
+        id: `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,
         type: "anthropic-compatible",
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
         chatPath: chatPath || null,
-        modelsPath: compatMode === "cc" ? null : modelsPath || null,
+        modelsPath: modelsPath || null,
       });
       return NextResponse.json({ node }, { status: 201 });
     }

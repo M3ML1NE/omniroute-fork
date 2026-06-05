@@ -30,7 +30,6 @@ import {
   UPSTREAM_PROXY_PROVIDERS,
   SELF_HOSTED_CHAT_PROVIDER_IDS,
   isLocalProvider,
-  isClaudeCodeCompatibleProvider,
 } from "../constants/providers";
 
 /**
@@ -48,9 +47,6 @@ export function defaultUseUpstream429BreakerHints(providerId: string): boolean {
     return false;
   }
   if (SELF_HOSTED_CHAT_PROVIDER_IDS.has(providerId)) {
-    return false;
-  }
-  if (isClaudeCodeCompatibleProvider(providerId)) {
     return false;
   }
   return true;

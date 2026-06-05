@@ -8,7 +8,6 @@ import {
   SEARCH_PROVIDERS,
   UPSTREAM_PROXY_PROVIDERS,
   WEB_COOKIE_PROVIDERS,
-  isClaudeCodeCompatibleProvider,
   supportsApiKeyOnFreeProvider,
   type RiskNoticeVariant,
 } from "@/shared/constants/providers";
@@ -62,7 +61,6 @@ export interface CompatibleProviderNodeLike {
 }
 
 export interface CompatibleProviderLabels {
-  ccCompatibleName: string;
   anthropicCompatibleName: string;
   openAiCompatibleName: string;
 }
@@ -212,20 +210,17 @@ export function resolveCompatibleProviderCatalogEntry(
   providerNode: CompatibleProviderNodeLike,
   labels: CompatibleProviderLabels
 ): ResolvedCompatibleProviderCatalogEntry {
-  const isCcCompatible = isClaudeCodeCompatibleProvider(providerNode.id);
-  const isAnthropicCompatible = providerNode.type === "anthropic-compatible" && !isCcCompatible;
+  const isAnthropicCompatible = providerNode.type === "anthropic-compatible";
 
   return {
     id: providerNode.id,
     name:
       providerNode.name ||
-      (isCcCompatible
-        ? labels.ccCompatibleName
-        : isAnthropicCompatible
-          ? labels.anthropicCompatibleName
-          : labels.openAiCompatibleName),
-    color: isCcCompatible ? "#B45309" : isAnthropicCompatible ? "#D97757" : "#10A37F",
-    textIcon: isCcCompatible ? "CC" : isAnthropicCompatible ? "AC" : "OC",
+      (isAnthropicCompatible
+        ? labels.anthropicCompatibleName
+        : labels.openAiCompatibleName),
+    color: isAnthropicCompatible ? "#D97757" : "#10A37F",
+    textIcon: isAnthropicCompatible ? "AC" : "OC",
     apiType: providerNode.apiType || undefined,
     baseUrl: providerNode.baseUrl || undefined,
     type: providerNode.type,

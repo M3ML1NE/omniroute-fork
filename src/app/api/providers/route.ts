@@ -12,7 +12,6 @@ import {
   isCloudEnabled,
 } from "@/models";
 import {
-  isClaudeCodeCompatibleProvider,
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
@@ -123,11 +122,7 @@ export async function POST(request: Request) {
       const node: any = await getProviderNodeById(provider);
       if (!node) {
         return NextResponse.json(
-          {
-            error: isClaudeCodeCompatibleProvider(provider)
-              ? "CC Compatible node not found"
-              : "Anthropic Compatible node not found",
-          },
+          { error: "Anthropic Compatible node not found" },
           { status: 404 }
         );
       }

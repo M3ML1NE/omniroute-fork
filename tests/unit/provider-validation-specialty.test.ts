@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 const {
   validateProviderApiKey,
-  validateClaudeCodeCompatibleProvider,
   validateCommandCodeProvider,
 } = await import("../../src/lib/providers/validation.ts");
 
@@ -990,14 +989,6 @@ test("Anthropic-compatible and Claude Code compatible validators cover direct su
     },
   });
 
-  const ccRateLimited = await validateClaudeCodeCompatibleProvider({
-    apiKey: "sk-cc",
-    providerSpecificData: {
-      baseUrl: "https://cc-compatible.example.com/v1/messages",
-      validationModelId: "claude-bridge-test",
-    },
-  });
-
   globalThis.fetch = async (url, init = {}) => {
     if (init.method === "GET") {
       return new Response(JSON.stringify({ error: "bridge unavailable" }), { status: 500 });
@@ -1005,43 +996,7 @@ test("Anthropic-compatible and Claude Code compatible validators cover direct su
     return new Response(JSON.stringify({ error: "bad gateway" }), { status: 502 });
   };
 
-  const ccFailure = await validateClaudeCodeCompatibleProvider({
-    apiKey: "sk-cc",
-    providerSpecificData: {
-      baseUrl: "https://cc-compatible.example.com/v1/messages",
-    },
-  });
-
   assert.equal(anthropic.valid, true);
-  assert.equal(ccRateLimited.valid, true);
-  assert.equal(ccRateLimited.method, "cc_bridge_request");
-  assert.match(ccRateLimited.warning, /Rate limited/i);
-  assert.equal(ccFailure.valid, false);
-  assert.equal(ccFailure.error, "Validation failed: 502");
-});
-
-test("Claude Code compatible validator rejects missing base URL and bridge auth failures", async () => {
-  const missingBase = await validateClaudeCodeCompatibleProvider({
-    apiKey: "sk-cc",
-    providerSpecificData: {},
-  });
-
-  globalThis.fetch = async (url, init = {}) => {
-    if (init.method === "GET") {
-      throw new Error("models offline");
-    }
-    return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
-  };
-
-  const invalidKey = await validateClaudeCodeCompatibleProvider({
-    apiKey: "sk-cc",
-    providerSpecificData: {
-      baseUrl: "https://cc-compatible.example.com/v1/messages",
-    },
-  });
-
-  assert.equal(missingBase.error, "No base URL configured for CC Compatible provider");
-  assert.equal(invalidKey.error, "Invalid API key");
 });
 
 test("registry providers cover remaining OpenAI-like and Claude-like validation branches", async () => {

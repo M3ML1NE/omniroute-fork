@@ -52,7 +52,7 @@ export default function Breadcrumbs() {
   }));
 
   return (
-    <nav
+    <nav suppressHydrationWarning
       aria-label="Breadcrumb"
       style={{
         display: "flex",

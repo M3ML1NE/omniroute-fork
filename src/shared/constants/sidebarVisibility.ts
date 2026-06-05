@@ -68,10 +68,6 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "settings-security",
   "settings-feature-flags",
   "settings-sidebar",
-  // Help
-  "docs",
-  "issues",
-  "changelog",
 ] as const;
 
 export type HideableSidebarItemId = (typeof HIDEABLE_SIDEBAR_ITEM_IDS)[number];
@@ -84,8 +80,7 @@ export type SidebarSectionId =
   | "devtools"
   | "agentic-features"
   | "other-features"
-  | "configuration"
-  | "help";
+  | "configuration";
 
 export interface SidebarItemDefinition {
   id: HideableSidebarItemId;
@@ -587,34 +582,7 @@ const CONFIGURATION_ITEMS: readonly SidebarItemDefinition[] = [
   },
 ];
 
-const HELP_ITEMS: readonly SidebarItemDefinition[] = [
-  {
-    id: "docs",
-    href: "/docs",
-    i18nKey: "docs",
-    subtitleKey: "docsSubtitle",
-    icon: "menu_book",
-    external: true,
-  },
-  {
-    id: "issues",
-    href: "https://github.com/diegosouzapw/OmniRoute/issues",
-    i18nKey: "issues",
-    subtitleKey: "issuesSubtitle",
-    icon: "bug_report",
-    external: true,
-  },
-  {
-    id: "changelog",
-    href: "/dashboard/changelog",
-    i18nKey: "changelog",
-    subtitleKey: "changelogSubtitle",
-    icon: "campaign",
-  },
-];
-
 // ─── Sections ────────────────────────────────────────────────────────────────
-
 export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
   {
     id: "home",
@@ -672,12 +640,6 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     titleFallback: "Configuration",
     children: CONFIGURATION_ITEMS,
   },
-  {
-    id: "help",
-    titleKey: "helpSection",
-    titleFallback: "Help",
-    children: HELP_ITEMS,
-  },
 ] as const;
 
 // ─── Ordering & preset setting keys ──────────────────────────────────────────
@@ -710,8 +672,6 @@ const MINIMAL_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "health",
   "settings",
   "settings-sidebar",
-  "docs",
-  "changelog",
 ]);
 
 const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
@@ -742,9 +702,6 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "settings-routing",
   "settings-resilience",
   "settings-sidebar",
-  "docs",
-  "issues",
-  "changelog",
 ]);
 
 const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
@@ -776,8 +733,6 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "settings-security",
   "settings-feature-flags",
   "settings-sidebar",
-  "docs",
-  "changelog",
 ]);
 
 function buildHiddenList(shown: ReadonlySet<HideableSidebarItemId>): HideableSidebarItemId[] {

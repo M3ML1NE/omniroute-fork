@@ -7,7 +7,7 @@ import type {
   JiraComment,
   JiraErrorResponse,
 } from "../../types/atlassian/jira.js";
-import { getAgent } from "../mtlsAgent.js";
+import { getAgent } from "../mtlsAgent";
 
 export class JiraClient {
   private readonly agent: https.Agent | undefined;

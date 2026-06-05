@@ -8,7 +8,6 @@ import {
   getProviderFallbackCount,
   getTargetFormat,
   hasThinkingConfig,
-  isClaudeCodeCompatible,
   isLastMessageFromUser,
   normalizeThinkingConfig,
 } from "../../open-sse/services/provider.ts";
@@ -41,28 +40,6 @@ test("OpenAI-compatible legacy providers honor providerSpecificData.apiType", ()
     getTargetFormat("openai-compatible-sp-openai", providerSpecificData),
     "openai-responses"
   );
-});
-
-test("Anthropic-compatible Claude Code providers use the Claude Code URL and headers", () => {
-  const url = buildProviderUrl("anthropic-compatible-cc-demo", "claude-sonnet-4-6", false, {
-    baseUrl: "https://proxy.example.com/v1/messages?beta=true",
-  });
-  const headers = buildProviderHeaders(
-    "anthropic-compatible-cc-demo",
-    {
-      apiKey: "anthropic-token",
-      providerSpecificData: { ccSessionId: "session-123" },
-    },
-    false
-  );
-
-  assert.equal(isClaudeCodeCompatible("anthropic-compatible-cc-demo"), true);
-  assert.equal(url, "https://proxy.example.com/v1/messages?beta=true");
-  assert.equal(headers["Authorization"], "Bearer anthropic-token");
-  assert.equal(headers.Accept, "application/json");
-  assert.equal(headers["X-Claude-Code-Session-Id"], "session-123");
-  assert.equal(headers["anthropic-version"], "2023-06-01");
-  assert.equal(getTargetFormat("anthropic-compatible-cc-demo"), "claude");
 });
 
 test("GitHub provider headers include request IDs and JSON accept for non-streaming requests", () => {

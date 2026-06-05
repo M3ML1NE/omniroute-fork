@@ -3,7 +3,6 @@ import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance/index";
 import { getProviderNodeById } from "@/models";
 import {
-  isClaudeCodeCompatibleProvider,
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
 } from "@/shared/constants/providers";
@@ -76,11 +75,7 @@ export async function POST(request) {
     if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
       const node: any = await getProviderNodeById(provider);
       if (!node) {
-        const typeName = isOpenAICompatibleProvider(provider)
-          ? "OpenAI"
-          : isClaudeCodeCompatibleProvider(provider)
-            ? "CC"
-            : "Anthropic";
+        const typeName = isOpenAICompatibleProvider(provider) ? "OpenAI" : "Anthropic";
         return NextResponse.json(
           { error: `${typeName} Compatible node not found` },
           { status: 404 }

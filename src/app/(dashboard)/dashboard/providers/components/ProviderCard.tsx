@@ -11,7 +11,6 @@ import ProviderTestSlideOver from "@/shared/components/ProviderTestSlideOver";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import {
   isAnthropicCompatibleProvider,
-  isClaudeCodeCompatibleProvider,
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 
@@ -172,8 +171,7 @@ export default function ProviderCard({
   const error = Number(stats.error || 0);
   const allDisabled = Boolean(stats.allDisabled);
   const isCompatible = isOpenAICompatibleProvider(providerId);
-  const isCcCompatible = isClaudeCodeCompatibleProvider(providerId);
-  const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId) && !isCcCompatible;
+  const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
   const codexServiceTierLabel =
     stats.codexServiceTier === "flex"
       ? providerText(t, "codexTierFlexLabel", "Flex")
@@ -216,7 +214,7 @@ export default function ProviderCard({
     if (isCompatible) {
       return provider.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png";
     }
-    if (isAnthropicCompatible || isCcCompatible) return "/providers/anthropic-m.png";
+    if (isAnthropicCompatible) return "/providers/anthropic-m.png";
     return null;
   })();
 
@@ -292,7 +290,6 @@ export default function ProviderCard({
             {/* Row 2 — Capabilities: service-kind chips + compatibility badges (deprecated shown as block icon in Row 1 header). Rendered only when content exists. */}
             {((provider.serviceKinds && provider.serviceKinds.length > 0) ||
               isCompatible ||
-              isCcCompatible ||
               isAnthropicCompatible) && (
               <div className="flex flex-wrap items-center gap-1">
                 {provider.serviceKinds?.map((k) => (
@@ -306,11 +303,6 @@ export default function ProviderCard({
                 {isCompatible && (
                   <Badge variant="default" size="sm">
                     {provider.apiType === "responses" ? t("responses") : t("chat")}
-                  </Badge>
-                )}
-                {isCcCompatible && (
-                  <Badge variant="default" size="sm">
-                    CC
                   </Badge>
                 )}
                 {isAnthropicCompatible && (

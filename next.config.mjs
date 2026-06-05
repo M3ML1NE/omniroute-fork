@@ -1,5 +1,4 @@
 import createNextIntlPlugin from "next-intl/plugin";
-import { createMDX } from "fumadocs-mdx/next";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -163,8 +162,8 @@ const nextConfig = {
     "util",
     "process",
   ],
-  transpilePackages: ["@omniroute/open-sse", "@lobehub/icons", "fumadocs-ui", "fumadocs-core"],
-  allowedDevOrigins: ["localhost", "127.0.0.1", "192.168.0.250"],
+  transpilePackages: ["@omniroute/open-sse", "@lobehub/icons"],
+  allowedDevOrigins: ["localhost", "127.0.0.1", "192.168.0.250", "172.20.190.31"],
   typescript: {
     // TODO: Re-enable after fixing all sub-component useTranslations scope issues
     ignoreBuildErrors: true,
@@ -474,6 +473,4 @@ const nextConfig = {
   },
 };
 
-const withMDX = createMDX();
-
-export default withMDX(withNextIntl(nextConfig));
+export default withNextIntl(nextConfig);

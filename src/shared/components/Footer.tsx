@@ -16,8 +16,6 @@ const footerLinks = {
     },
   ],
   resources: [
-    { label: "Documentation", href: "/docs" },
-    { label: "API Reference", href: "/docs#api-reference" },
     {
       label: "Help Center",
       href: "https://github.com/diegosouzapw/OmniRoute/discussions",
@@ -144,9 +142,6 @@ export default function Footer() {
             © {new Date().getFullYear()} {APP_CONFIG.name} Inc. All rights reserved.
           </p>
           <div className="flex gap-6 text-sm text-text-muted">
-            <Link href="/docs" className="hover:text-primary transition-colors">
-              Documentation
-            </Link>
             <Link href="/terms" className="hover:text-primary transition-colors">
               Terms
             </Link>

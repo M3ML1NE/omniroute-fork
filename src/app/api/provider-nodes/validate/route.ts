@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance/index";
-import { validateClaudeCodeCompatibleProvider } from "@/lib/providers/validation";
 import {
   SAFE_OUTBOUND_FETCH_PRESETS,
   SafeOutboundFetchError,
@@ -12,7 +11,6 @@ import {
   PROVIDER_URL_BLOCKED_MESSAGE,
   getProviderOutboundGuard,
 } from "@/shared/network/outboundUrlGuard";
-import { isCcCompatibleProviderEnabled } from "@/shared/utils/featureFlags";
 import { providerNodeValidateSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
@@ -21,13 +19,6 @@ function sanitizeAnthropicBaseUrl(baseUrl: string) {
     .trim()
     .replace(/\/$/, "")
     .replace(/\/messages(?:\?[^#]*)?$/i, "");
-}
-
-function sanitizeClaudeCodeCompatibleBaseUrl(baseUrl: string) {
-  return (baseUrl || "")
-    .trim()
-    .replace(/\/$/, "")
-    .replace(/\/(?:v\d+\/)?messages(?:\?[^#]*)?$/i, "");
 }
 
 function sanitizeAuditBaseUrl(baseUrl: string) {
@@ -66,34 +57,10 @@ export async function POST(request) {
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { baseUrl, apiKey, type, compatMode, chatPath, modelsPath } = validation.data;
+    const { baseUrl, apiKey, type, chatPath, modelsPath } = validation.data;
 
     // Anthropic Compatible Validation
     if (type === "anthropic-compatible") {
-      if (compatMode === "cc") {
-        if (!isCcCompatibleProviderEnabled()) {
-          return NextResponse.json(
-            { valid: false, error: "CC Compatible provider is disabled" },
-            { status: 403 }
-          );
-        }
-
-        const result = await validateClaudeCodeCompatibleProvider({
-          apiKey,
-          providerSpecificData: {
-            baseUrl: sanitizeClaudeCodeCompatibleBaseUrl(baseUrl),
-            chatPath: chatPath || undefined,
-          },
-        });
-
-        return NextResponse.json({
-          valid: !!result.valid,
-          error: result.valid ? null : result.error || "Invalid API key",
-          warning: result.warning || null,
-          method: result.method || null,
-        });
-      }
-
       // Robustly construct URL: remove trailing slash, and remove trailing /messages if user added it
       const normalizedBase = sanitizeAnthropicBaseUrl(baseUrl);
 

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  isClaudeCodeCompatibleProvider,
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
   isSelfHostedChatProvider,
@@ -1879,13 +1878,6 @@ export async function GET(
 
       const autoFetchDisabledResponse = maybeReturnAutoFetchDisabled();
       if (autoFetchDisabledResponse) return autoFetchDisabledResponse;
-
-      if (isClaudeCodeCompatibleProvider(provider)) {
-        return NextResponse.json(
-          { error: `Provider ${provider} does not support models listing` },
-          { status: 400 }
-        );
-      }
 
       let baseUrl = getProviderBaseUrl(connection.providerSpecificData);
       if (!baseUrl) {

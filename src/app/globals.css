@@ -1,13 +1,9 @@
 @import "tailwindcss";
-@import "fumadocs-ui/css/neutral.css";
-@import "fumadocs-ui/css/preset.css";
-@source "../../node_modules/fumadocs-ui/css/generated/*.css";
 
 /* Tailwind v4 auto-detection cannot scan directories with parentheses
    (e.g. Next.js route groups like "(dashboard)"). Explicit @source
    directives ensure all utility classes in route groups are included. */
 @source "../app/(dashboard)";
-@source "../../node_modules/fumadocs-ui/dist/**/*.js";
 @source not "../../*.sqlite*";
 @source not "../../.claude*";
 @source not "../../.claude-memory";

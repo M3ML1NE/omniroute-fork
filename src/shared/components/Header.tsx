@@ -20,7 +20,6 @@ import {
   OAUTH_PROVIDERS,
   APIKEY_PROVIDERS,
   NOAUTH_PROVIDERS,
-  CLAUDE_CODE_COMPATIBLE_PREFIX,
   OPENAI_COMPATIBLE_PREFIX,
   ANTHROPIC_COMPATIBLE_PREFIX,
 } from "@/shared/constants/providers";
@@ -49,7 +48,6 @@ const HEADER_DESCRIPTIONS: Partial<Record<HideableSidebarItemId, string>> = {
   runtime: "runtimeDescription",
   media: "mediaDescription",
   memory: "memoryDescription",
-  skills: "skillsDescription",
   settings: "settingsDescription",
   "context-caveman": "contextCavemanDescription",
   "context-rtk": "contextRtkDescription",
@@ -146,8 +144,6 @@ function usePageInfo(pathname: string | null): PageInfo {
     const pid = providerMatch[1];
     const info = OAUTH_PROVIDERS[pid] || NOAUTH_PROVIDERS[pid] || APIKEY_PROVIDERS[pid];
     if (info) return { title: info.name, description: "", providerId: info.id };
-    if (pid.startsWith(CLAUDE_CODE_COMPATIBLE_PREFIX))
-      return { title: "CC Compatible", description: "", providerId: "claude" };
     if (pid.startsWith(OPENAI_COMPATIBLE_PREFIX))
       return { title: th("openaiCompatible"), description: "", providerId: "oai-cc" };
     if (pid.startsWith(ANTHROPIC_COMPATIBLE_PREFIX))

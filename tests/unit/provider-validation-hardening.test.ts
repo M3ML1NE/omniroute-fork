@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { validateProviderApiKey, validateClaudeCodeCompatibleProvider } =
+const { validateProviderApiKey } =
   await import("../../src/lib/providers/validation.ts");
 
 const originalFetch = globalThis.fetch;
@@ -108,25 +108,6 @@ test("gemini validation distinguishes non-auth 400 responses from auth failures 
   });
   assert.equal(unavailable.valid, false);
   assert.equal(unavailable.error, "Validation failed: 503");
-});
-
-test("Claude Code compatible validation surfaces bridge connection failures", async () => {
-  globalThis.fetch = async (url, init = {}) => {
-    if (init.method === "GET") {
-      throw new Error("models endpoint offline");
-    }
-    throw new Error(`bridge failed for ${url}`);
-  };
-
-  const result = await validateClaudeCodeCompatibleProvider({
-    apiKey: "sk-cc",
-    providerSpecificData: {
-      baseUrl: "https://cc-compat.example.com/v1/messages",
-    },
-  });
-
-  assert.equal(result.valid, false);
-  assert.match(result.error, /bridge failed/i);
 });
 
 // Regression for the non-string-input crash class surfaced by #2463

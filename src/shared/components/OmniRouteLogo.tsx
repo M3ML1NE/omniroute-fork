@@ -9,7 +9,7 @@ type OmniRouteLogoProps = {
 
 export default function OmniRouteLogo({ size = 20, className = "" }: OmniRouteLogoProps) {
   return (
-    <svg
+    <svg suppressHydrationWarning
       width={size}
       height={size}
       viewBox="0 0 32 32"

@@ -39,7 +39,6 @@ import {
   getProviderAlias,
   isOpenAICompatibleProvider,
   isAnthropicCompatibleProvider,
-  isClaudeCodeCompatibleProvider,
   isSelfHostedChatProvider,
   providerAllowsOptionalApiKey,
   supportsApiKeyOnFreeProvider,
@@ -71,7 +70,6 @@ import useEmailPrivacyStore from "@/store/emailPrivacyStore";
 import EmailPrivacyToggle from "@/shared/components/EmailPrivacyToggle";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import {
-  getClaudeCodeCompatibleRequestDefaults as _getClaudeCodeCompatibleRequestDefaults,
   getCodexRequestDefaults as _getCodexRequestDefaults,
   type CodexServiceTier,
 } from "@/lib/providers/requestDefaults";
@@ -756,7 +754,6 @@ interface ConnectionRowProps {
   onToggleClaudeExtraUsage?: (enabled?: boolean) => void;
   onToggleCodex5h?: (enabled?: boolean) => void;
   onToggleCodexWeekly?: (enabled?: boolean) => void;
-  isCcCompatible?: boolean;
   cliproxyapiEnabled?: boolean;
   onToggleCliproxyapiMode?: (enabled?: boolean) => void;
   onRetest: () => void;
@@ -790,7 +787,6 @@ interface AddApiKeyModalProps {
   providerName?: string;
   isCompatible?: boolean;
   isAnthropic?: boolean;
-  isCcCompatible?: boolean;
   isCommandCode?: boolean;
   commandCodeAuthState?: CommandCodeAuthFlowState;
   onStartCommandCodeAuth?: () => void;
@@ -873,10 +869,8 @@ interface EditCompatibleNodeModalProps {
   onSave: (data: unknown) => Promise<void>;
   onClose: () => void;
   isAnthropic?: boolean;
-  isCcCompatible?: boolean;
 }
 
-const CC_COMPATIBLE_DEFAULT_CHAT_PATH = "/v1/messages?beta=true";
 const CODEX_REASONING_STRENGTH_OPTIONS = [
   { value: "none", label: "None" },
   { value: "low", label: "Low" },
@@ -926,15 +920,6 @@ function getCodexRequestDefaults(providerSpecificData: unknown): {
   return {
     reasoningEffort: defaults.reasoningEffort ?? "medium",
     ...(defaults.serviceTier ? { serviceTier: defaults.serviceTier } : {}),
-  };
-}
-
-function getClaudeCodeCompatibleRequestDefaults(providerSpecificData: unknown): {
-  context1m: boolean;
-} {
-  const defaults = _getClaudeCodeCompatibleRequestDefaults(providerSpecificData);
-  return {
-    context1m: defaults.context1m === true,
   };
 }
 
@@ -1451,12 +1436,10 @@ export default function ProviderDetailPage() {
     useRiskAcknowledged(providerId);
   const codexSettingsRequestSeqRef = useRef(0);
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
-  const isCcCompatible = isClaudeCodeCompatibleProvider(providerId);
   const isCommandCode = providerId === "command-code";
-  const isAnthropicCompatible =
-    isAnthropicCompatibleProvider(providerId) && !isClaudeCodeCompatibleProvider(providerId);
-  const isCompatible = isOpenAICompatible || isAnthropicCompatible || isCcCompatible;
-  const isAnthropicProtocolCompatible = isAnthropicCompatible || isCcCompatible;
+  const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId);
+  const isCompatible = isOpenAICompatible || isAnthropicCompatible;
+  const isAnthropicProtocolCompatible = isAnthropicCompatible;
 
   const setShowOAuthModal = (show: boolean, connectionRow?: ConnectionRowConnection) => {
     _setShowOAuthModal(show);
@@ -1475,7 +1458,6 @@ export default function ProviderDetailPage() {
   const providerInfo = resolveDashboardProviderInfo(providerId, {
     providerNode,
     compatibleLabels: {
-      ccCompatibleName: t("ccCompatibleLabel"),
       anthropicCompatibleName: t("anthropicCompatibleName"),
       openAiCompatibleName: t("openaiCompatibleName"),
     },
@@ -1549,7 +1531,6 @@ export default function ProviderDetailPage() {
   };
 
   const getApiDefaultPath = () => {
-    if (isCcCompatible) return CC_COMPATIBLE_DEFAULT_CHAT_PATH;
     if (isAnthropicCompatible) return "/messages";
     const type = providerNode?.apiType;
     switch (type) {
@@ -2442,16 +2423,6 @@ export default function ProviderDetailPage() {
 
   // Load upstream proxy config for this provider on mount
   useEffect(() => {
-    if (!isCcCompatible) return;
-    fetch(`/api/settings`)
-      .then((r) => r.json())
-      .then((data) => {
-        // Check if this provider has CLIProxyAPI routing enabled
-        // The upstream_proxy_config is synced via the settings API
-      })
-      .catch(() => {});
-
-    // Also check via direct upstream proxy config lookup
     fetch(`/api/upstream-proxy/${providerId}`)
       .then((r) => {
         if (!r.ok) return null;
@@ -2463,7 +2434,7 @@ export default function ProviderDetailPage() {
         }
       })
       .catch(() => {});
-  }, [isCcCompatible, providerId]);
+  }, [providerId]);
 
   const handleToggleCliproxyapiMode = async (_connectionId, enabled) => {
     try {
@@ -3480,20 +3451,16 @@ export default function ProviderDetailPage() {
       const description =
         providerId === "openrouter"
           ? t("openRouterAnyModelHint")
-          : isCcCompatible
-            ? t("ccCompatibleModelsDescription")
-            : t("compatibleModelsDescription", {
-                type: isAnthropicCompatible ? t("anthropic") : t("openai"),
-              });
+          : t("compatibleModelsDescription", {
+              type: isAnthropicCompatible ? t("anthropic") : t("openai"),
+            });
       const inputLabel = providerId === "openrouter" ? t("modelIdFromOpenRouter") : t("modelId");
       const inputPlaceholder =
         providerId === "openrouter"
           ? t("openRouterModelPlaceholder")
-          : isCcCompatible
-            ? "claude-sonnet-4-6"
-            : isAnthropicCompatible
-              ? t("anthropicCompatibleModelPlaceholder")
-              : t("openaiCompatibleModelPlaceholder");
+          : isAnthropicCompatible
+            ? t("anthropicCompatibleModelPlaceholder")
+            : t("openaiCompatibleModelPlaceholder");
 
       return (
         <div>
@@ -3894,11 +3861,9 @@ export default function ProviderDetailPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold">
-                {isCcCompatible
-                  ? t("ccCompatibleDetailsTitle")
-                  : isAnthropicCompatible
-                    ? t("anthropicCompatibleDetails")
-                    : t("openaiCompatibleDetails")}
+                {isAnthropicCompatible
+                  ? t("anthropicCompatibleDetails")
+                  : t("openaiCompatibleDetails")}
               </h2>
               <p className="text-sm text-text-muted">
                 {getApiLabel()} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/{getApiPath()}
@@ -3928,11 +3893,9 @@ export default function ProviderDetailPage() {
                   if (
                     !confirm(
                       t("deleteCompatibleNodeConfirm", {
-                        type: isCcCompatible
-                          ? t("ccCompatibleLabel")
-                          : isAnthropicCompatible
-                            ? t("anthropic")
-                            : t("openai"),
+                        type: isAnthropicCompatible
+                          ? t("anthropic")
+                          : t("openai"),
                       })
                     )
                   )
@@ -3953,16 +3916,7 @@ export default function ProviderDetailPage() {
               </Button>
             </div>
           </div>
-          {isCcCompatible && (
-            <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-text-muted">
-              <div className="flex items-start gap-2">
-                <span className="material-symbols-outlined mt-0.5 text-[18px] text-amber-500">
-                  warning
-                </span>
-                <p>{t("ccCompatibleValidationHint")}</p>
-              </div>
-            </div>
-          )}
+
         </Card>
       )}
 
@@ -4293,7 +4247,6 @@ export default function ProviderDetailPage() {
                           }
                           isCodex={providerId === "codex"}
                           isGeminiCli={providerId === "gemini-cli"}
-                          isCcCompatible={isCcCompatible}
                           cliproxyapiEnabled={cpaProviderEnabled}
                           onToggleCliproxyapiMode={(enabled) =>
                             handleToggleCliproxyapiMode(conn.id, enabled)
@@ -4483,7 +4436,6 @@ export default function ProviderDetailPage() {
                                 }
                                 isCodex={providerId === "codex"}
                                 isGeminiCli={providerId === "gemini-cli"}
-                                isCcCompatible={isCcCompatible}
                                 cliproxyapiEnabled={cpaProviderEnabled}
                                 onToggleCodex5h={(enabled) =>
                                   handleToggleCodexLimit(conn.id, "use5h", enabled)
@@ -4707,7 +4659,6 @@ export default function ProviderDetailPage() {
           providerName={providerInfo.name}
           isCompatible={isCompatible}
           isAnthropic={isAnthropicProtocolCompatible}
-          isCcCompatible={isCcCompatible}
           isCommandCode={isCommandCode}
           commandCodeAuthState={commandCodeAuthState}
           onStartCommandCodeAuth={handleStartCommandCodeAuth}
@@ -4739,7 +4690,6 @@ export default function ProviderDetailPage() {
           onSave={handleUpdateNode}
           onClose={() => setShowEditNodeModal(false)}
           isAnthropic={isAnthropicProtocolCompatible}
-          isCcCompatible={isCcCompatible}
         />
       )}
       {/* Codex Import Auth Modal */}
@@ -6744,7 +6694,6 @@ function ConnectionRow({
   isCodex,
   isGeminiCli,
   codexGlobalServiceMode,
-  isCcCompatible,
   cliproxyapiEnabled,
   isFirst,
   isLast,
@@ -6920,8 +6869,7 @@ function ConnectionRow({
   const claudeBlockExtraUsageEnabled = isClaude
     ? isClaudeExtraUsageBlockEnabled("claude", connection.providerSpecificData)
     : false;
-  const cliproxyapiDeepMode = !!cliproxyapiEnabled;
-
+  
   return (
     <div
       className={`group flex items-center justify-between p-3 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}
@@ -7042,23 +6990,6 @@ function ConnectionRow({
                   <span className="material-symbols-outlined text-[13px]">payments</span>
                   {t("claudeExtraUsageShort")}{" "}
                   {!claudeBlockExtraUsageEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
-              </>
-            )}
-            {isCcCompatible && (
-              <>
-                <span className="text-text-muted/30 select-none">|</span>
-                <button
-                  onClick={() => onToggleCliproxyapiMode?.(!cliproxyapiDeepMode)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
-                    cliproxyapiDeepMode
-                      ? "bg-indigo-500/15 text-indigo-500 hover:bg-indigo-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
-                  }`}
-                  title={cliproxyapiDeepMode ? t("cpaModeEnabledTitle") : t("cpaModeDisabledTitle")}
-                >
-                  <span className="material-symbols-outlined text-[13px]">swap_horiz</span>
-                  CPA {cliproxyapiDeepMode ? t("toggleOnShort") : t("toggleOffShort")}
                 </button>
               </>
             )}
@@ -7481,7 +7412,6 @@ function AddApiKeyModal({
   providerName,
   isCompatible,
   isAnthropic,
-  isCcCompatible,
   isCommandCode,
   commandCodeAuthState,
   onStartCommandCodeAuth,
@@ -7535,7 +7465,6 @@ function AddApiKeyModal({
     customUserAgent: "",
     accountId: "",
     consoleApiKey: "",
-    ccCompatibleContext1m: false,
     passthroughModels: false,
   });
   const [validating, setValidating] = useState(false);
@@ -7725,9 +7654,6 @@ function AddApiKeyModal({
       } else if (isCloudflare && formData.accountId.trim()) {
         providerSpecificData.accountId = formData.accountId.trim();
       }
-      if (isCcCompatible && formData.ccCompatibleContext1m) {
-        providerSpecificData.requestDefaults = { context1m: true };
-      }
 
     const payload = {
       name: formData.name,
@@ -7911,16 +7837,6 @@ function AddApiKeyModal({
 
         {(!bulkSupported || mode === "single") && (
           <>
-            {isCcCompatible && (
-              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-text-muted">
-                <div className="flex items-start gap-2">
-                  <span className="material-symbols-outlined mt-0.5 text-[18px] text-amber-500">
-                    warning
-                  </span>
-                  <p>{t("ccCompatibleValidationHint")}</p>
-                </div>
-              </div>
-            )}
             {isCommandCode && onStartCommandCodeAuth && (
               <div className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-3 text-sm">
                 <div className="flex items-start gap-3">
@@ -8085,19 +8001,7 @@ function AddApiKeyModal({
                 {saveError}
               </div>
             )}
-            {isCcCompatible && (
-              <div className="flex flex-col gap-4 rounded-lg border border-border/50 bg-surface/20 p-4">
-                <Toggle
-                  checked={formData.ccCompatibleContext1m}
-                  onChange={(checked) =>
-                    setFormData({ ...formData, ccCompatibleContext1m: checked })
-                  }
-                  label={t("ccCompatibleContext1mLabel")}
-                  description={t("ccCompatibleContext1mDescription")}
-                />
-              </div>
-            )}
-            {isCompatible && !isCcCompatible && (
+            {isCompatible && (
               <p className="text-xs text-text-muted">
                 {isAnthropic
                   ? t("validationChecksAnthropicCompatible", {
@@ -9754,7 +9658,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
     codexServiceTier: "default" as CodexServiceTier,
     codexOpenaiStoreEnabled: false,
     consoleApiKey: "",
-    ccCompatibleContext1m: false,
     cloudCodeProjectId: "",
     antigravityClientProfile: "ide",
     blockExtraUsage:
@@ -9811,7 +9714,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
     "";
   const apiKeyOptional =
     providerAllowsOptionalApiKey(connection?.provider) || Boolean(isNoAuthWebSessionCredential);
-  const isCcCompatible = isClaudeCodeCompatibleProvider(connection?.provider);
   const defaultRegion = isBedrock ? "eu-west-2" : "us-central1";
   const apiCredentialLabel = webSessionCredential
     ? getWebSessionCredentialLabel(t, webSessionCredential, apiKeyOptional)
@@ -9855,9 +9757,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
       const rawAccountId = connection.providerSpecificData?.accountId;
       const existingAccountId = typeof rawAccountId === "string" ? rawAccountId : "";
       const codexRequestDefaults = getCodexRequestDefaults(connection.providerSpecificData);
-      const ccRequestDefaults = getClaudeCodeCompatibleRequestDefaults(
-        connection.providerSpecificData
-      );
       const rawConsoleApiKey = connection.providerSpecificData?.consoleApiKey;
       const existingConsoleApiKey = typeof rawConsoleApiKey === "string" ? rawConsoleApiKey : "";
       setFormData({
@@ -9886,7 +9785,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
         codexServiceTier: codexRequestDefaults.serviceTier ?? "default",
         codexOpenaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
         consoleApiKey: existingConsoleApiKey,
-        ccCompatibleContext1m: ccRequestDefaults.context1m,
         cloudCodeProjectId:
           (connection.providerSpecificData?.projectId as string) || connection.projectId || "",
         antigravityClientProfile: normalizeAntigravityClientProfileSetting(
@@ -10115,21 +10013,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
         if (supportsGoogleProjectId) {
           updates.providerSpecificData.projectId = trimmedCloudCodeProjectId || null;
         }
-        if (isCcCompatible) {
-          const currentRequestDefaults =
-            updates.providerSpecificData.requestDefaults &&
-            typeof updates.providerSpecificData.requestDefaults === "object" &&
-            !Array.isArray(updates.providerSpecificData.requestDefaults)
-              ? { ...(updates.providerSpecificData.requestDefaults as Record<string, unknown>) }
-              : {};
-          if (formData.ccCompatibleContext1m) {
-            currentRequestDefaults.context1m = true;
-          } else {
-            delete currentRequestDefaults.context1m;
-          }
-          updates.providerSpecificData.requestDefaults =
-            Object.keys(currentRequestDefaults).length > 0 ? currentRequestDefaults : undefined;
-        }
       } else {
         // Also persist tag for OAuth accounts
         updates.providerSpecificData = {
@@ -10254,16 +10137,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
               onChange={(checked) => setFormData({ ...formData, blockExtraUsage: checked })}
               label={t("blockClaudeExtraUsageLabel")}
               description={t("blockClaudeExtraUsageDescription")}
-            />
-          </div>
-        )}
-        {isCcCompatible && (
-          <div className="flex flex-col gap-4 rounded-lg border border-border/50 bg-surface/20 p-4">
-            <Toggle
-              checked={formData.ccCompatibleContext1m}
-              onChange={(checked) => setFormData({ ...formData, ccCompatibleContext1m: checked })}
-              label={t("ccCompatibleContext1mLabel")}
-              description={t("ccCompatibleContext1mDescription")}
             />
           </div>
         )}
@@ -10740,7 +10613,6 @@ function EditCompatibleNodeModal({
   onSave,
   onClose,
   isAnthropic,
-  isCcCompatible,
 }: EditCompatibleNodeModalProps) {
   const t = useTranslations("providers");
   const [formData, setFormData] = useState({
@@ -10765,23 +10637,17 @@ function EditCompatibleNodeModal({
         apiType: node.apiType || "chat",
         baseUrl:
           node.baseUrl ||
-          (isCcCompatible
-            ? "https://api.anthropic.com"
-            : isAnthropic
-              ? "https://api.anthropic.com/v1"
-              : "https://api.openai.com/v1"),
-        chatPath: node.chatPath || (isCcCompatible ? CC_COMPATIBLE_DEFAULT_CHAT_PATH : ""),
-        modelsPath: isCcCompatible ? "" : node.modelsPath || "",
+          (isAnthropic
+            ? "https://api.anthropic.com/v1"
+            : "https://api.openai.com/v1"),
+        chatPath: node.chatPath || "",
+        modelsPath: node.modelsPath || "",
       });
       setShowAdvanced(
-        !!(
-          node.chatPath ||
-          (!isCcCompatible && node.modelsPath) ||
-          (isCcCompatible && !node.chatPath)
-        )
+        !!(node.chatPath || node.modelsPath)
       );
     }
-  }, [node, isAnthropic, isCcCompatible]);
+  }, [node, isAnthropic]);
 
   const apiTypeOptions = [
     { value: "chat", label: t("chatCompletions") },
@@ -10800,8 +10666,8 @@ function EditCompatibleNodeModal({
         name: formData.name,
         prefix: formData.prefix,
         baseUrl: formData.baseUrl,
-        chatPath: formData.chatPath || (isCcCompatible ? CC_COMPATIBLE_DEFAULT_CHAT_PATH : ""),
-        modelsPath: isCcCompatible ? "" : formData.modelsPath,
+        chatPath: formData.chatPath || "",
+        modelsPath: formData.modelsPath,
       };
       if (!isAnthropic) {
         payload.apiType = formData.apiType;
@@ -10822,9 +10688,8 @@ function EditCompatibleNodeModal({
           baseUrl: formData.baseUrl,
           apiKey: checkKey,
           type: isAnthropic ? "anthropic-compatible" : "openai-compatible",
-          compatMode: isCcCompatible ? "cc" : undefined,
-          chatPath: formData.chatPath || (isCcCompatible ? CC_COMPATIBLE_DEFAULT_CHAT_PATH : ""),
-          modelsPath: isCcCompatible ? "" : formData.modelsPath,
+          chatPath: formData.chatPath || "",
+          modelsPath: formData.modelsPath,
         }),
       });
       const data = await res.json();
@@ -10841,49 +10706,29 @@ function EditCompatibleNodeModal({
   return (
     <Modal
       isOpen={isOpen}
-      title={
-        isCcCompatible
-          ? t("ccCompatibleDetailsTitle")
-          : t("editCompatibleTitle", { type: isAnthropic ? t("anthropic") : t("openai") })
-      }
+      title={t("editCompatibleTitle", { type: isAnthropic ? t("anthropic") : t("openai") })}
       onClose={onClose}
     >
       <div className="flex flex-col gap-4">
-        {isCcCompatible && (
-          <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-text-muted">
-            <div className="flex items-start gap-2">
-              <span className="material-symbols-outlined mt-0.5 text-[18px] text-amber-500">
-                warning
-              </span>
-              <p>{t("ccCompatibleValidationHint")}</p>
-            </div>
-          </div>
-        )}
         <Input
           label={t("nameLabel")}
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder={
-            isCcCompatible
-              ? t("ccCompatibleNamePlaceholder")
-              : t("compatibleProdPlaceholder", {
-                  type: isAnthropic ? t("anthropic") : t("openai"),
-                })
-          }
-          hint={isCcCompatible ? t("ccCompatibleNameHint") : t("nameHint")}
+          placeholder={t("compatibleProdPlaceholder", {
+            type: isAnthropic ? t("anthropic") : t("openai"),
+          })}
+          hint={t("nameHint")}
         />
         <Input
           label={t("prefixLabel")}
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
           placeholder={
-            isCcCompatible
-              ? t("ccCompatiblePrefixPlaceholder")
-              : isAnthropic
-                ? t("anthropicPrefixPlaceholder")
-                : t("openaiPrefixPlaceholder")
+            isAnthropic
+              ? t("anthropicPrefixPlaceholder")
+              : t("openaiPrefixPlaceholder")
           }
-          hint={isCcCompatible ? t("ccCompatiblePrefixHint") : t("prefixHint")}
+          hint={t("prefixHint")}
         />
         {!isAnthropic && (
           <Select
@@ -10898,19 +10743,13 @@ function EditCompatibleNodeModal({
           value={formData.baseUrl}
           onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
           placeholder={
-            isCcCompatible
-              ? t("ccCompatibleBaseUrlPlaceholder")
-              : isAnthropic
-                ? t("anthropicBaseUrlPlaceholder")
-                : t("openaiBaseUrlPlaceholder")
+            isAnthropic
+              ? t("anthropicBaseUrlPlaceholder")
+              : t("openaiBaseUrlPlaceholder")
           }
-          hint={
-            isCcCompatible
-              ? t("ccCompatibleBaseUrlHint")
-              : t("compatibleBaseUrlHint", {
-                  type: isAnthropic ? t("anthropic") : t("openai"),
-                })
-          }
+          hint={t("compatibleBaseUrlHint", {
+            type: isAnthropic ? t("anthropic") : t("openai"),
+          })}
         />
         <button
           type="button"
@@ -10934,23 +10773,19 @@ function EditCompatibleNodeModal({
               value={formData.chatPath}
               onChange={(e) => setFormData({ ...formData, chatPath: e.target.value })}
               placeholder={
-                isCcCompatible
-                  ? CC_COMPATIBLE_DEFAULT_CHAT_PATH
-                  : isAnthropic
-                    ? "/messages"
-                    : t("chatPathPlaceholder")
+                isAnthropic
+                  ? "/messages"
+                  : t("chatPathPlaceholder")
               }
-              hint={isCcCompatible ? t("ccCompatibleChatPathHint") : t("chatPathHint")}
+              hint={t("chatPathHint")}
             />
-            {!isCcCompatible && (
-              <Input
-                label={t("modelsPathLabel")}
-                value={formData.modelsPath}
-                onChange={(e) => setFormData({ ...formData, modelsPath: e.target.value })}
-                placeholder={t("modelsPathPlaceholder")}
-                hint={t("modelsPathHint")}
-              />
-            )}
+            <Input
+              label={t("modelsPathLabel")}
+              value={formData.modelsPath}
+              onChange={(e) => setFormData({ ...formData, modelsPath: e.target.value })}
+              placeholder={t("modelsPathPlaceholder")}
+              hint={t("modelsPathHint")}
+            />
           </div>
         )}
         <div className="flex gap-2">

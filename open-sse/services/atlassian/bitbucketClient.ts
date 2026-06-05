@@ -8,7 +8,7 @@ import type {
   BitbucketPRState,
   BitbucketErrorResponse,
 } from "../../types/atlassian/bitbucket.js";
-import { getAgent } from "../mtlsAgent.js";
+import { getAgent } from "../mtlsAgent";
 
 export class BitbucketClient {
   private readonly agent: https.Agent | undefined;

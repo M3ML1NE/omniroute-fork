@@ -6,7 +6,7 @@ import type {
   ConfluenceCreatePageInput,
   ConfluenceUpdatePageInput,
 } from "../../types/atlassian/confluence.js";
-import { getAgent } from "../mtlsAgent.js";
+import { getAgent } from "../mtlsAgent";
 
 export class ConfluenceClient {
   private readonly agent: https.Agent | undefined;

@@ -211,7 +211,7 @@ async function mockProvidersPageApis(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ nodes: [], ccCompatibleProviderEnabled: false }),
+      body: JSON.stringify({ nodes: [] }),
     });
   });
 
