@@ -9,7 +9,6 @@
  *
  * Header order and body field order were captured via mitmproxy traffic analysis.
  */
-import { isClaudeCodeCompatible } from "../services/provider.ts";
 import {
   getAntigravityUserAgent,
   GITHUB_COPILOT_CHAT_USER_AGENT,
@@ -334,7 +333,7 @@ export function applyFingerprint(
 ): { headers: Record<string, string>; bodyString: string } {
   body = stripInternalBodyFields(body);
   const normalizedProvider = normalizeCliCompatProviderId(provider || "");
-  const fingerprintKey = isClaudeCodeCompatible(provider)
+  const fingerprintKey = false
     ? "claude-code-compatible"
     : normalizedProvider;
   const fingerprint = CLI_FINGERPRINTS[fingerprintKey];
@@ -399,7 +398,7 @@ export function getCliCompatProviders(): string[] {
  * Reads from: 1) Runtime cache (Settings UI), 2) Environment variables.
  */
 export function isCliCompatEnabled(provider: string): boolean {
-  if (isClaudeCodeCompatible(provider)) return true;
+  if (false) return true;
 
   const key = provider?.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
