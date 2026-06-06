@@ -36,7 +36,6 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   // Monitoring > Costs Parameters
   "costs-pricing",
   "costs-budget",
-  "costs-quota-share",
   // Monitoring > Audit
   "audit",
   "audit-mcp",
@@ -47,9 +46,6 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "a2a",
   // Other Features — flat
   "media",
-  // Other Features > Batch
-  "batch",
-  "batch-files",
   // Configuration
   "settings",
   "settings-general",
@@ -149,6 +145,13 @@ const OMNI_PROXY_ITEMS: readonly SidebarItemDefinition[] = [
     icon: "deployed_code",
   },
   {
+    id: "endpoints",
+    href: "/dashboard/endpoint",
+    i18nKey: "endpoints",
+    subtitleKey: "endpointsSubtitle",
+    icon: "api",
+  },
+  {
     id: "combos",
     href: "/dashboard/combos",
     i18nKey: "combos",
@@ -156,23 +159,6 @@ const OMNI_PROXY_ITEMS: readonly SidebarItemDefinition[] = [
     icon: "layers",
   },
 ];
-
-const COMBOS_GROUP: SidebarItemGroup = {
-  type: "group",
-  id: "combos-group",
-  titleKey: "combosGroup",
-  titleFallback: "Combo",
-  items: [
-    {
-      id: "endpoints",
-      href: "/dashboard/endpoint",
-      i18nKey: "apiDocumentation",
-      titleFallback: "Документация API",
-      subtitleKey: "endpointsSubtitle",
-      icon: "api",
-    },
-  ],
-};
 
 const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
   type: "group",
@@ -361,13 +347,7 @@ const COSTS_PARAMS_GROUP: SidebarItemGroup = {
       subtitleKey: "costsBudgetSubtitle",
       icon: "savings",
     },
-    {
-      id: "costs-quota-share",
-      href: "/dashboard/costs/quota-share",
-      i18nKey: "costsQuotaShare",
-      subtitleKey: "costsQuotaShareSubtitle",
-      icon: "pie_chart",
-    },
+
   ],
 };
 
@@ -444,29 +424,6 @@ const OTHER_FEATURES_ITEMS: readonly SidebarItemDefinition[] = [
     icon: "perm_media",
   },
 ];
-
-const BATCH_GROUP: SidebarItemGroup = {
-  type: "group",
-  id: "batch",
-  titleKey: "batchGroup",
-  titleFallback: "Batch",
-  items: [
-    {
-      id: "batch",
-      href: "/dashboard/batch",
-      i18nKey: "batch",
-      subtitleKey: "batchSubtitle",
-      icon: "view_list",
-    },
-    {
-      id: "batch-files",
-      href: "/dashboard/batch/files",
-      i18nKey: "batchFiles",
-      subtitleKey: "batchFilesSubtitle",
-      icon: "folder",
-    },
-  ],
-};
 
 const CONFIGURATION_ITEMS: readonly SidebarItemDefinition[] = [
   {
@@ -556,7 +513,6 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     titleFallback: "OmniProxy",
     children: [
       ...OMNI_PROXY_ITEMS,
-      COMBOS_GROUP,
       COMPRESSION_CONTEXT_GROUP,
       INTEGRATIONS_GROUP,
       PROXY_GROUP,
@@ -585,7 +541,7 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     id: "other-features",
     titleKey: "otherFeaturesSection",
     titleFallback: "Other Features",
-    children: [...OTHER_FEATURES_ITEMS, BATCH_GROUP],
+    children: [...OTHER_FEATURES_ITEMS],
   },
   {
     id: "configuration",
@@ -665,7 +621,6 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "costs",
   "costs-pricing",
   "costs-budget",
-  "costs-quota-share",
   "cache",
   "logs",
   "logs-activity",

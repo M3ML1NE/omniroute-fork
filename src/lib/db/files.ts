@@ -1,7 +1,6 @@
 import { getDbInstance, rowToCamel, objToSnake } from "./core";
 import { nonCriticalDbDisabled } from "./minimalDb";
 import { v4 as uuidv4 } from "uuid";
-import { DEFAULT_BATCH_EXPIRATION_SECONDS } from "@/shared/constants/batch";
 
 export interface FileRecord {
   id: string;
@@ -26,10 +25,10 @@ export function createFile(file: Omit<FileRecord, "id" | "createdAt">): FileReco
   const createdAt = Math.floor(Date.now() / 1000);
 
   let expiresAt = file.expiresAt;
-  if (expiresAt === undefined && file.purpose === "batch") {
-    // Default: batch files expire after 30 days
-    expiresAt = createdAt + DEFAULT_BATCH_EXPIRATION_SECONDS;
-  }
+    if (expiresAt === undefined && file.purpose === "batch") {
+      // Default: batch files expire after 30 days
+      expiresAt = Math.floor(Date.now() / 1000) + 2592000;
+    }
 
   const record: FileRecord = {
     id,

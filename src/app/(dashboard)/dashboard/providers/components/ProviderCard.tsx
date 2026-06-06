@@ -212,7 +212,6 @@ export default function ProviderCard({
     if (isCompatible) {
       return provider.apiType === "responses" ? "/providers/oai-r.png" : "/providers/oai-cc.png";
     }
-    if (isAnthropicCompatible) return "/providers/anthropic-m.png";
     return null;
   })();
 
@@ -287,8 +286,7 @@ export default function ProviderCard({
 
             {/* Row 2 — Capabilities: service-kind chips + compatibility badges (deprecated shown as block icon in Row 1 header). Rendered only when content exists. */}
             {((provider.serviceKinds && provider.serviceKinds.length > 0) ||
-              isCompatible ||
-              isAnthropicCompatible) && (
+              isCompatible) && (
               <div className="flex flex-wrap items-center gap-1">
                 {provider.serviceKinds?.map((k) => (
                   <span
@@ -301,11 +299,6 @@ export default function ProviderCard({
                 {isCompatible && (
                   <Badge variant="default" size="sm">
                     {provider.apiType === "responses" ? t("responses") : t("chat")}
-                  </Badge>
-                )}
-                {isAnthropicCompatible && (
-                  <Badge variant="default" size="sm">
-                    {t("messages")}
                   </Badge>
                 )}
               </div>

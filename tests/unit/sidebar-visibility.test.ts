@@ -27,7 +27,6 @@ test("system sidebar items place logs before health", () => {
       "runtime",
       "costs-pricing",
       "costs-budget",
-      "costs-quota-share",
       "audit",
       "audit-mcp",
       "audit-a2a",
@@ -35,7 +34,7 @@ test("system sidebar items place logs before health", () => {
   );
 });
 
-test("primary sidebar items place endpoints under combos group", () => {
+test("primary sidebar items place endpoints above combos", () => {
   const items = sectionItems("omni-proxy");
   assert.deepEqual(
     items.map((item) => item.id),
@@ -43,8 +42,8 @@ test("primary sidebar items place endpoints under combos group", () => {
       "api-manager",
       "providers",
       "embedded-services",
-      "combos",
       "endpoints",
+      "combos",
       "context-caveman",
       "context-rtk",
       "context-combos",
@@ -53,11 +52,10 @@ test("primary sidebar items place endpoints under combos group", () => {
     ]
   );
 
-  // Verify endpoints has apiDocumentation i18nKey and Russian fallback
+  // Verify endpoints has endpoints i18nKey
   const endpoints = items.find((item) => item.id === "endpoints");
   assert.ok(endpoints);
-  assert.equal(endpoints.i18nKey, "apiDocumentation");
-  assert.equal(endpoints.titleFallback, "Документация API");
+  assert.equal(endpoints.i18nKey, "endpoints");
 });
 
 test("context sidebar section sits between primary and cli", () => {
@@ -110,7 +108,6 @@ test("help sidebar exposes changelog after docs and issues", () => {
       { id: "changelog", href: "/dashboard/changelog", i18nKey: "changelog" },
     ]
   );
-  assert.equal(sidebarVisibility.HIDEABLE_SIDEBAR_ITEM_IDS.includes("changelog"), true);
 });
 
 test("legacy dashboard routes redirect to their consolidated surfaces", async () => {

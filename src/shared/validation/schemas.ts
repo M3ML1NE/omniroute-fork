@@ -3,7 +3,7 @@ import {
   ACCOUNT_FALLBACK_STRATEGY_VALUES,
   ROUTING_STRATEGY_VALUES,
 } from "@/shared/constants/routingStrategies";
-import { SUPPORTED_BATCH_ENDPOINTS } from "@/shared/constants/batchEndpoints";
+// Validated externally if needed.
 import { MAX_REQUEST_BODY_LIMIT_MB, MIN_REQUEST_BODY_LIMIT_MB } from "@/shared/constants/bodySize";
 import { COMBO_CONFIG_MODES } from "@/shared/constants/comboConfigMode";
 import { providerAllowsOptionalApiKey } from "@/shared/constants/providers";
@@ -2338,22 +2338,6 @@ export const versionManagerToolSchema = z.object({
 
 export const versionManagerInstallSchema = versionManagerToolSchema.extend({
   version: z.string().trim().optional(),
-});
-
-export const v1BatchCreateSchema = z.object({
-  input_file_id: z.string().min(1),
-  endpoint: z.enum(SUPPORTED_BATCH_ENDPOINTS),
-  completion_window: z.enum(["24h"]),
-  metadata: z
-    .record(z.string().max(64), z.string().max(512))
-    .refine((m) => Object.keys(m).length <= 16, { message: "metadata may have at most 16 keys" })
-    .optional(),
-  output_expires_after: z
-    .object({
-      anchor: z.enum(["created_at"]),
-      seconds: z.number().int().min(3600).max(2592000),
-    })
-    .optional(),
 });
 
 // ── Web Fetch ─────────────────────────────────────────────────────────────────

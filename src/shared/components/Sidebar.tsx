@@ -9,7 +9,6 @@ import { APP_CONFIG } from "@/shared/constants/appConfig";
 import OmniRouteLogo from "./OmniRouteLogo";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
-import CloudSyncStatus from "./CloudSyncStatus";
 import { useTranslations } from "next-intl";
 import {
   HIDDEN_SIDEBAR_ITEMS_SETTING_KEY,
@@ -597,8 +596,6 @@ export default function Sidebar({
             );
           })}
         </nav>
-
-        {!isE2EMode && <CloudSyncStatus collapsed={collapsed} />}
 
         <div
           className={cn(

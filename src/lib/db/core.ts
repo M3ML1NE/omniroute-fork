@@ -295,6 +295,25 @@ export function runManagedDbHealthCheck(_options?: {
   return { ok: true };
 }
 
+/** Run PostgreSQL VACUUM for manual database maintenance. */
+export async function runManualVacuum(): Promise<{
+  success: boolean;
+  duration: number;
+  error?: string;
+}> {
+  const start = Date.now();
+  try {
+    await query("VACUUM");
+    return { success: true, duration: Date.now() - start };
+  } catch (err: any) {
+    return {
+      success: false,
+      duration: Date.now() - start,
+      error: err?.message || String(err),
+    };
+  }
+}
+
 type DbDriverInfo = { source: string; kind: string };
 
 export function getDriverInfo(): DbDriverInfo | null {

@@ -330,8 +330,8 @@ export default function McpPage() {
               <li>{t("mcpStep2")}</li>
               <li>
                 {t.rich("mcpStep3", {
-                  code1: (chunks) => <code className="text-xs">omniroute_get_health</code>,
-                  code2: (chunks) => <code className="text-xs">omniroute_list_combos</code>,
+                  code1: (chunks) => <code className="text-xs">{chunks}</code>,
+                  code2: (chunks) => <code className="text-xs">{chunks}</code>,
                 })}
               </li>
             </ol>

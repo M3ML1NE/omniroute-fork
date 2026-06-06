@@ -255,21 +255,7 @@ export {
   deleteFile,
 } from "./db/files";
 
-export {
-  // Batches
-  createBatch,
-  getBatch,
-  updateBatch,
-  listBatches,
-  countBatches,
-  getPendingBatches,
-  getTerminalBatches,
-  deleteBatch,
-  deleteCompletedBatches,
-} from "./db/batches";
-
 export type { FileRecord } from "./db/files";
-export type { BatchRecord } from "./db/batches";
 
 export type { ModelComboMapping } from "./db/modelComboMappings";
 

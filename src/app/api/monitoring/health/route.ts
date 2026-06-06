@@ -12,9 +12,13 @@ import { isAuthenticated } from "@/shared/utils/apiAuth";
  * rate limit status, and database stats.
  */
 export async function GET() {
-  const readHealthValue = <T>(label: string, reader: () => T, fallback: T): T => {
+  const readHealthValue = async <T>(
+    label: string,
+    reader: () => T | Promise<T>,
+    fallback: T
+  ): Promise<T> => {
     try {
-      return reader();
+      return await reader();
     } catch (error) {
       console.warn(
         `[API] GET /api/monitoring/health ${label} unavailable:`,
@@ -49,7 +53,7 @@ export async function GET() {
 
     const circuitBreakers =
       circuitBreakerModule.status === "fulfilled"
-        ? readHealthValue(
+        ? await readHealthValue(
             "circuit breakers",
             () => circuitBreakerModule.value.getAllCircuitBreakerStatuses(),
             []
@@ -57,15 +61,15 @@ export async function GET() {
         : [];
     const rateLimitStatus =
       rateLimitModule.status === "fulfilled"
-        ? readHealthValue("rate limits", () => rateLimitModule.value.getAllRateLimitStatus(), {})
+        ? await readHealthValue("rate limits", () => rateLimitModule.value.getAllRateLimitStatus(), {})
         : {};
     const learnedLimits =
       rateLimitModule.status === "fulfilled"
-        ? readHealthValue("learned limits", () => rateLimitModule.value.getLearnedLimits(), {})
+        ? await readHealthValue("learned limits", () => rateLimitModule.value.getLearnedLimits(), {})
         : {};
     const lockouts =
       accountFallbackModule.status === "fulfilled"
-        ? readHealthValue(
+        ? await readHealthValue(
             "model lockouts",
             () => accountFallbackModule.value.getAllModelLockouts(),
             []
@@ -73,7 +77,7 @@ export async function GET() {
         : [];
     const activeSessions =
       sessionManagerModule.status === "fulfilled"
-        ? readHealthValue(
+        ? await readHealthValue(
             "active sessions",
             () => sessionManagerModule.value.getActiveSessions(),
             []
@@ -81,7 +85,7 @@ export async function GET() {
         : [];
     const activeSessionsByKey =
       sessionManagerModule.status === "fulfilled"
-        ? readHealthValue(
+        ? await readHealthValue(
             "active sessions by key",
             () => sessionManagerModule.value.getAllActiveSessionCountsByKey(),
             {}
@@ -89,7 +93,7 @@ export async function GET() {
         : {};
     const credentialHealth =
       credentialHealthModule.status === "fulfilled"
-        ? readHealthValue(
+        ? await readHealthValue(
             "credential health",
             () => credentialHealthModule.value.getCredentialHealthSummary(),
             undefined
@@ -97,7 +101,7 @@ export async function GET() {
         : undefined;
     const localProviders =
       localHealthModule.status === "fulfilled"
-        ? readHealthValue(
+        ? await readHealthValue(
             "local providers",
             () => localHealthModule.value.getAllHealthStatuses(),
             {}
@@ -118,7 +122,7 @@ export async function GET() {
       localProviders,
       inflightRequests:
         requestDedupModule.status === "fulfilled"
-          ? readHealthValue(
+          ? await readHealthValue(
               "inflight requests",
               () => requestDedupModule.value.getInflightCount(),
               0
@@ -162,7 +166,7 @@ export async function DELETE(request: Request) {
     const { resetAllCircuitBreakers, getAllCircuitBreakerStatuses } =
       await import("@/shared/utils/circuitBreaker");
 
-    const before = getAllCircuitBreakerStatuses();
+    const before = await getAllCircuitBreakerStatuses();
     const resetCount = before.length;
 
     resetAllCircuitBreakers();
