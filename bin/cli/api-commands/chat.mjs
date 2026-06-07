@@ -3,14 +3,14 @@ import { apiFetch } from "../api.mjs";
 import { emit } from "../output.mjs";
 import { readFileSync } from "node:fs";
 
-export function register_translator(parent) {
-  const tag = parent.command("translator").description("Translator endpoints");
-  tag.command("post-api-translator-detect")
-    .description("Detect request format")
+export function register_chat(parent) {
+  const tag = parent.command("chat").description("Chat endpoints");
+  tag.command("post-api-v1-chat-completions")
+    .description("Create chat completion")
     .option("--body <jsonOrPath>", "JSON body or @path/to/file.json")
     .action(async (opts, cmd) => {
       const gOpts = cmd.optsWithGlobals();
-      let url = "/api/translator/detect";
+      let url = "/api/v1/chat/completions";
       let body;
       if (opts.body) {
         body = opts.body.startsWith("@")
@@ -21,12 +21,14 @@ export function register_translator(parent) {
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
     });
-  tag.command("post-api-translator-translate")
-    .description("Translate between formats")
+  tag.command("post-api-v1-providers-provider-chat-completions")
+    .description("Create chat completion (provider-specific)")
+    .requiredOption("--provider <provider>", "")
     .option("--body <jsonOrPath>", "JSON body or @path/to/file.json")
     .action(async (opts, cmd) => {
       const gOpts = cmd.optsWithGlobals();
-      let url = "/api/translator/translate";
+      let url = "/api/v1/providers/{provider}/chat/completions";
+      url = url.replace("{provider}", encodeURIComponent(opts.provider ?? ""));
       let body;
       if (opts.body) {
         body = opts.body.startsWith("@")
@@ -37,12 +39,12 @@ export function register_translator(parent) {
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
     });
-  tag.command("post-api-translator-send")
-    .description("Send translated request to provider")
+  tag.command("post-api-v1-api-chat")
+    .description("Ollama-compatible chat endpoint")
     .option("--body <jsonOrPath>", "JSON body or @path/to/file.json")
     .action(async (opts, cmd) => {
       const gOpts = cmd.optsWithGlobals();
-      let url = "/api/translator/send";
+      let url = "/api/v1/api/chat";
       let body;
       if (opts.body) {
         body = opts.body.startsWith("@")
@@ -50,15 +52,6 @@ export function register_translator(parent) {
           : JSON.parse(opts.body);
       }
       const res = await apiFetch(url, { method: "POST", body, baseUrl: gOpts.baseUrl, apiKey: gOpts.apiKey });
-      const data = res.ok ? await res.json() : await res.text();
-      emit(data, gOpts);
-    });
-  tag.command("get-api-translator-history")
-    .description("Get translation history")
-    .action(async (opts, cmd) => {
-      const gOpts = cmd.optsWithGlobals();
-      let url = "/api/translator/history";
-      const res = await apiFetch(url, { method: "GET", baseUrl: gOpts.baseUrl, apiKey: gOpts.apiKey });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
     });

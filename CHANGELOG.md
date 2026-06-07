@@ -4,6 +4,75 @@
 
 ---
 
+## [3.9.0] — 2026-06-07
+
+> **GigaChat Fork release.** OmniRoute is stripped down to a focused, internal GigaChat /
+> openai-compatible proxy with PostgreSQL persistence, per-key mTLS, and an Atlassian MCP
+> server. This is a large breaking release relative to upstream 3.8.x.
+
+### ⚠️ Breaking Changes
+
+- **Provider catalog trimmed to `gigachat` + `openai-compatible`.** 200+ upstream providers
+  and their executors (53 removed) are no longer bundled.
+- **Storage backend switched from SQLite to PostgreSQL.** The entire `db/` layer was
+  converted to an async Postgres driver; configure via `DATABASE_URL`. `better-sqlite3`
+  is no longer a dependency.
+- **Electron desktop app removed** entirely.
+- **OAuth / WebCookie providers, MITM, and web modules removed.**
+- **MCP toolset replaced:** the 37 upstream tools were removed; the server now exposes
+  **12 Atlassian tools** (Jira, Bitbucket, Confluence).
+- **i18n reduced to `ru` only;** routing locale prefix collapsed.
+- **Removed endpoints/pages:** Anthropic `/v1/messages` aux endpoints, legacy
+  `/v1/completions`, Translator / Playground / Search Tools pages, Webhooks, Skills
+  framework, agent-client CLI commands (chat/responses/tui).
+
+### ✨ New Features
+
+- **PostgreSQL data layer:** consolidated baseline schema (75 tables) generated from the
+  former SQLite migrations, a Postgres-aware migration runner with `_omniroute_migrations`
+  tracking, real transactions on the critical path, and a minimal-DB feature-flag for
+  non-critical modules.
+- **Per-key mTLS for GigaChat:** `keys.json` keyStore with hot-reload (`fs.watch`), an
+  `https.Agent` factory with an LRU pool, and per-key `baseUrl`/`authUrl` plumbing wired
+  into the default executor.
+- **Atlassian MCP server (Data Center / Server):** 12 tools across Jira (REST v2),
+  Bitbucket Server (REST v1), and Confluence Server (REST v1), served over HTTP SSE
+  transport with a unified error envelope, per-service config + hot-reload, and optional
+  per-service mTLS.
+- **Credential redaction:** Atlassian passwords/authorization headers and mTLS PEM
+  paths/contents are masked in logs.
+
+### 🐛 Bug Fixes
+
+- **DB sync→async fallout:** awaited async policy checks, model-catalog visibility, provider
+  limits cache, skills registry/executor, and many API routes broken during the migration.
+- **Postgres SQL parity:** `instr()`→`strpos()`, `json_extract`→`jsonb` operators, and an
+  `audit_log` table that the migration left missing.
+- **`better-sqlite3` leftovers:** removed from `bootstrap-env` and `sync-env.mjs` (the latter
+  caused a Next.js "Module not found" bundling error in `/api/system/env/repair`).
+- **mTLS:** corrected CA error message and rebuilt a corrupted `mtlsAgent.ts`.
+- **CLI:** restored `serve.mjs` imports + runtime stub.
+- **i18n:** added missing `apiManager`, `compliance.a2aSkill` ru translations and removed
+  non-ru locale dirs left under `docs/i18n`.
+
+### 🛠️ Maintenance
+
+- **Massive dashboard cleanup:** removed orphaned features (Batch, system/proxy,
+  analytics/search), trimmed the admin slice to the stripped scope, and fixed React/i18n
+  errors and build breakage.
+- **Provider/endpoint whitelists & SQLite syntax CI guard** added to keep the stripped
+  scope honest.
+- **Tests:** GigaChat round-trip e2e with Postgres usage logging, Atlassian MCP smoke
+  (12 tools) + mock server, gpt2giga edge-case parity, and async Postgres unit-test
+  migration.
+
+### 📝 Documentation
+
+- README rewritten for the GigaChat-only scope (ru) with mTLS and Atlassian integration
+  guides.
+
+---
+
 ## [3.8.7] — 2026-05-29
 
 ### ✨ New Features
