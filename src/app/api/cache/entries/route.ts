@@ -48,18 +48,18 @@ export async function GET(req: NextRequest) {
     const orderBy = validSortColumns.includes(sortBy) ? sortBy : "created_at";
     const order = sortOrder === "asc" ? "ASC" : "DESC";
 
-    const countRow = db
+    const countRow = (await db
       .prepare(`SELECT COUNT(*) as total FROM semantic_cache ${whereClause}`)
-      .get(...params) as { total: number };
+      .get(...params)) as { total: number };
 
-    const entries = db
+    const entries = (await db
       .prepare(
         `SELECT id, signature, model, hit_count, tokens_saved, created_at, expires_at
          FROM semantic_cache ${whereClause}
          ORDER BY ${orderBy} ${order}
          LIMIT ? OFFSET ?`
       )
-      .all(...params, limit, offset) as CacheEntry[];
+      .all(...params, limit, offset)) as CacheEntry[];
 
     return NextResponse.json({
       entries,
@@ -88,12 +88,12 @@ export async function DELETE(req: NextRequest) {
     const db = getDbInstance();
 
     if (signature) {
-      db.prepare("DELETE FROM semantic_cache WHERE signature = ?").run(signature);
+      await db.prepare("DELETE FROM semantic_cache WHERE signature = ?").run(signature);
       return NextResponse.json({ ok: true, deleted: 1 });
     }
 
     if (model) {
-      const result = db.prepare("DELETE FROM semantic_cache WHERE model = ?").run(model);
+      const result = (await db.prepare("DELETE FROM semantic_cache WHERE model = ?").run(model));
       return NextResponse.json({ ok: true, deleted: result.changes });
     }
 

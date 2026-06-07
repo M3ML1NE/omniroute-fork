@@ -25,7 +25,7 @@ function toNumber(value: unknown): number {
 export async function GET() {
   try {
     const db = getDbInstance();
-    const rows = db
+    const rows = (await db
       .prepare(
         `SELECT
           c.provider,
@@ -63,7 +63,7 @@ export async function GET() {
         WHERE c.provider IS NOT NULL AND c.provider != '-'
         GROUP BY c.provider`
       )
-      .all() as JsonRecord[];
+      .all()) as JsonRecord[];
 
     const metrics: Record<
       string,

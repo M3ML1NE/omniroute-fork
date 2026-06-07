@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
     .toString("hex");
   const { getDbInstance } = await import("@/lib/db/core");
   const db = getDbInstance();
-  const server = db
+  const server = (await db
     .prepare("SELECT id FROM community_servers WHERE api_key_hash = ? AND status = 'connected'")
-    .get(tokenHash) as { id: string } | undefined;
+    .get(tokenHash)) as { id: string } | undefined;
 
   if (!server) {
     return NextResponse.json(

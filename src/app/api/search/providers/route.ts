@@ -12,10 +12,10 @@ export async function GET(request: Request) {
   }
   try {
     const db = getDbInstance();
-    const providers = Object.values(SEARCH_PROVIDERS).map((p) => {
+    const providers = await Promise.all(Object.values(SEARCH_PROVIDERS).map(async (p) => {
       let status: "active" | "no_credentials" = "no_credentials";
       try {
-        const cred = db
+        const cred = await db
           .prepare(
             "SELECT id FROM provider_connections WHERE provider = ? AND is_active = 1 LIMIT 1"
           )
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
         const fallbackId = SEARCH_CREDENTIAL_FALLBACKS[p.id];
         const fallbackCred =
           !cred && fallbackId
-            ? db
+            ? await db
                 .prepare(
                   "SELECT id FROM provider_connections WHERE provider = ? AND is_active = 1 LIMIT 1"
                 )
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
         status,
         cost_per_query: p.costPerQuery,
       };
-    });
+    }));
 
     return NextResponse.json({ providers });
   } catch (error) {

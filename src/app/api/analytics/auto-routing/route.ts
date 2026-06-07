@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     const db = getDbInstance();
 
     // Query usage_logs for auto/ prefix requests
-    const totalRequests = db
+    const totalRequests = (await db
       .prepare(
         `
         SELECT COUNT(*) as count
@@ -23,10 +23,10 @@ export async function GET(request: Request) {
         WHERE model = 'auto' OR model LIKE 'auto/%'
       `
       )
-      .get() as { count: number };
+      .get()) as { count: number };
 
     // Variant breakdown
-    const variantRows = db
+    const variantRows = (await db
       .prepare(
         `
         SELECT
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
         ORDER BY count DESC
       `
       )
-      .all() as Array<{ variant: string; count: number }>;
+      .all()) as Array<{ variant: string; count: number }>;
 
     const variantBreakdown: Record<string, number> = {};
     variantRows.forEach((row) => {
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     });
 
     // Top providers (from LKGP cache or usage logs)
-    const topProviders = db
+    const topProviders = (await db
       .prepare(
         `
         SELECT provider, COUNT(*) as count
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
         LIMIT 10
         `
       )
-      .all() as Array<{ provider: string; count: number }>;
+      .all()) as Array<{ provider: string; count: number }>;
 
     return NextResponse.json({
       totalRequests: totalRequests.count,

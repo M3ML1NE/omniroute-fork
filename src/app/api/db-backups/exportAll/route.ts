@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       // 2. Export settings as JSON
       const settings: Record<string, string> = {};
       try {
-        const rows = db.prepare("SELECT key, value FROM key_value").all() as {
+        const rows = (await db.prepare("SELECT key, value FROM key_value").all()) as {
           key: string;
           value: string;
         }[];
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       // 3. Export combos summary
       const combos: unknown[] = [];
       try {
-        const rows = db.prepare("SELECT * FROM combos").all();
+        const rows = (await db.prepare("SELECT * FROM combos").all());
         combos.push(...rows);
       } catch {
         // combos table might not exist
@@ -66,11 +66,11 @@ export async function GET(request: NextRequest) {
       // 4. Export provider connections (without sensitive credentials)
       const providers: unknown[] = [];
       try {
-        const rows = db
+        const rows = (await db
           .prepare(
             "SELECT id, provider, name, auth_type, is_active, email, created_at FROM provider_connections"
           )
-          .all();
+          .all());
         providers.push(...rows);
       } catch {
         // provider_connections table might not exist
@@ -80,11 +80,11 @@ export async function GET(request: NextRequest) {
       // 5. Export API keys summary (masked)
       const apiKeys: unknown[] = [];
       try {
-        const rows = db
+        const rows = (await db
           .prepare(
             "SELECT id, name, substr(key, 1, 8) as prefix, machine_id, created_at FROM api_keys"
           )
-          .all();
+          .all());
         apiKeys.push(...rows);
       } catch {
         // api_keys table might not exist

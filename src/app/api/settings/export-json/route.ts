@@ -57,9 +57,9 @@ export async function GET(request: Request) {
     // thousands of rows and make the config backup grow to many MBs.
     if (includeHistory) {
       const db = getDbInstance();
-      exportData.usageHistory = db.prepare("SELECT * FROM usage_history").all();
-      exportData.domainCostHistory = db.prepare("SELECT * FROM domain_cost_history").all();
-      exportData.domainBudgets = db.prepare("SELECT * FROM domain_budgets").all();
+      exportData.usageHistory = await db.prepare("SELECT * FROM usage_history").all();
+      exportData.domainCostHistory = await db.prepare("SELECT * FROM domain_cost_history").all();
+      exportData.domainBudgets = await db.prepare("SELECT * FROM domain_budgets").all();
     }
 
     return new NextResponse(JSON.stringify(exportData, null, 2), {
