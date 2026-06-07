@@ -962,6 +962,8 @@
     "a2aStateFailed": "Не удалось",
     "a2aStateCancelled": "Отменено",
     "a2aTaskId": "Идентификатор задачи",
+    "a2aSkill": "Навык",
+    "a2aSkillPlaceholder": "Фильтр по навыку",
     "a2aEvents": "События",
     "a2aArtifacts": "Артефакты",
     "a2aNoTasks": "Задачи A2A не зарегистрированы.",
