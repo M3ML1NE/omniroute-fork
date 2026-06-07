@@ -1288,6 +1288,8 @@
     "selfServiceVisibilityDesc": "Control what this key can see about its own usage.",
     "ownUsageVisibility": "Own Cost and Token Usage",
     "ownUsageVisibilityDesc": "Allow this key to call its status endpoint for its own USD usage, budget percent, and token totals.",
+    "sharedAccountQuotaVisibility": "Видимость квоты общего аккаунта",
+    "sharedAccountQuotaVisibilityDesc": "Разрешить этому ключу видеть оставшуюся квоту и лимиты общего аккаунта провайдера. Требует включённой видимости собственного использования.",
     "keyCreated": "Ключ API создан",
     "keyCreatedSuccess": "Ключ успешно создан!",
     "keyCreatedNote": "Скопируйте и сохраните этот ключ сейчас — он больше не будет отображаться.",
