@@ -14,12 +14,9 @@
 
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-
-const require = createRequire(import.meta.url);
 
 const CRYPTO_SECRETS = {
   JWT_SECRET: () => randomBytes(64).toString("hex"),
@@ -59,45 +56,13 @@ function resolveDataDir(env = process.env) {
 }
 
 /**
- * Check whether the SQLite database already contains credentials encrypted
- * under a previous STORAGE_ENCRYPTION_KEY. If so, generating a new key would
- * make them permanently unrecoverable (AES-GCM auth-tag mismatch).
+ * Legacy encryption-bound-key guard. The SQLite database was removed in the
+ * Postgres migration and ENCRYPTION_BOUND_KEYS is empty, so no secret is ever
+ * gated on encrypted-credential presence. Kept as a no-op for source-level
+ * compatibility with the call sites below.
  */
-function hasEncryptedCredentials(dataDir) {
-  const dbPath = join(dataDir, "storage.sqlite");
-  if (!existsSync(dbPath)) return false;
-
-  try {
-    let Database;
-
-    try {
-      Database = require("better-sqlite3");
-    } catch {
-      return false;
-    }
-
-    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
-    try {
-      const row = db
-        .prepare(
-          `SELECT 1
-             FROM provider_connections
-            WHERE access_token LIKE 'enc:v1:%'
-               OR refresh_token LIKE 'enc:v1:%'
-               OR api_key LIKE 'enc:v1:%'
-               OR id_token LIKE 'enc:v1:%'
-            LIMIT 1`
-        )
-        .get();
-      return !!row;
-    } finally {
-      db.close();
-    }
-  } catch {
-    // If we can't open the DB (e.g. missing better-sqlite3 during install),
-    // err on the side of caution: don't block secret generation.
-    return false;
-  }
+function hasEncryptedCredentials(_dataDir) {
+  return false;
 }
 
 export function parseEnvFile(filePath) {
