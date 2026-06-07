@@ -18,16 +18,15 @@ import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 export async function GET() {
   try {
     const dataDir = resolveDataDir({});
-    const dbFilePath = path.join(dataDir, "storage.sqlite");
+    const dbFilePath = path.join(dataDir, "storage.pangolin");
     const backupsDir = path.join(dataDir, "db_backups");
+    const homeDir = process.env.HOME || process.env.USERPROFILE || "";
 
-    // Get DB file size
     let sizeBytes = 0;
     try {
-      if (fs.existsSync(dbFilePath)) {
-        const stat = fs.statSync(dbFilePath);
-        sizeBytes = stat.size;
-      }
+      const { query } = await import("@/lib/db/postgres");
+      const sizeRes = await query("SELECT pg_database_size(current_database()) AS size");
+      sizeBytes = Number(sizeRes.rows[0]?.size ?? 0);
     } catch {
       /* ignore */
     }
@@ -39,7 +38,7 @@ export async function GET() {
       if (fs.existsSync(backupsDir)) {
         const files = fs
           .readdirSync(backupsDir)
-          .filter((f) => f.startsWith("db_") && f.endsWith(".sqlite"))
+          .filter((f) => f.startsWith("db_") && f.endsWith(".sql"))
           .sort()
           .reverse();
         backupCount = files.length;
@@ -52,14 +51,17 @@ export async function GET() {
       /* ignore */
     }
 
-    // Get the display path (abbreviated with ~)
-    const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-    const displayPath = dbFilePath.startsWith(homeDir)
-      ? "~" + dbFilePath.slice(homeDir.length)
-      : dbFilePath;
+    let displayPath = "DATABASE_URL";
+    try {
+      const url = process.env.DATABASE_URL || "postgres://omniroute:omniroute@localhost:5432/omniroute_test";
+      const parsed = new URL(url);
+      displayPath = `${parsed.hostname}:${parsed.port || 5432}${parsed.pathname}`;
+    } catch {
+      /* ignore */
+    }
 
     return NextResponse.json({
-      driver: "sqlite",
+      driver: "pangolin(postgres fork)",
       dbPath: displayPath,
       sizeBytes,
       lastBackupAt,

@@ -9,13 +9,11 @@ import EvalsTab from "../usage/components/EvalsTab";
 import ComboHealthTab from "./ComboHealthTab";
 import ProviderUtilizationTab from "./ProviderUtilizationTab";
 import RouteExplainabilityTab from "./RouteExplainabilityTab";
-import SearchAnalyticsTab from "./SearchAnalyticsTab";
 import DiversityScoreCard from "./components/DiversityScoreCard";
 
 type AnalyticsTab =
   | "overview"
   | "evals"
-  | "search"
   | "utilization"
   | "combo-health"
   | "route-trace";
@@ -28,7 +26,6 @@ const ANALYTICS_TABS: Array<{
 }> = [
   { id: "overview", labelKey: "overview", label: "Overview", icon: "analytics" },
   { id: "evals", labelKey: "evals", label: "Evals", icon: "science" },
-  { id: "search", labelKey: "search", label: "Search", icon: "travel_explore" },
   { id: "utilization", labelKey: "utilization", label: "Utilization", icon: "monitoring" },
   {
     id: "combo-health",
@@ -49,7 +46,7 @@ function analyticsText(t: AnalyticsTranslator, key: string, fallback: string) {
 
 function normalizeTab(tab: string | null): AnalyticsTab {
   if (tab === "route-trace" || tab === "route-explain") return "route-trace";
-  if (tab === "evals" || tab === "search" || tab === "utilization" || tab === "combo-health") {
+  if (tab === "evals" || tab === "utilization" || tab === "combo-health") {
     return tab;
   }
   return "overview";
@@ -120,7 +117,6 @@ function AnalyticsPageContent() {
           </>
         ) : null}
         {activeTab === "evals" ? <EvalsTab /> : null}
-        {activeTab === "search" ? <SearchAnalyticsTab /> : null}
         {activeTab === "utilization" ? <ProviderUtilizationTab /> : null}
         {activeTab === "combo-health" ? <ComboHealthTab /> : null}
         {activeTab === "route-trace" ? (

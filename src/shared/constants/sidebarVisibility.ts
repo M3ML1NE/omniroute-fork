@@ -13,10 +13,6 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "context-combos",
   // OmniProxy > Integrations
   "api-endpoints",
-  // OmniProxy > Proxy
-  "proxy",
-  "mitm-proxy",
-  "1proxy",
   // Analytics
   "analytics",
   "analytics-combo-health",
@@ -24,7 +20,6 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "costs",
   "cache",
   "analytics-compression",
-  "analytics-search",
   "analytics-evals",
   // Monitoring — flat
   "logs",
@@ -200,22 +195,6 @@ const INTEGRATIONS_GROUP: SidebarItemGroup = {
   ],
 };
 
-const PROXY_GROUP: SidebarItemGroup = {
-  type: "group",
-  id: "proxy",
-  titleKey: "proxyGroup",
-  titleFallback: "Proxy",
-  items: [
-    {
-      id: "proxy",
-      href: "/dashboard/system/proxy",
-      i18nKey: "proxy",
-      subtitleKey: "proxySubtitle",
-      icon: "dns",
-    },
-  ],
-};
-
 const ANALYTICS_ITEMS: readonly SidebarItemDefinition[] = [
   {
     id: "analytics",
@@ -258,13 +237,6 @@ const ANALYTICS_ITEMS: readonly SidebarItemDefinition[] = [
     i18nKey: "analyticsCompression",
     subtitleKey: "analyticsCompressionSubtitle",
     icon: "compress",
-  },
-  {
-    id: "analytics-search",
-    href: "/dashboard/analytics/search",
-    i18nKey: "analyticsSearch",
-    subtitleKey: "analyticsSearchSubtitle",
-    icon: "manage_search",
   },
   {
     id: "analytics-evals",
@@ -500,7 +472,6 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
       ...OMNI_PROXY_ITEMS,
       COMPRESSION_CONTEXT_GROUP,
       INTEGRATIONS_GROUP,
-      PROXY_GROUP,
     ],
     defaultPinned: true,
   },

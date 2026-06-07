@@ -39,36 +39,25 @@ const HEADER_DESCRIPTIONS: Partial<Record<HideableSidebarItemId, string>> = {
   "api-manager": "apiManagerDescription",
   providers: "providerDescription",
   combos: "comboDescription",
-  batch: "batchDescription",
   costs: "costsDescription",
   analytics: "analyticsDescription",
   cache: "cacheDescription",
-  quota: "limitsDescription",
   runtime: "runtimeDescription",
-  media: "mediaDescription",
   memory: "memoryDescription",
   settings: "settingsDescription",
   "context-caveman": "contextCavemanDescription",
   "context-rtk": "contextRtkDescription",
   "context-combos": "contextCombosDescription",
-  translator: "translatorDescription",
-  playground: "playgroundDescription",
-  "search-tools": "searchToolsDescription",
   logs: "logsDescription",
   audit: "auditDescription",
   // Webhook subsystem removed — see Wave 1 cleanup
   health: "healthDescription",
-  proxy: "proxyDescription",
-  changelog: "changelogDescription",
   // Protocols
   mcp: "mcpDescription",
   a2a: "a2aDescription",
   "api-endpoints": "apiEndpointsDescription",
-  // Agents & AI sub-pages
-  "batch-files": "batchFilesDescription",
   // Analytics sub-pages
   "analytics-evals": "analyticsEvalsDescription",
-  "analytics-search": "analyticsSearchDescription",
   "analytics-utilization": "analyticsUtilizationDescription",
   "analytics-combo-health": "analyticsComboHealthDescription",
   "analytics-compression": "analyticsCompressionDescription",
@@ -89,9 +78,6 @@ const HEADER_DESCRIPTIONS: Partial<Record<HideableSidebarItemId, string>> = {
   "settings-routing": "settingsRoutingDescription",
   "settings-resilience": "settingsResilienceDescription",
   "settings-advanced": "settingsAdvancedDescription",
-  // Proxy sub-pages
-  "mitm-proxy": "mitmProxyDescription",
-  "1proxy": "oneProxyDescription",
   // OmniProxy items
 };
 

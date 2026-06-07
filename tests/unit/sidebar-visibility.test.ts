@@ -41,14 +41,12 @@ test("primary sidebar items place endpoints above combos", () => {
     [
       "api-manager",
       "providers",
-      "embedded-services",
       "endpoints",
       "combos",
       "context-caveman",
       "context-rtk",
       "context-combos",
       "api-endpoints",
-      "proxy",
     ]
   );
 
