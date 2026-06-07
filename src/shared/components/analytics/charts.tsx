@@ -14,7 +14,7 @@ import {
   getServiceTierDisplayLabel,
   translateCostText,
   type TranslationFn,
-} from "@/shared/utils/serviceTierLabels";
+} from "@/shared/utils/formatting";
 import {
   BarChart,
   ComposedChart,

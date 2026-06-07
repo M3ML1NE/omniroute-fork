@@ -1,21 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Card, Toggle } from "@/shared/components";
 import { useTranslations } from "next-intl";
 import { useNotificationStore } from "@/store/notificationStore";
 import FallbackChainsEditor from "./FallbackChainsEditor";
-import {
-  CLI_COMPAT_PROVIDER_DISPLAY,
-  CLI_COMPAT_TOGGLE_IDS,
-  normalizeCliCompatProviderId,
-} from "@/shared/constants/cliCompatProviders";
 
 export default function RoutingTab() {
   const [settings, setSettings] = useState<any>({
     alwaysPreserveClientCache: "auto",
-    antigravitySignatureCacheMode: "enabled",
-    cliCompatProviders: [],
     autoRoutingEnabled: true,
     autoRoutingDefaultVariant: "lkgp",
   });
@@ -78,28 +71,6 @@ export default function RoutingTab() {
       if (onError) onError(msg);
       else console.error("Failed to update settings:", msg);
     }
-  };
-
-  const cliCompatProviders = useMemo(
-    () =>
-      Array.isArray(settings.cliCompatProviders)
-        ? settings.cliCompatProviders.map((providerId: string) =>
-            normalizeCliCompatProviderId(providerId)
-          )
-        : [],
-    [settings.cliCompatProviders]
-  );
-  const cliCompatProviderSet = useMemo(() => new Set(cliCompatProviders), [cliCompatProviders]);
-
-  const toggleCliCompatProvider = (providerId: string, enabled: boolean) => {
-    const normalizedProviderId = normalizeCliCompatProviderId(providerId);
-    const nextProviders = new Set(cliCompatProviders);
-    if (enabled) {
-      nextProviders.add(normalizedProviderId);
-    } else {
-      nextProviders.delete(normalizedProviderId);
-    }
-    updateSetting({ cliCompatProviders: Array.from(nextProviders) });
   };
 
   return (
@@ -217,135 +188,6 @@ export default function RoutingTab() {
       </Card>
 
       <FallbackChainsEditor />
-
-      <Card>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-sky-500/10 text-sky-500">
-            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">
-              fingerprint
-            </span>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold">{t("routingAntigravitySignatureTitle")}</h3>
-            <p className="text-sm text-text-muted">{t("routingAntigravitySignatureDesc")}</p>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {[
-            {
-              value: "enabled",
-              label: t("routingAntigravitySignatureEnabledLabel"),
-              desc: t("routingAntigravitySignatureEnabledDesc"),
-            },
-            {
-              value: "bypass",
-              label: t("routingAntigravitySignatureBypassLabel"),
-              desc: t("routingAntigravitySignatureBypassDesc"),
-            },
-            {
-              value: "bypass-strict",
-              label: t("routingAntigravitySignatureBypassStrictLabel"),
-              desc: t("routingAntigravitySignatureBypassStrictDesc"),
-            },
-          ].map((option) => (
-            <button
-              key={option.value}
-              onClick={() => updateSetting({ antigravitySignatureCacheMode: option.value })}
-              disabled={loading}
-              className={`w-full flex flex-col items-start gap-1 p-3 rounded-lg border text-left transition-all ${
-                settings.antigravitySignatureCacheMode === option.value
-                  ? "border-sky-500/50 bg-sky-500/5 ring-1 ring-sky-500/20"
-                  : "border-border/50 hover:border-border hover:bg-surface/30"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`material-symbols-outlined text-[16px] ${
-                    settings.antigravitySignatureCacheMode === option.value
-                      ? "text-sky-400"
-                      : "text-text-muted"
-                  }`}
-                >
-                  {settings.antigravitySignatureCacheMode === option.value
-                    ? "check_circle"
-                    : "radio_button_unchecked"}
-                </span>
-                <span
-                  className={`text-sm font-medium ${settings.antigravitySignatureCacheMode === option.value ? "text-sky-400" : ""}`}
-                >
-                  {option.label}
-                </span>
-              </div>
-              <p className="text-xs text-text-muted ml-7">{option.desc}</p>
-            </button>
-          ))}
-        </div>
-      </Card>
-
-      <Card>
-        <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 h-fit">
-            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">
-              security
-            </span>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold">{t("cliFingerprint")}</h3>
-            <p className="text-sm text-text-muted mt-1">{t("cliFingerprintDesc")}</p>
-          </div>
-        </div>
-
-        <div className="mb-5">
-          <h4 className="text-sm font-semibold mb-2">{t("routingHeaderFingerprintTitle")}</h4>
-          <p className="text-xs text-text-muted mb-2">
-            {t("cliFingerprintEnabled", { count: cliCompatProviderSet.size })}
-          </p>
-          <div className="grid gap-3 md:grid-cols-2">
-            {CLI_COMPAT_TOGGLE_IDS.map((providerId) => {
-              const normalizedProviderId = normalizeCliCompatProviderId(providerId);
-              const providerDisplay = CLI_COMPAT_PROVIDER_DISPLAY[providerId];
-              const checked = cliCompatProviderSet.has(normalizedProviderId);
-              const label = providerDisplay?.name || providerId;
-              const description = providerDisplay?.description || providerId;
-              const titleText = checked
-                ? t("disableFingerprintTitle", { provider: label })
-                : t("enableFingerprintTitle", { provider: label });
-
-              return (
-                <button
-                  key={providerId}
-                  type="button"
-                  onClick={() => toggleCliCompatProvider(providerId, !checked)}
-                  disabled={loading}
-                  aria-pressed={checked}
-                  title={titleText}
-                  className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all ${
-                    checked
-                      ? "border-indigo-500/50 bg-indigo-500/5 ring-1 ring-indigo-500/20"
-                      : "border-border/50 hover:border-border hover:bg-surface/30"
-                  } ${loading ? "cursor-not-allowed opacity-60" : ""}`}
-                >
-                  <span
-                    className={`material-symbols-outlined mt-0.5 text-[18px] ${checked ? "text-indigo-400" : "text-text-muted"}`}
-                    aria-hidden="true"
-                  >
-                    {checked ? "check_circle" : "radio_button_unchecked"}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`block text-sm font-medium ${checked ? "text-indigo-400" : ""}`}
-                    >
-                      {label}
-                    </span>
-                    <span className="mt-1 block text-xs text-text-muted">{description}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </Card>
 
       <Card>
         <div className="flex items-center gap-3 mb-4">

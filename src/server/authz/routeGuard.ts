@@ -27,8 +27,6 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 export const LOCAL_ONLY_API_PREFIXES: ReadonlyArray<string> = [
   "/api/mcp/",
-  "/api/services/", // T-10: embedded service lifecycle (spawn child processes)
-  "/dashboard/providers/services/", // T-07: reverse proxy embedded service UIs
   "/api/copilot/", // unauthenticated LLM driver CLI-only default; admins opt-in remote access manage-scope bypass
 ];
 

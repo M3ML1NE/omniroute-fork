@@ -138,13 +138,6 @@ const OMNI_PROXY_ITEMS: readonly SidebarItemDefinition[] = [
     icon: "dns",
   },
   {
-    id: "embedded-services",
-    href: "/dashboard/providers/services",
-    i18nKey: "embeddedServices",
-    subtitleKey: "embeddedServicesSubtitle",
-    icon: "deployed_code",
-  },
-  {
     id: "endpoints",
     href: "/dashboard/endpoint",
     i18nKey: "endpoints",
@@ -415,15 +408,7 @@ const AGENTIC_FEATURES_ITEMS: readonly SidebarSectionChild[] = [
   },
 ];
 
-const OTHER_FEATURES_ITEMS: readonly SidebarItemDefinition[] = [
-  {
-    id: "media",
-    href: "/dashboard/cache/media",
-    i18nKey: "media",
-    subtitleKey: "mediaSubtitle",
-    icon: "perm_media",
-  },
-];
+const OTHER_FEATURES_ITEMS: readonly SidebarItemDefinition[] = [];
 
 const CONFIGURATION_ITEMS: readonly SidebarItemDefinition[] = [
   {

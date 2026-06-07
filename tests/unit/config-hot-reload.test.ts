@@ -15,7 +15,6 @@ const { applyRuntimeSettings, resetRuntimeSettingsStateForTests } =
   await import("../../src/lib/config/runtimeSettings.ts");
 const { startRuntimeConfigHotReload, stopRuntimeConfigHotReloadForTests } =
   await import("../../src/lib/config/hotReload.ts");
-const { getCliCompatProviders } = await import("../../open-sse/config/cliFingerprints.ts");
 const { getCustomAliases, setCustomAliases } =
   await import("../../open-sse/services/modelDeprecation.ts");
 const {
@@ -73,7 +72,6 @@ test("updateSettings applies runtime settings incrementally without restart", as
   });
 
   await settingsDb.updateSettings({
-    cliCompatProviders: ["OpenAI", "claude", "copilot"],
     modelAliases: JSON.stringify({ "team-default": "openai/gpt-4o-mini" }),
     backgroundDegradation: {
       enabled: true,
@@ -92,7 +90,6 @@ test("updateSettings applies runtime settings incrementally without restart", as
     antigravitySignatureCacheMode: "bypass",
   });
 
-  assert.deepEqual(getCliCompatProviders().sort(), ["claude", "github"]);
   assert.deepEqual(getCustomAliases(), { "team-default": "openai/gpt-4o-mini" });
   assert.equal(getBackgroundDegradationConfig().enabled, true);
   assert.equal(getBackgroundDegradationConfig().degradationMap["gpt-4o"], "gpt-4o-mini");
@@ -102,7 +99,6 @@ test("updateSettings applies runtime settings incrementally without restart", as
   assert.equal(getGeminiThoughtSignatureMode(), "bypass");
 
   await settingsDb.updateSettings({
-    cliCompatProviders: [],
     modelAliases: {},
     backgroundDegradation: null,
     payloadRules: null,
@@ -110,7 +106,6 @@ test("updateSettings applies runtime settings incrementally without restart", as
     antigravitySignatureCacheMode: "enabled",
   });
 
-  assert.deepEqual(getCliCompatProviders(), []);
   assert.deepEqual(getCustomAliases(), {});
   assert.equal(getBackgroundDegradationConfig().enabled, false);
   assert.equal((await getPayloadRulesConfig()).override.length, 0);
@@ -127,16 +122,10 @@ test("hot-reload watcher picks up external sqlite changes via polling fallback",
 
   const db = getDbInstance();
   db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', 'cliCompatProviders', ?)"
-  ).run(JSON.stringify(["github", "openai"]));
-  db.prepare(
     "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', 'antigravitySignatureCacheMode', ?)"
   ).run(JSON.stringify("bypass-strict"));
 
   await waitFor(
-    () =>
-      getCliCompatProviders().includes("github") &&
-      !getCliCompatProviders().includes("openai") &&
-      getGeminiThoughtSignatureMode() === "bypass-strict"
+    () => getGeminiThoughtSignatureMode() === "bypass-strict"
   );
 });

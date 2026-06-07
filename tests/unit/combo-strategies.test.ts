@@ -18,7 +18,8 @@ const { registerQuotaFetcher } = await import("../../open-sse/services/quotaPref
 const combosDb = await import("../../src/lib/db/combos.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const { recordComboRequest } = await import("../../open-sse/services/comboMetrics.ts");
-const { saveModelsDevCapabilities } = await import("../../src/lib/modelsDevSync.ts");
+// modelsDevSync removed (GigaChat fork)
+function saveModelsDevCapabilities(_caps: unknown): void {}
 
 after(() => {
   dbCore.resetDbInstance();

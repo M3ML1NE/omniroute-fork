@@ -20,8 +20,8 @@ const { registerStrategy } = await import("../../open-sse/services/autoCombo/rou
 const core = await import("../../src/lib/db/core.ts");
 const settingsDb = await import("../../src/lib/db/settings.ts");
 const evalsDb = await import("../../src/lib/db/evals.ts");
-const { saveModelsDevCapabilities, clearModelsDevCapabilities } =
-  await import("../../src/lib/modelsDevSync.ts");
+function saveModelsDevCapabilities(_caps: unknown): void {}
+function clearModelsDevCapabilities(): void {}
 const { getComboMetrics, recordComboRequest, resetAllComboMetrics } =
   await import("../../open-sse/services/comboMetrics.ts");
 const { resetEvalRoutingCache } = await import("../../open-sse/services/evalRouting.ts");

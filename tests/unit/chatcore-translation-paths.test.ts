@@ -29,8 +29,8 @@ const {
 const { getExecutor } = await import("../../open-sse/executors/index.ts");
 const { clearModelLock, isModelLocked } =
   await import("../../open-sse/services/accountFallback.ts");
-const { saveModelsDevCapabilities, clearModelsDevCapabilities } =
-  await import("../../src/lib/modelsDevSync.ts");
+function saveModelsDevCapabilities(_caps: unknown): void {}
+function clearModelsDevCapabilities(): void {}
 const {
   getBackgroundDegradationConfig,
   setBackgroundDegradationConfig,

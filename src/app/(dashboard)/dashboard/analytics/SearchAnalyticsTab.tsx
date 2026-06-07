@@ -116,7 +116,9 @@ export default function SearchAnalyticsTab() {
     );
   }
 
-  const providers = Object.entries(stats.byProvider).sort(([, a], [, b]) => b.count - a.count);
+  const providers = Object.entries(stats?.byProvider || {}).sort(
+    ([, a], [, b]) => b.count - a.count
+  );
 
   return (
     <div className="flex flex-col gap-6">

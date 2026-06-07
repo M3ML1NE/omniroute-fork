@@ -545,7 +545,7 @@ export function applyCcBridgeTransformPipeline(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Runtime singleton (mirrors cliFingerprints `_cliCompatProviders` pattern).
+// Runtime singleton.
 // ────────────────────────────────────────────────────────────────────────────
 
 let _runtimeConfig: CcBridgeTransformsConfig = DEFAULT_CC_BRIDGE_TRANSFORMS_CONFIG;

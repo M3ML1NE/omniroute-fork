@@ -4,7 +4,29 @@ import {
 } from "@omniroute/open-sse/config/providerModels.ts";
 import { parseModel, resolveCanonicalProviderModel } from "@omniroute/open-sse/services/model.ts";
 import { MODEL_SPECS, getModelSpec, type ModelSpec } from "@/shared/constants/modelSpecs";
-import { getSyncedCapability } from "@/lib/modelsDevSync";
+// modelsDevSync removed (GigaChat fork) — stub returns null
+interface ModelCapabilityEntry {
+  tool_call: boolean | null;
+  reasoning: boolean | null;
+  attachment: boolean | null;
+  structured_output: boolean | null;
+  temperature: boolean | null;
+  modalities_input: string;
+  modalities_output: string;
+  knowledge_cutoff: string | null;
+  release_date: string | null;
+  last_updated: string | null;
+  status: string | null;
+  family: string | null;
+  open_weights: boolean | null;
+  limit_context: number | null;
+  limit_input: number | null;
+  limit_output: number | null;
+  interleaved_field: string | null;
+}
+function getSyncedCapability(_provider: string, _model: string): ModelCapabilityEntry | null {
+  return null;
+}
 
 const TOOL_CALLING_UNSUPPORTED_PATTERNS: string[] = [];
 const REASONING_UNSUPPORTED_PATTERNS = [

@@ -6,12 +6,10 @@ export type RuntimeReloadSection =
   | "payloadRules"
   | "modelAliases"
   | "backgroundDegradation"
-  | "cliCompatProviders"
   | "cacheControl"
   | "usageTracking"
   | "healthCheckLogs"
   | "thoughtSignature"
-  | "modelsDevSync"
   | "corsOrigins"
   | "ccBridgeTransforms"
   | "authzBypass";
@@ -30,13 +28,9 @@ interface RuntimeSettingsSnapshot {
   payloadRules: unknown;
   modelAliases: Record<string, string>;
   backgroundDegradation: JsonRecord | null;
-  cliCompatProviders: string[];
   alwaysPreserveClientCache: string;
-  antigravitySignatureCacheMode: string;
   usageTokenBuffer: unknown;
   hideHealthCheckLogs: boolean;
-  modelsDevSyncEnabled: boolean;
-  modelsDevSyncInterval: number | null;
   corsOrigins: string;
   ccBridgeTransforms: unknown;
   authzBypass: AuthzBypassSnapshot;
@@ -54,13 +48,9 @@ const DEFAULT_RUNTIME_SETTINGS_SNAPSHOT: RuntimeSettingsSnapshot = {
   payloadRules: null,
   modelAliases: {},
   backgroundDegradation: null,
-  cliCompatProviders: [],
   alwaysPreserveClientCache: "auto",
-  antigravitySignatureCacheMode: "enabled",
   usageTokenBuffer: null,
   hideHealthCheckLogs: false,
-  modelsDevSyncEnabled: false,
-  modelsDevSyncInterval: null,
   corsOrigins: "",
   ccBridgeTransforms: null,
   authzBypass: DEFAULT_AUTHZ_BYPASS_SNAPSHOT,
@@ -226,19 +216,12 @@ export function buildRuntimeSettingsSnapshot(
     payloadRules: normalizePayloadRules(settings.payloadRules),
     modelAliases: normalizeStringRecord(settings.modelAliases),
     backgroundDegradation: normalizeBackgroundDegradation(settings.backgroundDegradation),
-    cliCompatProviders: normalizeStringArray(settings.cliCompatProviders),
     alwaysPreserveClientCache:
       typeof settings.alwaysPreserveClientCache === "string"
         ? settings.alwaysPreserveClientCache
         : DEFAULT_RUNTIME_SETTINGS_SNAPSHOT.alwaysPreserveClientCache,
-    antigravitySignatureCacheMode:
-      typeof settings.antigravitySignatureCacheMode === "string"
-        ? settings.antigravitySignatureCacheMode
-        : DEFAULT_RUNTIME_SETTINGS_SNAPSHOT.antigravitySignatureCacheMode,
     usageTokenBuffer: settings.usageTokenBuffer ?? null,
     hideHealthCheckLogs: settings.hideHealthCheckLogs === true,
-    modelsDevSyncEnabled: settings.modelsDevSyncEnabled === true,
-    modelsDevSyncInterval: normalizeNumber(settings.modelsDevSyncInterval),
     corsOrigins: typeof settings.corsOrigins === "string" ? settings.corsOrigins : "",
     ccBridgeTransforms: parseStoredJson(settings.ccBridgeTransforms, "ccBridgeTransforms"),
     authzBypass: normalizeAuthzBypass(settings),
@@ -292,11 +275,6 @@ async function applyBackgroundDegradationSection(backgroundDegradation: JsonReco
   });
 }
 
-async function applyCliCompatProvidersSection(cliCompatProviders: string[]) {
-  const { setCliCompatProviders } = await import("@omniroute/open-sse/config/cliFingerprints");
-  setCliCompatProviders(cliCompatProviders);
-}
-
 async function applyCacheControlSection() {
   const { invalidateCacheControlSettingsCache } = await import("@/lib/cacheControlSettings");
   invalidateCacheControlSettingsCache();
@@ -306,12 +284,6 @@ async function applyUsageTrackingSection() {
   const { invalidateBufferTokensCache } =
     await import("@omniroute/open-sse/utils/usageTracking.ts");
   invalidateBufferTokensCache();
-}
-
-async function applyThoughtSignatureSection(mode: string) {
-  const { setGeminiThoughtSignatureMode } =
-    await import("@omniroute/open-sse/services/geminiThoughtSignatureStore.ts");
-  setGeminiThoughtSignatureMode(mode);
 }
 
 async function applyCorsOriginsSection(corsOrigins: string) {
@@ -325,50 +297,6 @@ async function applyCorsOriginsSection(corsOrigins: string) {
  */
 function applyAuthzBypassSection(snapshot: AuthzBypassSnapshot) {
   currentAuthzBypass = { enabled: snapshot.enabled, prefixes: [...snapshot.prefixes] };
-}
-
-async function applyModelsDevSyncSection(
-  previousSnapshot: RuntimeSettingsSnapshot,
-  currentSnapshot: RuntimeSettingsSnapshot,
-  force: boolean
-) {
-  const { startPeriodicSync, stopPeriodicSync } = await import("@/lib/modelsDevSync");
-  const skipBackgroundSyncInTests =
-    (isAutomatedTestProcess() && process.env.OMNIROUTE_ENABLE_RUNTIME_BACKGROUND_TASKS !== "1") ||
-    isTruthyEnvFlag(process.env.OMNIROUTE_DISABLE_BACKGROUND_SERVICES);
-
-  if (skipBackgroundSyncInTests) {
-    stopPeriodicSync();
-    return;
-  }
-
-  const wasEnabled = previousSnapshot.modelsDevSyncEnabled === true;
-  const isEnabled = currentSnapshot.modelsDevSyncEnabled === true;
-  const intervalChanged =
-    previousSnapshot.modelsDevSyncInterval !== currentSnapshot.modelsDevSyncInterval;
-
-  if (!isEnabled) {
-    if (wasEnabled || force) {
-      stopPeriodicSync();
-    }
-    return;
-  }
-
-  if (force) {
-    stopPeriodicSync();
-    startPeriodicSync(currentSnapshot.modelsDevSyncInterval || undefined);
-    return;
-  }
-
-  if (!wasEnabled) {
-    startPeriodicSync(currentSnapshot.modelsDevSyncInterval || undefined);
-    return;
-  }
-
-  if (intervalChanged) {
-    stopPeriodicSync();
-    startPeriodicSync(currentSnapshot.modelsDevSyncInterval || undefined);
-  }
 }
 
 export async function applyRuntimeSettings(
@@ -409,14 +337,6 @@ export async function applyRuntimeSettings(
 
   if (
     force ||
-    hasChanged(currentSnapshot.cliCompatProviders, previousSnapshot.cliCompatProviders)
-  ) {
-    await applyCliCompatProvidersSection(currentSnapshot.cliCompatProviders);
-    markChanged("cliCompatProviders");
-  }
-
-  if (
-    force ||
     hasChanged(
       currentSnapshot.alwaysPreserveClientCache,
       previousSnapshot.alwaysPreserveClientCache
@@ -434,27 +354,6 @@ export async function applyRuntimeSettings(
   if (force || currentSnapshot.hideHealthCheckLogs !== previousSnapshot.hideHealthCheckLogs) {
     clearHealthCheckLogCache();
     markChanged("healthCheckLogs");
-  }
-
-  if (
-    force ||
-    hasChanged(
-      currentSnapshot.antigravitySignatureCacheMode,
-      previousSnapshot.antigravitySignatureCacheMode
-    )
-  ) {
-    await applyThoughtSignatureSection(currentSnapshot.antigravitySignatureCacheMode);
-    markChanged("thoughtSignature");
-  }
-
-  if (
-    force ||
-    (hasBootstrappedSnapshot &&
-      (currentSnapshot.modelsDevSyncEnabled !== previousSnapshot.modelsDevSyncEnabled ||
-        currentSnapshot.modelsDevSyncInterval !== previousSnapshot.modelsDevSyncInterval))
-  ) {
-    await applyModelsDevSyncSection(previousSnapshot, currentSnapshot, force);
-    markChanged("modelsDevSync");
   }
 
   if (force || hasChanged(currentSnapshot.corsOrigins, previousSnapshot.corsOrigins)) {

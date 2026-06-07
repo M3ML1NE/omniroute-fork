@@ -24,7 +24,6 @@ interface ProviderStats {
   errorTime?: string | null;
   allDisabled?: boolean;
   expiryStatus?: "expired" | "expiring_soon" | string | null;
-  codexServiceTier?: "default" | "priority" | "flex" | null;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -145,7 +144,6 @@ export default function ProviderCard({
 }: ProviderCardProps) {
   const t = useTranslations("providers");
   const tc = useTranslations("common");
-  const tp = useTranslations("miniPlayground");
   const [testExpanded, setTestExpanded] = useState<boolean>(false);
 
   // Show the Test button for LLM providers (when serviceKinds includes "llm"
@@ -170,29 +168,6 @@ export default function ProviderCard({
   const error = Number(stats.error || 0);
   const allDisabled = Boolean(stats.allDisabled);
   const isCompatible = isOpenAICompatibleProvider(providerId);
-  const codexServiceTierLabel =
-    stats.codexServiceTier === "flex"
-      ? providerText(t, "codexTierFlexLabel", "Flex")
-      : providerText(t, "codexTierFastLabel", "Fast");
-  const codexServiceTierChip =
-    providerId === "codex" && stats.codexServiceTier && stats.codexServiceTier !== "default" ? (
-      <span
-        key="codex-service-tier"
-        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide ${
-          stats.codexServiceTier === "flex"
-            ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
-            : "bg-sky-500/10 text-sky-600 dark:text-sky-400"
-        }`}
-        title={providerText(t, "codexServiceTierActive", "Codex {tier} service tier is active", {
-          tier: codexServiceTierLabel,
-        })}
-      >
-        <span className="material-symbols-outlined text-[10px] leading-none">
-          {stats.codexServiceTier === "flex" ? "speed" : "bolt"}
-        </span>
-        {codexServiceTierLabel}
-      </span>
-    ) : null;
 
   const dotLabels: Record<string, string> = {
     free: tc("free"),
@@ -321,8 +296,7 @@ export default function ProviderCard({
                       error,
                       Number(stats.warning || 0),
                       stats.errorCode,
-                      t,
-                      codexServiceTierChip
+                      t
                     )}
                     {stats.expiryStatus === "expired" && (
                       <Badge variant="error" size="sm" dot>
@@ -355,13 +329,13 @@ export default function ProviderCard({
                   <button
                     type="button"
                     onClick={handleTestClick}
-                    title={tp("expandTest")}
+                    title="Test provider"
                     className="inline-flex items-center gap-0.5 rounded-md border border-border bg-bg-subtle px-2 py-0.5 text-[11px] text-text-muted hover:text-text-primary hover:border-primary/30 transition-colors"
                   >
                     <span className="material-symbols-outlined text-[11px] leading-none">
                       play_arrow
                     </span>
-                    {tp("testLabel")}
+                    Test
                   </button>
                 )}
                 {!isLlmProvider && (

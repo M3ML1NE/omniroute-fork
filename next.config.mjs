@@ -73,7 +73,6 @@ const minimalBuildAliases = isMinimalBuild
       "@/mitm/cert/install": "./src/mitm/cert/install.stub.ts",
       "@/lib/zed-oauth/keychain-reader": "./src/lib/zed-oauth/keychain-reader.stub.ts",
       "@/lib/cloudSync": "./src/lib/cloudSync.stub.ts",
-      "@/lib/services/installers/ninerouter": "./src/lib/services/installers/ninerouter.stub.ts",
     }
   : {};
 

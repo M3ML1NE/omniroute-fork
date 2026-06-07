@@ -1,5 +1,4 @@
 import { HTTP_STATUS, FETCH_TIMEOUT_MS } from "../config/constants.ts";
-import { applyFingerprint, isCliCompatEnabled } from "../config/cliFingerprints.ts";
 import { supportsXHighEffort } from "../config/providerModels.ts";
 import {
   resolveKeyForRequest,
@@ -669,15 +668,8 @@ export class BaseExecutor {
             ? mergeAbortSignals(signal, timeoutSignal)
             : signal || timeoutSignal;
 
-        let finalHeaders = headers;
-        let bodyString = JSON.stringify(transformedBody);
-
-        const shouldFingerprint = isCliCompatEnabled(this.provider);
-        if (shouldFingerprint) {
-          const fingerprinted = applyFingerprint(this.provider, headers, transformedBody);
-          finalHeaders = fingerprinted.headers;
-          bodyString = fingerprinted.bodyString;
-        }
+        const finalHeaders = headers;
+        const bodyString = JSON.stringify(transformedBody);
 
         mergeUpstreamExtraHeaders(finalHeaders, upstreamExtraHeaders);
 

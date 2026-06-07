@@ -22,11 +22,7 @@ const { skillExecutor } = await import("../../src/lib/skills/executor.ts");
 const { handleChat } = await import("../../src/sse/handlers/chat.ts");
 const { initTranslators } = await import("../../open-sse/translator/index.ts");
 const { clearInflight } = await import("../../open-sse/services/requestDedup.ts");
-const { setCliCompatProviders } = await import("../../open-sse/config/cliFingerprints.ts");
 const { BaseExecutor } = await import("../../open-sse/executors/base.ts");
-const { getCodexClientVersion } = await import("../../open-sse/config/codexClient.ts");
-const { GEMINI_CLI_VERSION, GEMINI_CLI_GOOGLE_API_NODE_CLIENT_VERSION } =
-  await import("../../open-sse/services/geminiCliHeaders.ts");
 const { getCircuitBreaker, resetAllCircuitBreakers } =
   await import("../../src/shared/utils/circuitBreaker.ts");
 const { clearProviderFailure } = await import("../../open-sse/services/accountFallback.ts");
@@ -512,7 +508,6 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   BaseExecutor.RETRY_CONFIG.delayMs = originalRetryDelayMs;
-  setCliCompatProviders([]);
   await resetStorage();
 });
 
@@ -645,87 +640,6 @@ test("chat pipeline applies global Codex priority service tier inside combos", a
   assert.equal(fetchCalls[0].headers.Authorization, "Bearer sk-codex-combo-priority");
   assert.equal(fetchCalls[0].body.service_tier, "priority");
   assert.equal(json.choices[0].message.content, "combo priority ok");
-});
-
-test("chat pipeline applies Codex CLI fingerprint to OAuth responses requests", async () => {
-  setCliCompatProviders(["codex"]);
-  await seedConnection("codex", {
-    apiKey: "unused-for-oauth",
-    authType: "oauth",
-    accessToken: "codex-oauth-token",
-    providerSpecificData: {
-      openaiStoreEnabled: false,
-      requestDefaults: { reasoningEffort: "high" },
-      codexInstallationId: "11111111-1111-4111-a111-111111111111",
-    },
-  });
-
-  const fetchCalls = [];
-  globalThis.fetch = async (url, init = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      bodyString: String(init.body || ""),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildOpenAIResponsesSSE({ text: "fingerprint ok" });
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      url: "http://localhost/v1/responses",
-      body: {
-        model: "codex/gpt-5.5-low",
-        stream: false,
-        conversation_id: "conv_codex_fingerprint",
-        input: [
-          {
-            type: "message",
-            role: "user",
-            content: [{ type: "input_text", text: "Reply with fingerprint ok" }],
-          },
-        ],
-      },
-    })
-  );
-
-  await response.json();
-
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  const call = fetchCalls[0];
-  assert.match(call.url, /chatgpt\.com\/backend-api\/codex\/responses$/);
-  assert.equal(call.headers.Authorization, "Bearer codex-oauth-token");
-  assert.equal(call.headers.Accept, "text/event-stream");
-  assert.equal(call.headers.Version, getCodexClientVersion());
-  assert.equal(call.headers["Openai-Beta"], "responses=experimental");
-  assert.equal(call.headers["X-Codex-Beta-Features"], "responses_websockets");
-  assert.equal(call.headers["User-Agent"], "codex-cli/0.132.0 (Windows 10.0.26200; x64)");
-  assert.equal(call.headers["x-codex-window-id"], "conv_codex_fingerprint:0");
-  assert.ok(call.headers["x-client-request-id"], "expected Codex request id header");
-  assert.ok(call.headers["x-codex-turn-metadata"], "expected Codex turn metadata header");
-
-  const headerOrder = Object.keys(call.headers);
-  assert.ok(headerOrder.indexOf("Content-Type") < headerOrder.indexOf("Authorization"));
-  assert.ok(headerOrder.indexOf("Authorization") < headerOrder.indexOf("Accept"));
-  assert.ok(headerOrder.indexOf("Accept") < headerOrder.indexOf("User-Agent"));
-
-  const bodyOrder = Object.keys(JSON.parse(call.bodyString));
-  assert.deepEqual(bodyOrder.slice(0, 7), [
-    "model",
-    "stream",
-    "input",
-    "instructions",
-    "store",
-    "reasoning",
-    "prompt_cache_key",
-  ]);
-  assert.equal(call.body.model, "gpt-5.5");
-  assert.equal(call.body.store, false);
-  assert.equal(
-    call.body.client_metadata["x-codex-installation-id"],
-    "11111111-1111-4111-a111-111111111111"
-  );
 });
 
 test("chat pipeline treats Codex /responses/compact as non-streaming JSON", async () => {
@@ -926,77 +840,6 @@ test("chat pipeline translates OpenAI requests to Gemini and returns OpenAI-shap
   assert.equal(fetchCalls[0].body.contents[0].parts[0].text, "Hello Gemini");
   assert.equal(json.object, "chat.completion");
   assert.equal(json.choices[0].message.content, "Gemini translated reply");
-});
-
-test("chat pipeline sends Gemini CLI OAuth requests with native Cloud Code transport", async () => {
-  setCliCompatProviders(["gemini-cli"]);
-  await seedConnection("gemini-cli", {
-    authType: "oauth",
-    apiKey: "unused-for-oauth",
-    accessToken: "gemini-cli-oauth-token",
-    providerSpecificData: { projectId: "stored-project" },
-  });
-  const fetchCalls = [];
-
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-
-    if (String(url).endsWith("loadCodeAssist")) {
-      return new Response(JSON.stringify({ cloudaicompanionProject: "fresh-project" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    return buildGeminiResponse("Gemini CLI translated reply", "gemini-3-flash-preview");
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      body: {
-        model: "gemini-cli/gemini-3-flash-preview",
-        stream: false,
-        messages: [{ role: "user", content: "Hello Gemini CLI" }],
-      },
-    })
-  );
-
-  const json = (await response.json()) as any;
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 2);
-
-  const loadCodeAssistCall = fetchCalls[0];
-  assert.match(loadCodeAssistCall.url, /loadCodeAssist$/);
-  assert.equal(loadCodeAssistCall.headers.Authorization, "Bearer gemini-cli-oauth-token");
-  assert.equal(loadCodeAssistCall.body.metadata.ideType, "IDE_UNSPECIFIED");
-
-  const generateCall = fetchCalls[1];
-  assert.match(generateCall.url, /generateContent$/);
-  assert.equal(generateCall.headers.Authorization, "Bearer gemini-cli-oauth-token");
-  assert.equal(generateCall.headers.Accept, "application/json");
-  assert.match(
-    generateCall.headers["User-Agent"],
-    new RegExp(
-      `^GeminiCLI/${GEMINI_CLI_VERSION.replaceAll(".", "\\.")}/gemini-3-flash-preview .* google-api-nodejs-client/${GEMINI_CLI_GOOGLE_API_NODE_CLIENT_VERSION.replaceAll(".", "\\.")}$`
-    )
-  );
-  assert.match(generateCall.headers["X-Goog-Api-Client"], /^gl-node\/\d+\.\d+\.\d+$/);
-  assert.equal(generateCall.body.project, "fresh-project");
-  assert.equal(generateCall.body.model, "gemini-3-flash-preview");
-  assert.equal(generateCall.body.userAgent, undefined);
-  assert.equal(generateCall.body.requestId, undefined);
-  assert.equal(generateCall.body.user_prompt_id, generateCall.body.request.session_id);
-  const keys = Object.keys(generateCall.body).slice(0, 4);
-  assert.deepEqual(keys.sort(), ["model", "project", "request", "user_prompt_id"]);
-  assert.equal(generateCall.body.request.sessionId, undefined);
-  assert.match(generateCall.body.request.session_id, /^[0-9a-f-]{36}$/i);
-  assert.equal(generateCall.body.request.contents.at(-1).parts[0].text, "Hello Gemini CLI");
-  assert.equal(json.object, "chat.completion");
-  assert.equal(json.choices[0].message.content, "Gemini CLI translated reply");
 });
 
 test("chat pipeline translates Claude-format requests into OpenAI upstream and back to Claude", async () => {

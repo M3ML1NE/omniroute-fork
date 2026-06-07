@@ -40,8 +40,8 @@ export default function SystemStorageTab() {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
   const [storageHealth, setStorageHealth] = useState({
-    driver: "sqlite",
-    dbPath: "~/.omniroute/storage.sqlite",
+    driver: "postgres",
+    dbPath: "DATABASE_URL",
     sizeBytes: 0,
     retentionDays: {
       app: 7,
@@ -403,7 +403,7 @@ export default function SystemStorageTab() {
     try {
       await fetchAndDownload(
         "/api/db-backups/export",
-        `omniroute-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.sqlite`,
+        `omniroute-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.sql`,
         t("exportFailed")
       );
     } catch (err) {
@@ -424,7 +424,7 @@ export default function SystemStorageTab() {
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith(".sqlite")) {
+    if (!file.name.endsWith(".sql")) {
       setImportStatus({
         type: "error",
         message: t("invalidFileType"),
@@ -531,7 +531,7 @@ export default function SystemStorageTab() {
             {t("databasePath")}
           </p>
           <p className="text-sm font-mono text-text-main break-all">
-            {storageHealth.dbPath || "~/.omniroute/storage.sqlite"}
+            {storageHealth.dbPath || "DATABASE_URL"}
           </p>
         </div>
         <div className="p-3 rounded-lg bg-bg border border-border">
@@ -665,7 +665,7 @@ export default function SystemStorageTab() {
               {t("storageDatabaseBackupRetention")}
             </p>
             <p className="text-xs text-text-muted">
-              Automatic SQLite backups are stored in <code>db_backups</code>. Configure how many
+              Automatic PostgreSQL backups are stored in <code>db_backups</code>. Configure how many
               snapshots to keep and optionally delete backups older than N days.
             </p>
           </div>
@@ -793,7 +793,7 @@ export default function SystemStorageTab() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".sqlite"
+          accept=".sql"
           className="hidden"
           onChange={handleFileSelected}
         />

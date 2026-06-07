@@ -14,7 +14,6 @@ const modelsDb = await import("../../src/lib/db/models.ts");
 const combosDb = await import("../../src/lib/db/combos.ts");
 const settingsDb = await import("../../src/lib/db/settings.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
-const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
 const v1ModelsCatalog = await import("../../src/app/api/v1/models/catalog.ts");
 
 async function resetStorage() {
@@ -255,7 +254,8 @@ test("v1 models catalog keeps only visible combos when no providers are active",
 
 test("v1 models catalog derives combo metadata from known targets conservatively", async () => {
   try {
-    modelsDevSync.saveModelsDevCapabilities({
+    // modelsDevSync removed (GigaChat fork)
+  ({
       openai: {
         "combo-alpha": capability({
           tool_call: true,
@@ -316,13 +316,15 @@ test("v1 models catalog derives combo metadata from known targets conservatively
     assert.equal("top_provider" in combo, false);
     assert.equal("supported_parameters" in combo, false);
   } finally {
-    modelsDevSync.saveModelsDevCapabilities({});
+    // modelsDevSync removed (GigaChat fork)
+  ({});
   }
 });
 
 test("v1 models catalog lets explicit combo context override derived context", async () => {
   try {
-    modelsDevSync.saveModelsDevCapabilities({
+    // modelsDevSync removed (GigaChat fork)
+  ({
       openai: {
         "context-alpha": capability({
           modalities_input: JSON.stringify(["text"]),
@@ -361,7 +363,8 @@ test("v1 models catalog lets explicit combo context override derived context", a
     assert.equal(listed.max_input_tokens, 700);
     assert.equal(listed.max_output_tokens, 90);
   } finally {
-    modelsDevSync.saveModelsDevCapabilities({});
+    // modelsDevSync removed (GigaChat fork)
+  ({});
   }
 });
 
@@ -390,7 +393,8 @@ test("v1 models catalog keeps unknown combo targets visible without guessed meta
 
 test("v1 models catalog aggregates nested combos and keeps hidden child combos unlisted", async () => {
   try {
-    modelsDevSync.saveModelsDevCapabilities({
+    // modelsDevSync removed (GigaChat fork)
+  ({
       openai: {
         "nested-alpha": capability({
           modalities_input: JSON.stringify(["text"]),
@@ -438,13 +442,15 @@ test("v1 models catalog aggregates nested combos and keeps hidden child combos u
       false
     );
   } finally {
-    modelsDevSync.saveModelsDevCapabilities({});
+    // modelsDevSync removed (GigaChat fork)
+  ({});
   }
 });
 
 test("v1 models catalog resolves provider aliases without corrupting slashful model ids", async () => {
   try {
-    modelsDevSync.saveModelsDevCapabilities({
+    // modelsDevSync removed (GigaChat fork)
+  ({
       claude: {
         "alias-model": capability({
           modalities_input: JSON.stringify(["text"]),
@@ -486,7 +492,8 @@ test("v1 models catalog resolves provider aliases without corrupting slashful mo
     assert.equal(combo.max_input_tokens, 1500);
     assert.equal(combo.max_output_tokens, 150);
   } finally {
-    modelsDevSync.saveModelsDevCapabilities({});
+    // modelsDevSync removed (GigaChat fork)
+  ({});
   }
 });
 
@@ -1006,7 +1013,8 @@ test("v1 models catalog uses synced models.dev limits instead of provider defaul
   await seedConnection("openai", { name: "openai-models-dev" });
 
   try {
-    modelsDevSync.saveModelsDevCapabilities({
+    // modelsDevSync removed (GigaChat fork)
+  ({
       openai: {
         "gpt-5.5": {
           tool_call: true,
@@ -1042,7 +1050,8 @@ test("v1 models catalog uses synced models.dev limits instead of provider defaul
     assert.equal(model.max_input_tokens, 1050000);
     assert.equal(model.max_output_tokens, 128000);
   } finally {
-    modelsDevSync.saveModelsDevCapabilities({});
+    // modelsDevSync removed (GigaChat fork)
+  ({});
   }
 });
 
@@ -1079,7 +1088,8 @@ test("v1 models catalog lets provider-specific synced limits beat global static 
   });
 
   try {
-    modelsDevSync.saveModelsDevCapabilities({
+    // modelsDevSync removed (GigaChat fork)
+  ({
       github: {
         "gpt-5.5": {
           tool_call: true,
@@ -1115,7 +1125,8 @@ test("v1 models catalog lets provider-specific synced limits beat global static 
     assert.equal(model.max_input_tokens, 272000);
     assert.equal(model.max_output_tokens, 128000);
   } finally {
-    modelsDevSync.saveModelsDevCapabilities({});
+    // modelsDevSync removed (GigaChat fork)
+  ({});
   }
 });
 

@@ -9,7 +9,6 @@ import {
   v1EmbeddingsSchema,
   providerChatCompletionSchema,
   v1CountTokensSchema,
-  pricingSyncRequestSchema,
   updateTaskRoutingSchema,
   taskRoutingActionSchema,
   codexProfileIdSchema,
@@ -116,20 +115,6 @@ test("v1CountTokensSchema rejects empty messages", () => {
     messages: [],
   });
   assert.equal(validation.success, false);
-});
-
-test("pricingSyncRequestSchema rejects unsupported sources", () => {
-  const validation = validateBody(pricingSyncRequestSchema, {
-    sources: ["unknown-source"],
-  });
-  assert.equal(validation.success, false);
-});
-
-test("pricingSyncRequestSchema accepts dryRun-only requests", () => {
-  const validation = validateBody(pricingSyncRequestSchema, {
-    dryRun: true,
-  });
-  assert.equal(validation.success, true);
 });
 
 test("updateTaskRoutingSchema rejects empty payloads", () => {

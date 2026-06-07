@@ -5,13 +5,10 @@ import { useTranslations } from "next-intl";
 
 import { Badge, Button, Input, Modal, Select } from "@/shared/components";
 
-type CompatibleMode = "openai" | "anthropic";
 type CompatibleProviderNode = { id: string } & Record<string, unknown>;
 
 interface AddCompatibleProviderModalProps {
   isOpen: boolean;
-  mode: CompatibleMode;
-  title?: string;
   onClose: () => void;
   onCreated: (node: CompatibleProviderNode) => void;
 }
@@ -25,54 +22,32 @@ interface CompatibleFormState {
   modelsPath: string;
 }
 
-const MODE_DEFAULTS: Record<
-  CompatibleMode,
-  {
-    baseUrl: string;
-    type: "openai-compatible" | "anthropic-compatible";
-    chatPath: string;
-    hasApiType: boolean;
-    hasModelsPath: boolean;
-  }
-> = {
-  openai: {
-    baseUrl: "https://api.openai.com/v1",
-    type: "openai-compatible",
-    chatPath: "",
-    hasApiType: true,
-    hasModelsPath: true,
-  },
-  anthropic: {
-    baseUrl: "https://api.anthropic.com/v1",
-    type: "anthropic-compatible",
-    chatPath: "",
-    hasApiType: false,
-    hasModelsPath: true,
-  },
+const MODE_DEFAULTS = {
+  baseUrl: "https://api.openai.com/v1",
+  type: "openai-compatible" as const,
+  chatPath: "",
+  hasApiType: true,
+  hasModelsPath: true,
 };
 
-function createInitialForm(mode: CompatibleMode): CompatibleFormState {
-  const defaults = MODE_DEFAULTS[mode];
+function createInitialForm(): CompatibleFormState {
   return {
     name: "",
     prefix: "",
     apiType: "chat",
-    baseUrl: defaults.baseUrl,
-    chatPath: defaults.chatPath,
+    baseUrl: MODE_DEFAULTS.baseUrl,
+    chatPath: MODE_DEFAULTS.chatPath,
     modelsPath: "",
   };
 }
 
 export default function AddCompatibleProviderModal({
   isOpen,
-  mode,
-  title,
   onClose,
   onCreated,
 }: AddCompatibleProviderModalProps) {
   const t = useTranslations("providers");
-  const defaults = MODE_DEFAULTS[mode];
-  const [formData, setFormData] = useState<CompatibleFormState>(() => createInitialForm(mode));
+  const [formData, setFormData] = useState<CompatibleFormState>(() => createInitialForm());
   const [submitting, setSubmitting] = useState(false);
   const [checkKey, setCheckKey] = useState("");
   const [validating, setValidating] = useState(false);
@@ -93,45 +68,19 @@ export default function AddCompatibleProviderModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    setFormData(createInitialForm(mode));
+    setFormData(createInitialForm());
     setValidationResult(null);
     setCheckKey("");
     setShowAdvanced(false);
-  }, [isOpen, mode]);
+  }, [isOpen]);
 
-  const modalTitle =
-    title ||
-    (mode === "openai"
-      ? t("addOpenAICompatible")
-      : t("addAnthropicCompatible"));
-
-  const namePlaceholder = t("compatibleProdPlaceholder", {
-    type: mode === "openai" ? t("openai") : t("anthropic"),
-  });
-  const nameHint = t("nameHint");
-  const prefixPlaceholder =
-    mode === "openai"
-      ? t("openaiPrefixPlaceholder")
-      : t("anthropicPrefixPlaceholder");
-  const prefixHint = t("prefixHint");
-  const baseUrlPlaceholder =
-    mode === "openai"
-      ? t("openaiBaseUrlPlaceholder")
-      : t("anthropicBaseUrlPlaceholder");
-  const baseUrlHint = t("compatibleBaseUrlHint", {
-    type: mode === "openai" ? t("openai") : t("anthropic"),
-  });
-  const chatPathPlaceholder =
-    mode === "openai" ? "/v1/chat/completions" : "/messages";
-  const chatPathHint = t("chatPathHint");
-  const advancedId = `advanced-settings-${mode}`;
   const hasRequiredFields = Boolean(
     formData.name.trim() && formData.prefix.trim() && formData.baseUrl.trim()
   );
   const canValidate = Boolean(checkKey.trim() && formData.baseUrl.trim());
 
   const resetAfterCreate = () => {
-    setFormData(createInitialForm(mode));
+    setFormData(createInitialForm());
     setCheckKey("");
     setValidationResult(null);
     setShowAdvanced(false);
@@ -145,11 +94,11 @@ export default function AddCompatibleProviderModal({
         name: formData.name,
         prefix: formData.prefix,
         baseUrl: formData.baseUrl,
-        type: defaults.type,
+        type: MODE_DEFAULTS.type,
         chatPath: formData.chatPath || "",
       };
-      if (defaults.hasApiType) body.apiType = formData.apiType;
-      if (defaults.hasModelsPath) body.modelsPath = formData.modelsPath || "";
+      if (MODE_DEFAULTS.hasApiType) body.apiType = formData.apiType;
+      if (MODE_DEFAULTS.hasModelsPath) body.modelsPath = formData.modelsPath || "";
 
       const res = await fetch("/api/provider-nodes", {
         method: "POST",
@@ -162,7 +111,7 @@ export default function AddCompatibleProviderModal({
         resetAfterCreate();
       }
     } catch (error) {
-      console.log(`Error creating ${mode} compatible node:`, error);
+      console.log("Error creating compatible node:", error);
     } finally {
       setSubmitting(false);
     }
@@ -174,9 +123,9 @@ export default function AddCompatibleProviderModal({
       const body: Record<string, unknown> = {
         baseUrl: formData.baseUrl,
         apiKey: checkKey,
-        type: defaults.type,
+        type: MODE_DEFAULTS.type,
       };
-      if (defaults.hasModelsPath) body.modelsPath = formData.modelsPath || "";
+      if (MODE_DEFAULTS.hasModelsPath) body.modelsPath = formData.modelsPath || "";
 
       const res = await fetch("/api/provider-nodes/validate", {
         method: "POST",
@@ -193,23 +142,23 @@ export default function AddCompatibleProviderModal({
   };
 
   return (
-    <Modal isOpen={isOpen} title={modalTitle} onClose={onClose}>
+    <Modal isOpen={isOpen} title={t("addOpenAICompatible")} onClose={onClose}>
       <div className="flex flex-col gap-4">
         <Input
           label={t("nameLabel")}
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder={namePlaceholder}
-          hint={nameHint}
+          placeholder={t("compatibleProdPlaceholder", { type: t("openai") })}
+          hint={t("nameHint")}
         />
         <Input
           label={t("prefixLabel")}
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
-          placeholder={prefixPlaceholder}
-          hint={prefixHint}
+          placeholder={t("openaiPrefixPlaceholder")}
+          hint={t("prefixHint")}
         />
-        {defaults.hasApiType && (
+        {MODE_DEFAULTS.hasApiType && (
           <Select
             label={t("apiTypeLabel")}
             options={apiTypeOptions}
@@ -221,8 +170,8 @@ export default function AddCompatibleProviderModal({
           label={t("baseUrlLabel")}
           value={formData.baseUrl}
           onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
-          placeholder={baseUrlPlaceholder}
-          hint={baseUrlHint}
+          placeholder={t("openaiBaseUrlPlaceholder")}
+          hint={t("compatibleBaseUrlHint", { type: t("openai") })}
         />
 
         <button
@@ -230,7 +179,7 @@ export default function AddCompatibleProviderModal({
           className="text-sm text-text-muted hover:text-text-primary flex items-center gap-1"
           onClick={() => setShowAdvanced(!showAdvanced)}
           aria-expanded={showAdvanced}
-          aria-controls={advancedId}
+          aria-controls="advanced-settings"
         >
           <span
             className={`transition-transform ${showAdvanced ? "rotate-90" : ""}`}
@@ -241,15 +190,15 @@ export default function AddCompatibleProviderModal({
           {t("advancedSettings")}
         </button>
         {showAdvanced && (
-          <div id={advancedId} className="flex flex-col gap-3 pl-2 border-l-2 border-border">
+          <div id="advanced-settings" className="flex flex-col gap-3 pl-2 border-l-2 border-border">
             <Input
               label={t("chatPathLabel")}
               value={formData.chatPath}
               onChange={(e) => setFormData({ ...formData, chatPath: e.target.value })}
-              placeholder={chatPathPlaceholder}
-              hint={chatPathHint}
+              placeholder="/v1/chat/completions"
+              hint={t("chatPathHint")}
             />
-            {defaults.hasModelsPath && (
+            {MODE_DEFAULTS.hasModelsPath && (
               <Input
                 label={t("modelsPathLabel")}
                 value={formData.modelsPath}

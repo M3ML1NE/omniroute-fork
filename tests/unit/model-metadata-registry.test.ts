@@ -9,7 +9,6 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
 const modelsDb = await import("../../src/lib/db/models.ts");
-const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
 const registry = await import("../../src/lib/modelMetadataRegistry.ts");
 
 async function resetStorage() {
@@ -27,31 +26,7 @@ test.after(async () => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
 });
 
-test("canonical model metadata merges static and synced capabilities into one record", async () => {
-  modelsDevSync.saveModelsDevCapabilities({
-    openai: {
-      "gpt-4o": {
-        tool_call: true,
-        reasoning: true,
-        attachment: true,
-        structured_output: true,
-        temperature: true,
-        modalities_input: JSON.stringify(["text", "image"]),
-        modalities_output: JSON.stringify(["text"]),
-        knowledge_cutoff: "2025-03",
-        release_date: "2025-01-01",
-        last_updated: "2025-04-01",
-        status: "stable",
-        family: "gpt-4",
-        open_weights: false,
-        limit_context: 256000,
-        limit_input: 256000,
-        limit_output: 16384,
-        interleaved_field: null,
-      },
-    },
-  });
-
+test("canonical model metadata merges static capabilities into one record", async () => {
   const metadata = registry.getCanonicalModelMetadata({ provider: "openai", model: "gpt-4o" });
 
   assert.ok(metadata);
@@ -59,11 +34,10 @@ test("canonical model metadata merges static and synced capabilities into one re
   assert.equal(metadata.providerAlias, "openai");
   assert.equal(metadata.capabilities.toolCalling, true);
   assert.equal(metadata.capabilities.vision, true);
-  assert.equal(metadata.limits.contextWindow, 256000);
+  assert.equal(metadata.limits.contextWindow, 128000);
   assert.equal(metadata.limits.maxOutputTokens, 16384);
-  assert.deepEqual(metadata.modalities.input, ["text", "image"]);
   assert.equal(metadata.metadata.family, "gpt-4");
-  assert.equal(metadata.metadata.source.syncedCapability, true);
+  assert.equal(metadata.metadata.source.syncedCapability, false);
 });
 
 test("resolveModelAliasLookup returns stored alias resolution with metadata", async () => {

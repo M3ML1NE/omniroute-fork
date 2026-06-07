@@ -194,20 +194,20 @@ export default function A2APage() {
             >
               <li>
                 {t.rich("a2aStep1", {
-                  code: (chunks) => <code className="text-xs">{t("agentCardPath")}</code>,
+                  code: (chunks) => <code className="text-xs">{chunks}</code>,
                 })}
               </li>
               <li>
                 {t.rich("a2aStep2", {
-                  code1: (chunks) => <code className="text-xs">{t("rpcEndpoint")}</code>,
-                  code2: (chunks) => <code className="text-xs">{t("rpcMethodSend")}</code>,
-                  code3: (chunks) => <code className="text-xs">{t("rpcMethodStream")}</code>,
+                  code1: (chunks) => <code className="text-xs">{chunks}</code>,
+                  code2: (chunks) => <code className="text-xs">{chunks}</code>,
+                  code3: (chunks) => <code className="text-xs">{chunks}</code>,
                 })}
               </li>
               <li>
                 {t.rich("a2aStep3", {
-                  code1: (chunks) => <code className="text-xs">{t("rpcMethodGet")}</code>,
-                  code2: (chunks) => <code className="text-xs">{t("rpcMethodCancel")}</code>,
+                  code1: (chunks) => <code className="text-xs">{chunks}</code>,
+                  code2: (chunks) => <code className="text-xs">{chunks}</code>,
                 })}
               </li>
             </ol>

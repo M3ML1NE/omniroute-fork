@@ -1,15 +1,31 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
     "strict": false,
     "strictNullChecks": true,
     "noImplicitAny": false,
     "noEmit": true,
-    "incremental": false
+    "incremental": false,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@omniroute/open-sse": ["./open-sse"],
+      "@omniroute/open-sse/*": ["./open-sse/*"]
+    }
   },
   "include": [],
   "files": [
-    "src/app/api/settings/proxy/test/route.ts",
     "src/lib/db/apiKeys.ts",
     "src/lib/db/cliToolState.ts",
     "src/lib/db/encryption.ts",

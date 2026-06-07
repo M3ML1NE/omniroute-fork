@@ -168,7 +168,6 @@ export default function ProvidersPage() {
   const [loading, setLoading] = useState(true);
   const [showAllProviders, setShowAllProviders] = useState(false);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
-  const [showAddAnthropicCompatibleModal, setShowAddAnthropicCompatibleModal] = useState(false);
   const [testingMode, setTestingMode] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<any>(null);
   const [showConfiguredOnly, setShowConfiguredOnly] = useState(false);
@@ -351,15 +350,6 @@ export default function ProvidersPage() {
           .filter((tier) => tier !== "default")
       ),
     ];
-    const codexServiceTier =
-      providerId === "codex"
-        ? codexGlobalServiceMode !== "none"
-          ? codexGlobalServiceMode
-          : codexConnectionServiceTiers.length === 1
-            ? codexConnectionServiceTiers[0]
-            : null
-        : null;
-
     // Count API keys in "warning" state across all connections
     const warning = providerConnections.reduce((warnCount, conn) => {
       const health = (conn as any).providerSpecificData?.apiKeyHealth as
@@ -378,7 +368,6 @@ export default function ProvidersPage() {
       errorTime,
       allDisabled,
       expiryStatus,
-      codexServiceTier,
     };
   };
 
@@ -463,8 +452,6 @@ export default function ProvidersPage() {
       textIcon: "OC",
       apiType: node.apiType,
     }));
-
-  const anthropicCompatibleProviders = [] as any[];
 
   const effectiveShowConfiguredOnly = shouldApplyConfiguredOnlyFilter(
     showConfiguredOnly,
@@ -604,14 +591,6 @@ export default function ProvidersPage() {
       displayAuthType: "compatible" as const,
       toggleAuthType: "apikey" as const,
     })),
-    ...anthropicCompatibleProviders.map((provider) => ({
-      providerId: provider.id,
-      provider,
-      stats: getProviderStats(provider.id, "apikey"),
-      displayAuthType: "compatible" as const,
-      toggleAuthType: "apikey" as const,
-    })),
-
   ];
   const compatibleProviderEntries = filterConfiguredProviderEntries(
     compatibleProviderEntriesAll,
@@ -900,8 +879,7 @@ export default function ProvidersPage() {
               <ProviderCountBadge {...countConfigured(compatibleProviderEntriesAll)} />
             </h2>
             <div className="flex flex-wrap gap-2">
-              {(compatibleProviders.length > 0 ||
-                anthropicCompatibleProviders.length > 0) && (
+              {compatibleProviders.length > 0 && (
                 <button
                   onClick={() => handleBatchTest("compatible")}
                   disabled={!!testingMode}
@@ -924,8 +902,7 @@ export default function ProvidersPage() {
             </div>
           </div>
           <p className="text-sm text-text-muted -mt-2">{t("compatibleProvidersDesc")}</p>
-          {compatibleProviders.length === 0 &&
-          anthropicCompatibleProviders.length === 0 ? (
+          {compatibleProviders.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
               <span className="material-symbols-outlined text-[18px]">extension</span>
               <span>{t("noCompatibleYet")}</span>
@@ -1020,21 +997,10 @@ export default function ProvidersPage() {
 
       <AddCompatibleProviderModal
         isOpen={showAddCompatibleModal}
-        mode="openai"
         onClose={() => setShowAddCompatibleModal(false)}
         onCreated={(node) => {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddCompatibleModal(false);
-          router.push(`/dashboard/providers/${node.id}`);
-        }}
-      />
-      <AddCompatibleProviderModal
-        isOpen={showAddAnthropicCompatibleModal}
-        mode="anthropic"
-        onClose={() => setShowAddAnthropicCompatibleModal(false)}
-        onCreated={(node) => {
-          setProviderNodes((prev) => [...prev, node]);
-          setShowAddAnthropicCompatibleModal(false);
           router.push(`/dashboard/providers/${node.id}`);
         }}
       />

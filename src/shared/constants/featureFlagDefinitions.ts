@@ -81,29 +81,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     warningLevel: "info",
   },
 
-  // ──────────────── Network (5) ────────────────
-  {
-    key: "ENABLE_TLS_FINGERPRINT",
-    label: "TLS Fingerprint",
-    description: "Enable TLS fingerprint stealth mode",
-    descriptionI18nKey: "featureFlagEnableTlsFingerprintDescription",
-    category: "network",
-    defaultValue: "false",
-    type: "boolean",
-    requiresRestart: true,
-    warningLevel: "info",
-  },
-  {
-    key: "ONEPROXY_ENABLED",
-    label: "OneProxy Enabled",
-    description: "Enable 1proxy request proxying.",
-    descriptionI18nKey: "settings.featureFlags.oneproxyEnabled",
-    category: "network",
-    defaultValue: "true",
-    type: "boolean",
-    requiresRestart: false,
-    warningLevel: "info",
-  },
+  // ──────────────── Network (3) ────────────────
   {
     key: "MITM_DISABLE_TLS_VERIFY",
     label: "Disable TLS Verify (MITM)",
@@ -233,18 +211,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     warningLevel: "info",
   },
 
-  // ──────────────── CLI (3) ────────────────
-  {
-    key: "CLI_COMPAT_ALL",
-    label: "CLI Compat All",
-    description: "Enable compatibility mode for all CLI clients",
-    descriptionI18nKey: "featureFlagCliCompatAllDescription",
-    category: "cli",
-    defaultValue: "false",
-    type: "boolean",
-    requiresRestart: true,
-    warningLevel: "info",
-  },
+  // ──────────────── CLI (2) ────────────────
   {
     key: "MODEL_ALIAS_COMPAT_ENABLED",
     label: "Model Alias Compat",
@@ -256,18 +223,6 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     requiresRestart: false,
     warningLevel: "info",
   },
-  {
-    key: "PRICING_SYNC_ENABLED",
-    label: "Pricing Sync",
-    description: "Enable automatic pricing data synchronization",
-    descriptionI18nKey: "featureFlagPricingSyncEnabledDescription",
-    category: "cli",
-    defaultValue: "false",
-    type: "boolean",
-    requiresRestart: false,
-    warningLevel: "info",
-  },
-
   // ──────────────── Health (3) ────────────────
   {
     key: "OMNIROUTE_DISABLE_LOCAL_HEALTHCHECK",

@@ -125,14 +125,8 @@ export default function CliproxyapiSettingsTab() {
       <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-300 text-xs">
         <span className="material-symbols-outlined text-[14px] mt-0.5 shrink-0">info</span>
         <span>
-          CLIProxyAPI lifecycle management (install, start, stop) has moved to{" "}
-          <Link
-            href="/dashboard/providers/services"
-            className="underline underline-offset-2 hover:opacity-80"
-          >
-            Providers → Services
-          </Link>
-          . Fallback routing settings below remain here.
+          CLIProxyAPI lifecycle management (install, start, stop) has been removed.
+          Fallback routing settings below remain here.
         </span>
       </div>
 

@@ -9,7 +9,13 @@ import {
 } from "@/shared/constants/modelSpecs";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { PROVIDER_ID_TO_ALIAS, PROVIDER_MODELS } from "@/shared/constants/models";
-import { getSyncStatus, getSyncedCapability } from "@/lib/modelsDevSync";
+// modelsDevSync removed (GigaChat fork)
+function getSyncStatus() {
+  return { lastSync: null };
+}
+function getSyncedCapability(_provider: string, _model: string): null {
+  return null;
+}
 
 const MODEL_METADATA_SCHEMA_VERSION = "model-metadata-v1";
 

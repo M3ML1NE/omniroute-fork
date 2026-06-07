@@ -4,11 +4,7 @@ import { useTranslations } from "next-intl";
 import ThinkingBudgetTab from "../components/ThinkingBudgetTab";
 import VisionBridgeSettingsTab from "../components/VisionBridgeSettingsTab";
 import SystemPromptTab from "../components/SystemPromptTab";
-import CodexFastTierTab from "../components/CodexFastTierTab";
-import ClaudeFastModeTab from "../components/ClaudeFastModeTab";
 import MemorySkillsTab from "../components/MemorySkillsTab";
-import ModelsDevSyncTab from "../components/ModelsDevSyncTab";
-
 export default function SettingsAiPage() {
   const t = useTranslations("settings");
   return (
@@ -17,10 +13,7 @@ export default function SettingsAiPage() {
       <ThinkingBudgetTab />
       <VisionBridgeSettingsTab />
       <SystemPromptTab />
-      <CodexFastTierTab />
-      <ClaudeFastModeTab />
       <MemorySkillsTab />
-      <ModelsDevSyncTab />
     </div>
   );
 }

@@ -27,7 +27,22 @@ import {
   getCanonicalModelMetadata,
   getCatalogDiagnosticsHeaders,
 } from "@/lib/modelMetadataRegistry";
-import { getSyncedCapability } from "@/lib/modelsDevSync";
+// modelsDevSync removed (GigaChat fork)
+interface ModelCapabilityEntry {
+  tool_call?: boolean | null;
+  reasoning?: boolean | null;
+  attachment?: boolean | null;
+  structured_output?: boolean | null;
+  temperature?: boolean | null;
+  modalities_input?: string;
+  modalities_output?: string;
+  limit_context?: number | null;
+  limit_input?: number | null;
+  limit_output?: number | null;
+}
+function getSyncedCapability(_provider: string, _model: string): ModelCapabilityEntry | null {
+  return null;
+}
 import { getModelSpec } from "@/shared/constants/modelSpecs";
 import { isAuthRequired, isDashboardSessionAuthenticated } from "@/shared/utils/apiAuth";
 import { parseModel } from "@omniroute/open-sse/services/model";

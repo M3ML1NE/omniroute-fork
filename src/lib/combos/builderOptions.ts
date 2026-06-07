@@ -9,7 +9,8 @@ import {
 import { getAccountDisplayName, getProviderDisplayName } from "@/lib/display/names";
 import { getCompatibleFallbackModels } from "@/lib/providers/managedAvailableModels";
 import { getResolvedModelCapabilities } from "@/lib/modelCapabilities";
-import { getSyncedCapabilities } from "@/lib/modelsDevSync";
+// modelsDevSync removed (GigaChat fork)
+function getSyncedCapabilities(): void {}
 import { getModelsByProviderId } from "@/shared/constants/models";
 import {
   AI_PROVIDERS,

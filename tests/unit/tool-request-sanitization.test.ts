@@ -10,8 +10,8 @@ const {
 } = await import("../../open-sse/translator/helpers/schemaCoercion.ts");
 const { translateRequest } = await import("../../open-sse/translator/index.ts");
 const { FORMATS } = await import("../../open-sse/translator/formats.ts");
-const { clearModelsDevCapabilities, saveModelsDevCapabilities } =
-  await import("../../src/lib/modelsDevSync.ts");
+function clearModelsDevCapabilities(): void {}
+function saveModelsDevCapabilities(_caps: unknown): void {}
 
 function buildCapability(overrides = {}) {
   return {

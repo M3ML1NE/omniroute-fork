@@ -6,7 +6,7 @@ import { Card, EmptyState, SegmentedControl, CardSkeleton } from "@/shared/compo
 import {
   getServiceTierDisplayLabel,
   type TranslationFn as CostTranslationFn,
-} from "@/shared/utils/serviceTierLabels";
+} from "@/shared/utils/formatting";
 import {
   ResponsiveContainer,
   PieChart,

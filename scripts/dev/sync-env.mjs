@@ -68,7 +68,14 @@ function hasEncryptedCredentials(dataDir) {
   if (!existsSync(dbPath)) return false;
 
   try {
-    const Database = require("better-sqlite3");
+    let Database;
+
+    try {
+      Database = require("better-sqlite3");
+    } catch {
+      return false;
+    }
+
     const db = new Database(dbPath, { readonly: true, fileMustExist: true });
     try {
       const row = db

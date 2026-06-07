@@ -11,7 +11,6 @@ const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const modelsDb = await import("../../src/lib/db/models.ts");
 const combosDb = await import("../../src/lib/db/combos.ts");
-const modelsDevSync = await import("../../src/lib/modelsDevSync.ts");
 const route = await import("../../src/app/api/combos/builder/options/route.ts");
 
 async function resetStorage() {
@@ -57,7 +56,8 @@ test.after(() => {
 test("combo builder options route aggregates providers, connections, models and combo refs", async () => {
   const nowPlusMinute = Date.now() + 60_000;
   // gpt-4o was removed from the openai registry; use gpt-4.1 (confirmed at providerRegistry.ts:1156)
-  modelsDevSync.saveModelsDevCapabilities({
+  // modelsDevSync removed (GigaChat fork)
+  ({
     openai: {
       "gpt-4.1": {
         tool_call: true,

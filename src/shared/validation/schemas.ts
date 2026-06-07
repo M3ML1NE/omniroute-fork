@@ -734,13 +734,6 @@ export const updateSettingsSchema = z.object({
   bruteForceProtection: z.boolean().optional(),
   hiddenSidebarItems: z.array(z.enum(HIDEABLE_SIDEBAR_ITEM_IDS)).optional(),
   comboConfigMode: z.enum(COMBO_CONFIG_MODES).optional(),
-  codexServiceTier: z
-    .object({
-      enabled: z.boolean().optional(),
-      tier: z.enum(["default", "priority", "flex"]).optional(),
-      supportedModels: z.array(z.string().max(200)).max(200).optional(),
-    })
-    .optional(),
   codexSessionAffinityTtlMs: z.number().int().min(0).max(86_400_000).optional(),
   // Routing settings (#134)
   fallbackStrategy: settingsFallbackStrategySchema.optional(),
@@ -1181,15 +1174,6 @@ export const jsonObjectSchema = z.record(z.string(), z.unknown());
 export const resetStatsActionSchema = z.object({
   action: z.literal("reset-stats"),
 });
-
-const pricingSyncSourceSchema = z.enum(["litellm"]);
-
-export const pricingSyncRequestSchema = z
-  .object({
-    sources: z.array(pricingSyncSourceSchema).min(1).optional(),
-    dryRun: z.boolean().optional(),
-  })
-  .strict();
 
 const taskRoutingModelMapSchema = z
   .object({

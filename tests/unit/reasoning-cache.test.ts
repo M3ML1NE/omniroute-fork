@@ -38,10 +38,9 @@ import { getDbInstance } from "../../src/lib/db/core.ts";
 import { getReasoningCache, setReasoningCache } from "../../src/lib/db/reasoningCache.ts";
 import { DELETE, GET } from "../../src/app/api/cache/reasoning/route.ts";
 import { updateSettings } from "../../src/lib/db/settings";
-import {
-  clearModelsDevCapabilities,
-  saveModelsDevCapabilities,
-} from "../../src/lib/modelsDevSync.ts";
+// modelsDevSync removed (GigaChat fork) — stubs
+function clearModelsDevCapabilities(): void {}
+function saveModelsDevCapabilities(_caps: unknown): void {}
 
 function buildCapability(overrides = {}) {
   return {

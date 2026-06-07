@@ -115,7 +115,6 @@ import {
   providerSupportsCaching,
 } from "../utils/cacheControlPolicy.ts";
 import { getCachedSettings } from "@/lib/db/readCache";
-import { applyCodexGlobalFastServiceTier } from "@/lib/providers/codexFastTier";
 import {
   getCodexRequestDefaults,
   normalizeCodexServiceTier,
@@ -223,10 +222,8 @@ import {
 
 // ── Claude stubs (GigaChat fork) ──
 const CLAUDE_OAUTH_TOOL_PREFIX = "__claude_oauth_";
-const CPA_FORCE_FAST_MODE_HEADER = "x-cpa-force-fast-mode";
 const DEFAULT_THINKING_CLAUDE_SIGNATURE = "";
 function splitMisplacedToolResults(msgs: unknown[]): unknown[] { return msgs; }
-function shouldRequestClaudeFastMode(..._args: unknown[]): boolean { return false; }
 function isClaudeCodeCompatibleProvider(_provider: unknown): boolean { return false; }
 function resolveClaudeCodeCompatibleSessionId(_headers: unknown): string | null { return null; }
 function buildClaudeCodeCompatibleRequest(opts: Record<string, unknown>): Record<string, unknown> { return opts.normalizedBody as Record<string, unknown> || {}; }
@@ -2066,22 +2063,6 @@ export async function handleChatCore({
       }
     }
 
-    // Claude Fast Mode opt-in. When the user has enabled this in
-    // Settings > AI AND the target provider is the canonical Anthropic
-    // `claude` provider (Claude Code-compatible CPA bridges are excluded
-    // since they already select their own entrypoint) AND the model id
-    // matches the configured list, signal to a paired CLIProxyAPI build to
-    // rewrite the cc_entrypoint so the request can reach Anthropic Fast
-    // Mode (speed:"fast"). CPA builds that do not understand the header
-    // forward it harmlessly.
-    if (
-      provider === "claude" &&
-      typeof settings !== "undefined" &&
-      shouldRequestClaudeFastMode(settings, modelToCall)
-    ) {
-      upstreamHeaders[CPA_FORCE_FAST_MODE_HEADER] = "1";
-    }
-
     return upstreamHeaders;
   };
 
@@ -2117,10 +2098,6 @@ export async function handleChatCore({
       ? false
       : resolveStreamFlag(body?.stream, acceptHeader, sourceFormat);
   const settings = cachedSettings ?? (await getCachedSettings());
-  credentials = applyCodexGlobalFastServiceTier(provider, credentials, settings, {
-    model: requestedModel,
-    body: body && typeof body === "object" ? (body as Record<string, unknown>) : null,
-  });
   effectiveServiceTier = resolveEffectiveServiceTier(body);
   setGeminiThoughtSignatureMode(settings.antigravitySignatureCacheMode);
   const semanticCacheEnabled = settings.semanticCacheEnabled !== false;

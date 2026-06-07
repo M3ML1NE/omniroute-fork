@@ -7,7 +7,8 @@ import {
 } from "@/lib/db/models";
 import { getProviderConnections } from "@/lib/localDb";
 import { getResolvedModelCapabilities } from "@/lib/modelCapabilities";
-import { getSyncedCapabilities } from "@/lib/modelsDevSync";
+// modelsDevSync removed (GigaChat fork)
+function getSyncedCapabilities(): void {}
 
 /**
  * Build the set of provider keys (raw id + alias) that have at least one active/validated
