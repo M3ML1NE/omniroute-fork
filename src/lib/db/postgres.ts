@@ -57,8 +57,19 @@ function poolConfigFor(host: HostSpec, cfg: PgRuntimeConfig): pg.PoolConfig {
   };
 }
 
-function makePool(config: pg.PoolConfig): pg.Pool {
-  const pool = new Pool(config);
+function makePool(config: pg.PoolConfig, cfg: PgRuntimeConfig): pg.Pool {
+  // Belt-and-suspenders: ALTER ROLE sets the server-side default, but if it did
+  // not stick (e.g. the pooler authenticates as a different backend role than
+  // the one we ran ALTER ROLE on), also SET search_path on every fresh
+  // connection. Use the `onConnect` pool option (awaited before the client is
+  // handed out) rather than the `connect` event (not awaited → pg@9 "already
+  // executing a query" warning).
+  const onConnect = cfg.applyRoleSearchPath
+    ? async (client: pg.PoolClient) => {
+        await client.query(`SET search_path TO ${cfg.schema}, public`);
+      }
+    : undefined;
+  const pool = new Pool({ ...config, onConnect } as pg.PoolConfig);
   attachErrorGuard(pool);
   return pool;
 }
@@ -85,6 +96,7 @@ async function ensureRoleSearchPath(host: HostSpec, cfg: PgRuntimeConfig): Promi
   const setup = new Pool({ ...poolConfigFor(host, cfg), max: 1 });
   try {
     await setup.query(`ALTER ROLE CURRENT_USER SET search_path TO ${cfg.schema}, public`);
+    await logSchemaDiagnostics(setup, cfg);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     globalThis.console.warn(
@@ -93,6 +105,47 @@ async function ensureRoleSearchPath(host: HostSpec, cfg: PgRuntimeConfig): Promi
     );
   } finally {
     await setup.end().catch(() => {});
+  }
+}
+
+/**
+ * Log the ground truth of the live connection so a "relation does not exist"
+ * in production can be diagnosed without shell access: which database/role we
+ * actually connected as, the effective search_path on that backend, and which
+ * schema a canonical table physically lives in. A mismatch here (e.g. table in
+ * a schema not on the path, or connected as a different role than migrations
+ * ran under) is the real cause when the schema fix appears not to work.
+ */
+async function logSchemaDiagnostics(pool: pg.Pool, cfg: PgRuntimeConfig): Promise<void> {
+  try {
+    const info = await pool.query<{
+      db: string;
+      usr: string;
+      search_path: string;
+    }>("SELECT current_database() AS db, current_user AS usr, current_setting('search_path') AS search_path");
+    const loc = await pool.query<{ schema: string | null }>(
+      "SELECT n.nspname AS schema FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'provider_connections' ORDER BY n.nspname"
+    );
+    const row = info.rows[0];
+    const schemas = loc.rows.map((r) => r.schema).filter(Boolean);
+    globalThis.console.log(
+      `[db] connected db=${row?.db} user=${row?.usr} search_path=${row?.search_path} ` +
+        `expected_schema=${cfg.schema} provider_connections_in=[${schemas.join(", ") || "NONE"}]`
+    );
+    if (schemas.length === 0) {
+      globalThis.console.warn(
+        `[db] provider_connections not found in ANY schema of database "${row?.db}" — ` +
+          `migrations likely ran against a different database/host than this app connects to.`
+      );
+    } else if (!schemas.includes(cfg.schema)) {
+      globalThis.console.warn(
+        `[db] provider_connections lives in [${schemas.join(", ")}] but expected_schema is ` +
+          `"${cfg.schema}". Set DB_SCHEMA to the actual schema, or re-run migrations into "${cfg.schema}".`
+      );
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    globalThis.console.warn(`[db] schema diagnostics failed: ${msg}`);
   }
 }
 
@@ -133,7 +186,7 @@ async function discoverPrimary(): Promise<pg.Pool> {
     // Set the role default BEFORE the pool opens any connection, so every
     // pooled backend inherits the schema search_path (no startup race).
     await ensureRoleSearchPath(_writeHost, cfg);
-    _writePool = makePool(poolConfigFor(_writeHost, cfg));
+    _writePool = makePool(poolConfigFor(_writeHost, cfg), cfg);
     return _writePool;
   }
 
@@ -158,7 +211,7 @@ async function discoverPrimary(): Promise<pg.Pool> {
   _writeHost = primary.host;
   // Role default before the pool connects (see single-host branch).
   await ensureRoleSearchPath(_writeHost, cfg);
-  _writePool = makePool(poolConfigFor(_writeHost, cfg));
+  _writePool = makePool(poolConfigFor(_writeHost, cfg), cfg);
 
   if (replica && "host" in replica) {
     _readHost = replica.host;
@@ -202,7 +255,7 @@ export async function getReplicaPool(): Promise<pg.Pool> {
   await getPool(); // ensures discovery ran and _readHost is populated
   if (!_readHost) return _writePool!;
   if (!_readPool) {
-    _readPool = makePool(poolConfigFor(_readHost, getConfig()));
+    _readPool = makePool(poolConfigFor(_readHost, getConfig()), getConfig());
   }
   return _readPool;
 }
