@@ -16,7 +16,6 @@ import {
 } from "@/shared/network/safeOutboundFetch";
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
 import { extractCookieValue, normalizeSessionCookieHeader } from "@/lib/providers/webCookieAuth";
-import { buildJulesApiUrl } from "@/lib/cloudAgent/julesApi.ts";
 import { getGigachatAccessToken } from "@omniroute/open-sse/services/gigachatAuth.ts";
 import { validateQoderCliPat } from "@omniroute/open-sse/services/qoderCli.ts";
 import {
@@ -3421,34 +3420,6 @@ async function validateT3WebProvider({ apiKey, providerSpecificData = {} }: any)
   }
 }
 
-/** Jules API — GET /v1alpha/sources with X-Goog-Api-Key (see developers.google.com/jules/api). */
-async function validateJulesProvider({ apiKey }: { apiKey: string }) {
-  try {
-    const response = await validationWrite(buildJulesApiUrl("/sources"), {
-      method: "GET",
-      headers: {
-        "X-Goog-Api-Key": apiKey,
-      },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      return { valid: false, error: "Invalid API key" };
-    }
-
-    if (response.ok) {
-      return { valid: true, error: null };
-    }
-
-    const errorText = await response.text().catch(() => "");
-    return {
-      valid: false,
-      error: errorText.trim() || `Jules API returned ${response.status}`,
-    };
-  } catch (error: unknown) {
-    return toValidationErrorResult(error);
-  }
-}
-
 async function validateInnerAiProvider({ apiKey, providerSpecificData = {} }: any) {
   try {
     const raw = typeof apiKey === "string" ? apiKey.trim() : "";
@@ -3598,7 +3569,6 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
 
   // ── Specialty provider validation ──
   const SPECIALTY_VALIDATORS = {
-    jules: validateJulesProvider,
     qoder: ({ apiKey, providerSpecificData }: any) =>
       validateQoderCliPat({ apiKey, providerSpecificData }),
     "command-code": validateCommandCodeProvider,

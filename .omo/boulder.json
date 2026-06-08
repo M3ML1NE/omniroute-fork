@@ -2,12 +2,16 @@
   "active_plan": "/root/omniroute-fork/.omo/plans/omniroute-cleanup.md",
   "started_at": "2026-06-05T17:55:28.830Z",
   "session_ids": [
-    "opencode:ses_1671302f7ffeALEsIAgK7cBlqH"
+    "opencode:ses_1671302f7ffeALEsIAgK7cBlqH",
+    "opencode:ses_156dab3b1ffeWi2hO38cP5yTn6",
+    "opencode:ses_156da7453ffeq37FML5idRpapw"
   ],
   "plan_name": "omniroute-cleanup",
   "worktree_path": null,
   "session_origins": {
-    "opencode:ses_1671302f7ffeALEsIAgK7cBlqH": "direct"
+    "opencode:ses_1671302f7ffeALEsIAgK7cBlqH": "direct",
+    "opencode:ses_156dab3b1ffeWi2hO38cP5yTn6": "appended",
+    "opencode:ses_156da7453ffeq37FML5idRpapw": "appended"
   },
   "task_sessions": {
     "todo:1": {
@@ -42,12 +46,16 @@
       "active_plan": "/root/omniroute-fork/.omo/plans/omniroute-cleanup.md",
       "plan_name": "omniroute-cleanup",
       "started_at": "2026-06-05T17:55:28.830Z",
-      "updated_at": "2026-06-05T22:40:45.377Z",
+      "updated_at": "2026-06-08T21:34:44.688Z",
       "session_ids": [
-        "opencode:ses_1671302f7ffeALEsIAgK7cBlqH"
+        "opencode:ses_1671302f7ffeALEsIAgK7cBlqH",
+        "opencode:ses_156dab3b1ffeWi2hO38cP5yTn6",
+        "opencode:ses_156da7453ffeq37FML5idRpapw"
       ],
       "session_origins": {
-        "opencode:ses_1671302f7ffeALEsIAgK7cBlqH": "direct"
+        "opencode:ses_1671302f7ffeALEsIAgK7cBlqH": "direct",
+        "opencode:ses_156dab3b1ffeWi2hO38cP5yTn6": "appended",
+        "opencode:ses_156da7453ffeq37FML5idRpapw": "appended"
       },
       "worktree_path": null,
       "task_sessions": {
@@ -82,7 +90,7 @@
     }
   },
   "active_work_id": "omniroute-cleanup-legacy",
-  "updated_at": "2026-06-05T22:40:45.377Z",
+  "updated_at": "2026-06-08T21:34:44.688Z",
   "status": "completed",
   "ended_at": "2026-06-05T22:40:45.377Z",
   "elapsed_ms": 17116547

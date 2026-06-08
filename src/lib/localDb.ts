@@ -250,18 +250,7 @@ export type { ModelComboMapping } from "./db/modelComboMappings";
 // Webhook subsystem removed — see Wave 1 cleanup
 export * from "./db/sessionAccountAffinity";
 
-export {
-  getVersionManagerStatus,
-  getVersionManagerTool,
-  upsertVersionManagerTool,
-  updateVersionManagerTool,
-  deleteVersionManagerTool,
-  updateToolHealth,
-  updateToolVersion,
-  setToolStatus,
-  getServiceRow,
-  updateServiceField,
-} from "./db/versionManager";
+// versionManager subsystem removed — dead CLI-tool state management
 
 export {
   listSyncTokens,
