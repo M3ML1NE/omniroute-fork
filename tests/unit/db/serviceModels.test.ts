@@ -20,7 +20,7 @@ const { getServiceModels, saveServiceModels, markAllUnavailable } =
 const NAMESPACE = "serviceModels";
 
 async function resetDb() {
-  await getPool().query("DELETE FROM key_value WHERE namespace = $1", [NAMESPACE]);
+  await (await getPool()).query("DELETE FROM key_value WHERE namespace = $1", [NAMESPACE]);
 }
 
 test.beforeEach(async () => {

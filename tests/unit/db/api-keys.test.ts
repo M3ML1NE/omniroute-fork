@@ -29,7 +29,7 @@ async function resetStorage() {
   // Clear in-memory caches (prepared-statement cache + key caches).
   apiKeysDb.resetApiKeyState();
   // Truncate the tables this suite touches so each test starts clean.
-  await getPool().query("TRUNCATE api_keys, audit_log RESTART IDENTITY CASCADE");
+  await (await getPool()).query("TRUNCATE api_keys, audit_log RESTART IDENTITY CASCADE");
 }
 
 test.beforeEach(async () => {
@@ -38,7 +38,7 @@ test.beforeEach(async () => {
 
 test.after(async () => {
   apiKeysDb.resetApiKeyState();
-  await getPool().query("TRUNCATE api_keys, audit_log RESTART IDENTITY CASCADE");
+  await (await getPool()).query("TRUNCATE api_keys, audit_log RESTART IDENTITY CASCADE");
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

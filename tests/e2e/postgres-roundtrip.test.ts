@@ -93,7 +93,7 @@ async function getLatestGigachatCallLog() {
 
 /** Raw Postgres assertion — proves the row is really persisted, not just in-memory. */
 async function getLatestGigachatRowRaw() {
-  const result = await getPool().query(
+  const result = await (await getPool()).query(
     "SELECT id, provider, status, model FROM call_logs WHERE provider = $1 ORDER BY timestamp DESC LIMIT 1",
     ["gigachat"]
   );
@@ -102,12 +102,12 @@ async function getLatestGigachatRowRaw() {
 
 async function cleanupSeededRows() {
   // call_logs first (FK-free, sentinel = provider), then the seeded connection + key.
-  await getPool().query("DELETE FROM call_logs WHERE provider = $1", ["gigachat"]);
-  await getPool().query("DELETE FROM provider_connections WHERE provider = $1 AND name = $2", [
+  await (await getPool()).query("DELETE FROM call_logs WHERE provider = $1", ["gigachat"]);
+  await (await getPool()).query("DELETE FROM provider_connections WHERE provider = $1 AND name = $2", [
     "gigachat",
     CONNECTION_NAME,
   ]);
-  await getPool().query("DELETE FROM api_keys WHERE name = $1", [API_KEY_NAME]);
+  await (await getPool()).query("DELETE FROM api_keys WHERE name = $1", [API_KEY_NAME]);
 }
 
 before(async () => {
@@ -208,7 +208,7 @@ describe("GigaChat round-trip with Postgres usage logging", () => {
     mock.lastRequest = null;
 
     // Snapshot how many gigachat rows exist so we can prove a NEW one is written.
-    const beforeRows = await getPool().query(
+    const beforeRows = await (await getPool()).query(
       "SELECT COUNT(*)::int AS cnt FROM call_logs WHERE provider = $1",
       ["gigachat"]
     );
@@ -239,7 +239,7 @@ describe("GigaChat round-trip with Postgres usage logging", () => {
 
     // 3. A NEW gigachat call_logs row was written for the streaming request.
     const afterRows = await waitFor(async () => {
-      const result = await getPool().query(
+      const result = await (await getPool()).query(
         "SELECT COUNT(*)::int AS cnt FROM call_logs WHERE provider = $1",
         ["gigachat"]
       );
