@@ -11,8 +11,13 @@
  * The runner connects through the shared `pg` pool in `src/lib/db/postgres.ts`,
  * which resolves `DATABASE_URL` (required in production).
  */
-import { runMigrations, getMigrationStatus } from "../src/lib/db/migrationRunner";
-import { closePool } from "../src/lib/db/postgres";
+import { loadEnvFile } from "./loadEnv";
+
+// Load .env before anything reads process.env (CLI runs without @next/env).
+loadEnvFile();
+
+const { runMigrations, getMigrationStatus } = await import("../src/lib/db/migrationRunner");
+const { closePool } = await import("../src/lib/db/postgres");
 
 async function migrate(): Promise<void> {
   const url = process.env.DB_URL ?? process.env.DATABASE_URL;
