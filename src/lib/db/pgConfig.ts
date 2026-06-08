@@ -10,23 +10,37 @@
  * host list, primary discovery, and SSL options are resolved here and consumed
  * by `postgres.ts`, which owns the live pool + primary-discovery logic.
  *
- * Env surface (all optional except a connection source):
- *   DATABASE_URL                     base creds/db/host (postgres://u:p@h:port/db?sslmode=...)
- *   DATABASE_HOSTS                   "h1:5432,h2:5432" — cluster hosts, overrides URL host
- *   DATABASE_SCHEMA                  Postgres schema / search_path (default: omniroute)
- *   DATABASE_SSL                     disable|require|verify-ca|verify-full|true|false (default: off)
- *   DATABASE_SSL_CA                  path to CA / root cert (PEM)
- *   DATABASE_SSL_CERT                path to client cert (PEM)
- *   DATABASE_SSL_KEY                 path to client key (PEM)
- *   DATABASE_SSL_REJECT_UNAUTHORIZED "true"|"false" — override cert verification
+ * Env surface (DB_* are primary; DATABASE_* are accepted as fallbacks). All
+ * optional except a connection source:
+ *   DB_URL / DATABASE_URL            connection string; accepts a `jdbc:` prefix and
+ *                                    multi-host authority, e.g.
+ *                                    jdbc:postgresql://h1:5432,h2:5432/db?sslmode=require
+ *   DB_USERNAME / DATABASE_USER      user (overrides any user in the URL)
+ *   DB_PASSWORD / DATABASE_PASSWORD  password (overrides any password in the URL)
+ *   DB_DATABASE / DATABASE_NAME      database (overrides the URL path)
+ *   DB_SCHEMA / DATABASE_SCHEMA      schema / search_path (default: omniroute)
+ *   DB_HOSTS / DATABASE_HOSTS        "h1:5432,h2:5432" — cluster hosts, overrides URL hosts
+ *   DB_SSL / DATABASE_SSL            disable|require|verify-ca|verify-full|true|false (default: off)
+ *   DB_SSL_CA / DATABASE_SSL_CA      path to CA / root cert (PEM)
+ *   DB_SSL_CERT / DATABASE_SSL_CERT  path to client cert (PEM)
+ *   DB_SSL_KEY / DATABASE_SSL_KEY    path to client key (PEM)
+ *   DB_SSL_REJECT_UNAUTHORIZED / DATABASE_SSL_REJECT_UNAUTHORIZED  "true"|"false"
  *   DATABASE_POOL_MAX               max pool clients (default 10)
  *   DATABASE_CONNECT_TIMEOUT_MS     per-connection timeout (default 10000)
  *   DATABASE_PRIMARY_PROBE_TIMEOUT_MS  per-host primary probe timeout (default 5000)
  */
 
 import { readFileSync } from "node:fs";
-import { parse as parsePgConnString } from "pg-connection-string";
 import type { ConnectionOptions as TlsConnectionOptions } from "node:tls";
+
+/** First non-empty env var among `names`, trimmed. */
+function envFirst(...names: string[]): string | undefined {
+  for (const name of names) {
+    const v = process.env[name];
+    if (v && v.trim().length > 0) return v.trim();
+  }
+  return undefined;
+}
 
 export const DEFAULT_DATABASE_URL = "postgres://omniroute:omniroute@localhost:5432/omniroute_test";
 const DEFAULT_PORT = 5432;
@@ -62,14 +76,86 @@ export const DEFAULT_SCHEMA = "omniroute";
  * comes from trusted env config, not user input.
  */
 export function resolveSchema(): string {
-  const raw = process.env.DATABASE_SCHEMA?.trim();
+  const raw = envFirst("DB_SCHEMA", "DATABASE_SCHEMA");
   if (!raw) return DEFAULT_SCHEMA;
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(raw)) {
     throw new Error(
-      `Invalid DATABASE_SCHEMA "${raw}": must match [A-Za-z_][A-Za-z0-9_]* (no quoting/special chars).`
+      `Invalid DB_SCHEMA "${raw}": must match [A-Za-z_][A-Za-z0-9_]* (no quoting/special chars).`
     );
   }
   return raw;
+}
+
+export interface ParsedConnString {
+  hosts: HostSpec[];
+  user?: string;
+  password?: string;
+  database?: string;
+  sslmode?: string;
+}
+
+/**
+ * Parse a Postgres connection string into its parts. Beyond the standard
+ * `postgres://`/`postgresql://` URL it tolerates two corporate/JDBC conventions
+ * that the WHATWG URL parser (and pg-connection-string) reject:
+ *   - a leading `jdbc:` prefix (`jdbc:postgresql://…`), and
+ *   - a multi-host authority (`host1:5432,host2:5432`) for Patroni clusters.
+ * Userinfo/host/port/db/query are split manually so the comma-separated host
+ * list survives; only the query string is read for `sslmode`.
+ */
+export function parseConnString(raw: string, defaultPort: number): ParsedConnString {
+  let s = raw.trim();
+  if (s.toLowerCase().startsWith("jdbc:")) s = s.slice("jdbc:".length);
+
+  const schemeMatch = s.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//);
+  if (schemeMatch) s = s.slice(schemeMatch[0].length);
+
+  // Split off query string (?a=b&c=d).
+  let query = "";
+  const qIdx = s.indexOf("?");
+  if (qIdx >= 0) {
+    query = s.slice(qIdx + 1);
+    s = s.slice(0, qIdx);
+  }
+
+  // Split userinfo@authority/path. Userinfo may contain ':'; use the LAST '@'.
+  let userinfo = "";
+  const atIdx = s.lastIndexOf("@");
+  if (atIdx >= 0) {
+    userinfo = s.slice(0, atIdx);
+    s = s.slice(atIdx + 1);
+  }
+
+  // Split authority (hosts) from path (/database).
+  const slashIdx = s.indexOf("/");
+  const authority = slashIdx >= 0 ? s.slice(0, slashIdx) : s;
+  const database = slashIdx >= 0 ? decodeURIComponent(s.slice(slashIdx + 1)) || undefined : undefined;
+
+  let user: string | undefined;
+  let password: string | undefined;
+  if (userinfo) {
+    const colon = userinfo.indexOf(":");
+    if (colon >= 0) {
+      user = decodeURIComponent(userinfo.slice(0, colon));
+      password = decodeURIComponent(userinfo.slice(colon + 1));
+    } else {
+      user = decodeURIComponent(userinfo);
+    }
+  }
+
+  let sslmode: string | undefined;
+  for (const pair of query.split("&")) {
+    const [k, v] = pair.split("=");
+    if (k === "sslmode" && v) sslmode = decodeURIComponent(v);
+  }
+
+  return {
+    hosts: parseHostList(authority, defaultPort),
+    user,
+    password,
+    database,
+    sslmode,
+  };
 }
 
 function intFromEnv(name: string, fallback: number): number {
@@ -88,10 +174,10 @@ function boolFromEnv(name: string): boolean | undefined {
 }
 
 function resolveDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL;
-  if (url && url.trim().length > 0) return url.trim();
+  const url = envFirst("DB_URL", "DATABASE_URL");
+  if (url) return url;
   if (process.env.NODE_ENV === "production") {
-    throw new Error("DATABASE_URL environment variable is required in production");
+    throw new Error("DB_URL (or DATABASE_URL) environment variable is required in production");
   }
   return DEFAULT_DATABASE_URL;
 }
@@ -131,29 +217,27 @@ export function parseHostList(raw: string | undefined, defaultPort: number): Hos
  *   verify-ca            → verify CA chain, skip hostname check
  *   verify-full          → verify CA chain + hostname
  */
-export function resolveSslConfig(urlSsl: unknown): PgSslConfig {
-  const mode = process.env.DATABASE_SSL?.trim().toLowerCase();
-  const caPath = process.env.DATABASE_SSL_CA?.trim();
-  const certPath = process.env.DATABASE_SSL_CERT?.trim();
-  const keyPath = process.env.DATABASE_SSL_KEY?.trim();
-  const rejectOverride = boolFromEnv("DATABASE_SSL_REJECT_UNAUTHORIZED");
+export function resolveSslConfig(urlSslmode?: string): PgSslConfig {
+  const mode = envFirst("DB_SSL", "DATABASE_SSL")?.toLowerCase();
+  const caPath = envFirst("DB_SSL_CA", "DATABASE_SSL_CA");
+  const certPath = envFirst("DB_SSL_CERT", "DATABASE_SSL_CERT");
+  const keyPath = envFirst("DB_SSL_KEY", "DATABASE_SSL_KEY");
+  const rejectOverride =
+    boolFromEnv("DB_SSL_REJECT_UNAUTHORIZED") ?? boolFromEnv("DATABASE_SSL_REJECT_UNAUTHORIZED");
 
-  // Determine the effective mode: explicit env mode, else infer from URL ssl.
-  let effective: "disable" | "require" | "verify-ca" | "verify-full" | undefined;
-  if (mode) {
-    if (mode === "disable" || mode === "false" || mode === "off") effective = "disable";
-    else if (mode === "require" || mode === "true" || mode === "on") effective = "require";
-    else if (mode === "verify-ca") effective = "verify-ca";
-    else if (mode === "verify-full") effective = "verify-full";
-    else effective = "require"; // unknown but truthy → encrypt
-  } else if (urlSsl === false || urlSsl === undefined || urlSsl === null) {
+  // Effective mode: explicit env mode wins, else infer from the URL's sslmode.
+  const src = mode ?? urlSslmode?.toLowerCase();
+  let effective: "disable" | "require" | "verify-ca" | "verify-full";
+  if (!src || src === "disable" || src === "false" || src === "off") {
     effective = "disable";
-  } else if (typeof urlSsl === "object") {
-    // pg-connection-string already produced an ssl object from the URL's sslmode.
-    const obj = urlSsl as Record<string, unknown>;
-    effective = obj.rejectUnauthorized === false ? "require" : "verify-full";
-  } else {
+  } else if (src === "require" || src === "true" || src === "on" || src === "prefer" || src === "allow") {
     effective = "require";
+  } else if (src === "verify-ca") {
+    effective = "verify-ca";
+  } else if (src === "verify-full") {
+    effective = "verify-full";
+  } else {
+    effective = "require"; // unknown but truthy → encrypt
   }
 
   if (effective === "disable") return false;
@@ -184,24 +268,20 @@ export function resolveSslConfig(urlSsl: unknown): PgSslConfig {
 
 /** Resolve the full Postgres runtime configuration from the environment. */
 export function resolvePgConfig(): PgRuntimeConfig {
-  const url = resolveDatabaseUrl();
-  const parsed = parsePgConnString(url);
+  const parsed = parseConnString(resolveDatabaseUrl(), DEFAULT_PORT);
 
-  const urlPort = parsed.port ? Number.parseInt(String(parsed.port), 10) : DEFAULT_PORT;
-
-  // Cluster hosts: DATABASE_HOSTS overrides the URL's single host.
-  let hosts = parseHostList(process.env.DATABASE_HOSTS, urlPort);
-  if (hosts.length === 0) {
-    hosts = [{ host: parsed.host || "localhost", port: urlPort }];
-  }
+  // Discrete DB_*/DATABASE_* vars override whatever the URL carried.
+  const hostsOverride = parseHostList(envFirst("DB_HOSTS", "DATABASE_HOSTS"), DEFAULT_PORT);
+  let hosts = hostsOverride.length > 0 ? hostsOverride : parsed.hosts;
+  if (hosts.length === 0) hosts = [{ host: "localhost", port: DEFAULT_PORT }];
 
   return {
     hosts,
-    user: parsed.user,
-    password: parsed.password,
-    database: parsed.database ?? undefined,
+    user: envFirst("DB_USERNAME", "DATABASE_USER") ?? parsed.user,
+    password: envFirst("DB_PASSWORD", "DATABASE_PASSWORD") ?? parsed.password,
+    database: envFirst("DB_DATABASE", "DATABASE_NAME") ?? parsed.database,
     schema: resolveSchema(),
-    ssl: resolveSslConfig(parsed.ssl),
+    ssl: resolveSslConfig(parsed.sslmode),
     max: intFromEnv("DATABASE_POOL_MAX", 10),
     connectionTimeoutMillis: intFromEnv("DATABASE_CONNECT_TIMEOUT_MS", 10_000),
     primaryProbeTimeoutMillis: intFromEnv("DATABASE_PRIMARY_PROBE_TIMEOUT_MS", 5_000),

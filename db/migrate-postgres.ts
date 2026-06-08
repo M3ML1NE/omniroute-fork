@@ -15,9 +15,9 @@ import { runMigrations, getMigrationStatus } from "../src/lib/db/migrationRunner
 import { closePool } from "../src/lib/db/postgres";
 
 async function migrate(): Promise<void> {
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DB_URL ?? process.env.DATABASE_URL;
   if (!url || url.trim().length === 0) {
-    throw new Error("DATABASE_URL environment variable required");
+    throw new Error("DB_URL (or DATABASE_URL) environment variable required");
   }
 
   const before = await getMigrationStatus();
