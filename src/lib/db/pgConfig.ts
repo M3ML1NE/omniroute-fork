@@ -13,6 +13,7 @@
  * Env surface (all optional except a connection source):
  *   DATABASE_URL                     base creds/db/host (postgres://u:p@h:port/db?sslmode=...)
  *   DATABASE_HOSTS                   "h1:5432,h2:5432" — cluster hosts, overrides URL host
+ *   DATABASE_SCHEMA                  Postgres schema / search_path (default: omniroute)
  *   DATABASE_SSL                     disable|require|verify-ca|verify-full|true|false (default: off)
  *   DATABASE_SSL_CA                  path to CA / root cert (PEM)
  *   DATABASE_SSL_CERT                path to client cert (PEM)
@@ -43,11 +44,32 @@ export interface PgRuntimeConfig {
   user?: string;
   password?: string;
   database?: string;
+  /** Postgres schema applied via `search_path` on every connection. */
+  schema: string;
   ssl: PgSslConfig;
   max: number;
   connectionTimeoutMillis: number;
   /** Per-host timeout for the `pg_is_in_recovery()` primary probe. */
   primaryProbeTimeoutMillis: number;
+}
+
+export const DEFAULT_SCHEMA = "omniroute";
+
+/**
+ * Validate a schema/identifier for safe inline use in `search_path`. Postgres
+ * identifiers are letters/digits/underscores (not starting with a digit). We
+ * reject anything else rather than attempt to quote-escape, since this value
+ * comes from trusted env config, not user input.
+ */
+export function resolveSchema(): string {
+  const raw = process.env.DATABASE_SCHEMA?.trim();
+  if (!raw) return DEFAULT_SCHEMA;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(raw)) {
+    throw new Error(
+      `Invalid DATABASE_SCHEMA "${raw}": must match [A-Za-z_][A-Za-z0-9_]* (no quoting/special chars).`
+    );
+  }
+  return raw;
 }
 
 function intFromEnv(name: string, fallback: number): number {
@@ -178,6 +200,7 @@ export function resolvePgConfig(): PgRuntimeConfig {
     user: parsed.user,
     password: parsed.password,
     database: parsed.database ?? undefined,
+    schema: resolveSchema(),
     ssl: resolveSslConfig(parsed.ssl),
     max: intFromEnv("DATABASE_POOL_MAX", 10),
     connectionTimeoutMillis: intFromEnv("DATABASE_CONNECT_TIMEOUT_MS", 10_000),

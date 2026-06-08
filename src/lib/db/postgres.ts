@@ -40,6 +40,10 @@ function getConfig(): PgRuntimeConfig {
   return _config;
 }
 
+export function getSchema(): string {
+  return getConfig().schema;
+}
+
 function poolConfigFor(host: HostSpec, cfg: PgRuntimeConfig): pg.PoolConfig {
   return {
     host: host.host,
@@ -50,6 +54,10 @@ function poolConfigFor(host: HostSpec, cfg: PgRuntimeConfig): pg.PoolConfig {
     ssl: cfg.ssl,
     max: cfg.max,
     connectionTimeoutMillis: cfg.connectionTimeoutMillis,
+    // search_path routes unqualified tables to OmniRoute's schema (public kept
+    // for shared extensions). cfg.schema is validated to a bare identifier in
+    // pgConfig.resolveSchema(), so inlining it here is injection-safe.
+    options: `-c search_path=${cfg.schema},public`,
   };
 }
 
@@ -276,6 +284,7 @@ export function getTopology(): {
   hosts: HostSpec[];
   primary: HostSpec | undefined;
   replica: HostSpec | undefined;
+  schema: string;
   ssl: boolean;
 } {
   const cfg = getConfig();
@@ -283,6 +292,7 @@ export function getTopology(): {
     hosts: cfg.hosts,
     primary: _writeHost,
     replica: _readHost,
+    schema: cfg.schema,
     ssl: cfg.ssl !== false,
   };
 }

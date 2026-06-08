@@ -25,7 +25,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { query, withTransaction } from "./postgres";
+import { query, withTransaction, getSchema } from "./postgres";
 
 const isNodeTestRunnerChild = typeof process.env.NODE_TEST_CONTEXT === "string";
 
@@ -100,10 +100,13 @@ function getPostgresMigrationFiles(): PgMigrationFile[] {
 }
 
 /**
- * Ensure the Postgres migration-tracking table exists. Uses Postgres syntax
- * (`TIMESTAMPTZ DEFAULT NOW()`), not the SQLite `datetime('now')` default.
+ * Ensure OmniRoute's schema and the migration-tracking table exist. The schema
+ * is created first so the tracking table and every baseline object land there
+ * (connections pin search_path=<schema>,public). Schema name is a validated
+ * identifier from pgConfig, so inlining it in DDL is injection-safe.
  */
 async function ensureMigrationsTable(): Promise<void> {
+  await query(`CREATE SCHEMA IF NOT EXISTS ${getSchema()}`);
   await query(
     `CREATE TABLE IF NOT EXISTS _omniroute_migrations (
        filename TEXT PRIMARY KEY,
