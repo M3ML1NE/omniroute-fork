@@ -1506,50 +1506,6 @@ export async function handleChatCore({
   };
   let tokensCompressed: number | null = null;
   body = injectSystemPrompt(body);
-  // ── Plugin onRequest hook ──
-  // Dynamic import cached by Node.js after first call — minimal overhead
-  try {
-    const { runOnRequest } = await import("@/lib/plugins/index");
-    const pluginCtx = {
-      requestId: traceId,
-      body,
-      model,
-      provider,
-      apiKeyInfo,
-      metadata: {},
-    };
-    const pluginResult = await runOnRequest(pluginCtx);
-    if (pluginResult?.blocked) {
-      log?.info?.("PLUGIN", `Request blocked by plugin`);
-      return {
-        success: false,
-        status: 403,
-        error: "Request blocked by plugin",
-        response: pluginResult.response
-          ? new Response(JSON.stringify(pluginResult.response), {
-              status: 403,
-              headers: { "Content-Type": "application/json" },
-            })
-          : new Response(
-              JSON.stringify({
-                error: { message: "Request blocked by plugin", type: "plugin_block" },
-              }),
-              {
-                status: 403,
-                headers: { "Content-Type": "application/json" },
-              }
-            ),
-      };
-    }
-    if (pluginResult?.ctx && "body" in pluginResult.ctx) {
-      body = (pluginResult.ctx as unknown as Record<string, unknown>).body;
-    }
-  } catch (pluginErr) {
-    log?.debug?.(
-      "PLUGIN",
-      `onRequest hook error (non-fatal): ${pluginErr instanceof Error ? pluginErr.message : String(pluginErr)}`
-    );
-  }
 
   type EffectiveServiceTier = "standard" | CodexServiceTier;
   let effectiveServiceTier: EffectiveServiceTier = "standard";
@@ -3180,20 +3136,6 @@ export async function handleChatCore({
       );
     }
   } catch (error) {
-    // ── Plugin onError hook ──
-    try {
-      const { runOnError } = await import("@/lib/plugins/index");
-      await runOnError(
-        { requestId: traceId, body, model, provider, apiKeyInfo, metadata: {} },
-        error instanceof Error ? error : new Error(String(error))
-      );
-    } catch (pluginErr) {
-      log?.debug?.(
-        "PLUGIN",
-        `onError hook error (non-fatal): ${pluginErr instanceof Error ? pluginErr.message : String(pluginErr)}`
-      );
-    }
-
     const parsedStatus = Number(error?.statusCode);
     const statusCode =
       Number.isInteger(parsedStatus) && parsedStatus >= 400 && parsedStatus <= 599
@@ -5093,20 +5035,6 @@ export async function handleChatCore({
       recordCost(apiKeyInfo.id, estimatedCost);
     }
 
-    // ── Gamification event (fire-and-forget) ──
-    if (apiKeyInfo?.id) {
-      try {
-        const { emitGamificationEvent } = await import("@/lib/gamification/events");
-        emitGamificationEvent({
-          apiKeyId: apiKeyInfo.id,
-          action: "request",
-          metadata: { model, provider },
-        });
-      } catch (_) {
-        /* gamification optional */
-      }
-    }
-
     return {
       success: true,
       response: new Response(JSON.stringify(translatedResponse), {
@@ -5437,20 +5365,6 @@ export async function handleChatCore({
       shape: shapeForClientFormat(clientResponseFormat),
     })
   );
-
-  // ── Gamification event (fire-and-forget) ──
-  if (apiKeyInfo?.id) {
-    try {
-      const { emitGamificationEvent } = await import("@/lib/gamification/events");
-      emitGamificationEvent({
-        apiKeyId: apiKeyInfo.id,
-        action: "request",
-        metadata: { model, provider },
-      });
-    } catch (_) {
-      /* gamification optional */
-    }
-  }
 
   return {
     success: true,

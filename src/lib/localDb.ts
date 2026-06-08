@@ -288,39 +288,6 @@ export {
   stopSessionAccountAffinityCleanupForTests,
 } from "./db/sessionAccountAffinity";
 
-export {
-  // Gamification & Leaderboard
-  updateScore,
-  getRank,
-  getTopN,
-  addXp,
-  getXp,
-  updateLevel,
-  unlockBadge,
-  getBadges,
-  getBadgeDefinitions,
-  transferTokens,
-  getBalance,
-  getHistory,
-  createInviteToken,
-  getInviteByCode,
-  redeemInvite,
-  revokeInvite,
-  connectServer,
-  disconnectServer,
-  listServers,
-} from "./db/gamification";
-
-export type {
-  LeaderboardRow,
-  UserLevelRow,
-  BadgeDefinition,
-  UserBadge,
-  XpAuditLogEntry,
-  TokenLedgerEntry,
-  InviteToken,
-  CommunityServer,
-} from "./db/gamification";
 
 export * from "./db/featureFlags";
 
@@ -410,17 +377,6 @@ export type {
   TokenWindowState,
 } from "./db/tokenLimits";
 
-export {
-  insertPlugin,
-  getPluginById,
-  getPluginByName,
-  listPlugins,
-  updatePluginStatus,
-  updatePluginConfig,
-  deletePlugin,
-  pluginExists,
-} from "./db/plugins";
-
 // ── Proxy subsystem removed (GigaChat fork) ──────────────────────────────────
 // The proxy/1proxy/upstream-proxy registry was deleted. These stubs preserve the
 // call signatures of the old DB helpers so the many upstream-fetch call sites
@@ -444,5 +400,3 @@ export async function upsertUpstreamProxyConfig(_cfg?: unknown): Promise<void> {
 export function validateProxyUrl(_url?: string): { valid: boolean; error?: string } {
   return { valid: true };
 }
-
-export type { PluginRow, PluginCreateInput } from "./db/plugins";
