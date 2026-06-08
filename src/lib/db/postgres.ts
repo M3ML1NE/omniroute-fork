@@ -54,11 +54,38 @@ function poolConfigFor(host: HostSpec, cfg: PgRuntimeConfig): pg.PoolConfig {
     ssl: cfg.ssl,
     max: cfg.max,
     connectionTimeoutMillis: cfg.connectionTimeoutMillis,
-    // search_path routes unqualified tables to OmniRoute's schema (public kept
-    // for shared extensions). cfg.schema is validated to a bare identifier in
-    // pgConfig.resolveSchema(), so inlining it here is injection-safe.
-    options: `-c search_path=${cfg.schema},public`,
   };
+}
+
+function makePool(config: pg.PoolConfig): pg.Pool {
+  const pool = new Pool(config);
+  attachErrorGuard(pool);
+  return pool;
+}
+
+/**
+ * Pin the schema by setting it as the connection role's default search_path
+ * (`ALTER ROLE CURRENT_USER SET search_path TO <schema>, public`). Postgres
+ * applies this server-side on every new backend, so it survives connection
+ * poolers (PgBouncer/Odyssey) and their inter-transaction `DISCARD ALL` —
+ * unlike the libpq startup `options` parameter (poolers reject it: "unsupported
+ * startup parameter in options: search_path") or a per-connection client-side
+ * `SET` (wiped by `DISCARD ALL`, and racy during pool setup). cfg.schema is a
+ * validated bare identifier from pgConfig, so inlining it is injection-safe.
+ * Best-effort: if the role lacks ALTER privilege we log and continue, since the
+ * DBA may have already configured the default out of band.
+ */
+async function applyRoleSearchPath(pool: pg.Pool, cfg: PgRuntimeConfig): Promise<void> {
+  if (!cfg.applyRoleSearchPath) return;
+  try {
+    await pool.query(`ALTER ROLE CURRENT_USER SET search_path TO ${cfg.schema}, public`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    globalThis.console.warn(
+      `[db] could not ALTER ROLE search_path to "${cfg.schema}" (continuing; ` +
+        `set it manually or grant the role ALTER privilege): ${msg}`
+    );
+  }
 }
 
 /**
@@ -95,8 +122,8 @@ async function discoverPrimary(): Promise<pg.Pool> {
   // Single host (or no cluster): no discovery needed, that host is the target.
   if (cfg.hosts.length === 1) {
     _writeHost = cfg.hosts[0];
-    _writePool = new Pool(poolConfigFor(_writeHost, cfg));
-    attachErrorGuard(_writePool);
+    _writePool = makePool(poolConfigFor(_writeHost, cfg));
+    await applyRoleSearchPath(_writePool, cfg);
     return _writePool;
   }
 
@@ -119,8 +146,8 @@ async function discoverPrimary(): Promise<pg.Pool> {
   }
 
   _writeHost = primary.host;
-  _writePool = new Pool(poolConfigFor(_writeHost, cfg));
-  attachErrorGuard(_writePool);
+  _writePool = makePool(poolConfigFor(_writeHost, cfg));
+  await applyRoleSearchPath(_writePool, cfg);
 
   if (replica && "host" in replica) {
     _readHost = replica.host;
@@ -164,8 +191,7 @@ export async function getReplicaPool(): Promise<pg.Pool> {
   await getPool(); // ensures discovery ran and _readHost is populated
   if (!_readHost) return _writePool!;
   if (!_readPool) {
-    _readPool = new Pool(poolConfigFor(_readHost, getConfig()));
-    attachErrorGuard(_readPool);
+    _readPool = makePool(poolConfigFor(_readHost, getConfig()));
   }
   return _readPool;
 }

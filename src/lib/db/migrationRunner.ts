@@ -100,15 +100,17 @@ function getPostgresMigrationFiles(): PgMigrationFile[] {
 }
 
 /**
- * Ensure OmniRoute's schema and the migration-tracking table exist. The schema
- * is created first so the tracking table and every baseline object land there
- * (connections pin search_path=<schema>,public). Schema name is a validated
- * identifier from pgConfig, so inlining it in DDL is injection-safe.
+ * Ensure OmniRoute's schema and the migration-tracking table exist. Objects are
+ * schema-qualified (`<schema>.name`) so the runner never depends on search_path
+ * already being set — it bootstraps the schema before the role default applies.
+ * Schema name is a validated identifier from pgConfig, so inlining it is
+ * injection-safe.
  */
 async function ensureMigrationsTable(): Promise<void> {
-  await query(`CREATE SCHEMA IF NOT EXISTS ${getSchema()}`);
+  const schema = getSchema();
+  await query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
   await query(
-    `CREATE TABLE IF NOT EXISTS _omniroute_migrations (
+    `CREATE TABLE IF NOT EXISTS ${schema}._omniroute_migrations (
        filename TEXT PRIMARY KEY,
        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
      )`
@@ -118,7 +120,7 @@ async function ensureMigrationsTable(): Promise<void> {
 /** Fetch the set of already-applied migration filenames. */
 async function getAppliedFilenames(): Promise<Set<string>> {
   const result = await query<{ filename: string }>(
-    "SELECT filename FROM _omniroute_migrations ORDER BY filename"
+    `SELECT filename FROM ${getSchema()}._omniroute_migrations ORDER BY filename`
   );
   return new Set(result.rows.map((r) => r.filename));
 }
@@ -150,16 +152,21 @@ export async function runMigrations(
     return 0;
   }
 
+  const schema = getSchema();
   let count = 0;
   for (const migration of pending) {
     const sql = fs.readFileSync(migration.fullPath, "utf8").trim();
     try {
       await withTransaction(async (client) => {
+        // Scope search_path to this migration's transaction so the baseline's
+        // unqualified CREATE TABLEs land in OmniRoute's schema regardless of the
+        // role default (which a pooler may not have applied to this backend yet).
+        await client.query(`SET LOCAL search_path TO ${schema}, public`);
         if (sql) {
           await client.query(sql);
         }
         await client.query(
-          "INSERT INTO _omniroute_migrations (filename) VALUES ($1) ON CONFLICT (filename) DO NOTHING",
+          `INSERT INTO ${schema}._omniroute_migrations (filename) VALUES ($1) ON CONFLICT (filename) DO NOTHING`,
           [migration.filename]
         );
       });
@@ -191,7 +198,7 @@ export async function getMigrationStatus(_legacyDb?: unknown): Promise<{
   await ensureMigrationsTable();
 
   const result = await query<{ filename: string; applied_at: string }>(
-    "SELECT filename, applied_at FROM _omniroute_migrations ORDER BY filename"
+    `SELECT filename, applied_at FROM ${getSchema()}._omniroute_migrations ORDER BY filename`
   );
   const appliedNames = new Set(result.rows.map((r) => r.filename));
   const pending = getPostgresMigrationFiles()

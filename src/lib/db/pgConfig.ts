@@ -60,6 +60,8 @@ export interface PgRuntimeConfig {
   database?: string;
   /** Postgres schema applied via `search_path` on every connection. */
   schema: string;
+  /** Whether to `ALTER ROLE ... SET search_path` to pin the schema (default true). */
+  applyRoleSearchPath: boolean;
   ssl: PgSslConfig;
   max: number;
   connectionTimeoutMillis: number;
@@ -281,6 +283,9 @@ export function resolvePgConfig(): PgRuntimeConfig {
     password: envFirst("DB_PASSWORD", "DATABASE_PASSWORD") ?? parsed.password,
     database: envFirst("DB_DATABASE", "DATABASE_NAME") ?? parsed.database,
     schema: resolveSchema(),
+    applyRoleSearchPath:
+      (boolFromEnv("DB_APPLY_ROLE_SEARCH_PATH") ??
+        boolFromEnv("DATABASE_APPLY_ROLE_SEARCH_PATH")) !== false,
     ssl: resolveSslConfig(parsed.sslmode),
     max: intFromEnv("DATABASE_POOL_MAX", 10),
     connectionTimeoutMillis: intFromEnv("DATABASE_CONNECT_TIMEOUT_MS", 10_000),
