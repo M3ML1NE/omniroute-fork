@@ -64,27 +64,35 @@ function makePool(config: pg.PoolConfig): pg.Pool {
 }
 
 /**
- * Pin the schema by setting it as the connection role's default search_path
- * (`ALTER ROLE CURRENT_USER SET search_path TO <schema>, public`). Postgres
- * applies this server-side on every new backend, so it survives connection
- * poolers (PgBouncer/Odyssey) and their inter-transaction `DISCARD ALL` —
- * unlike the libpq startup `options` parameter (poolers reject it: "unsupported
- * startup parameter in options: search_path") or a per-connection client-side
- * `SET` (wiped by `DISCARD ALL`, and racy during pool setup). cfg.schema is a
- * validated bare identifier from pgConfig, so inlining it is injection-safe.
- * Best-effort: if the role lacks ALTER privilege we log and continue, since the
- * DBA may have already configured the default out of band.
+ * Pin the schema as the role's DEFAULT search_path via
+ * `ALTER ROLE CURRENT_USER SET search_path TO <schema>, public`, run on a
+ * dedicated throwaway connection to `host` BEFORE the real pool opens any
+ * connection. This is the only mechanism that is correct on every front:
+ *   - survives a PgBouncer/Odyssey pooler and its `DISCARD ALL` (that runs
+ *     `RESET ALL`, which resets to the role default this statement defines),
+ *   - works on direct connections,
+ *   - has no startup race: because it completes before the write pool connects,
+ *     every pooled backend inherits the default (the old bug ran it AFTER, so
+ *     already-open connections kept the stale "$user, public" path),
+ *   - uses no `connect` listener, so it avoids the pg@9 "already executing a
+ *     query" deprecation warning.
+ * `ALTER ROLE CURRENT_USER` on the role's own settings needs no special
+ * privilege. cfg.schema is a validated bare identifier, so inlining is safe.
+ * Best-effort: on failure we warn and continue (a DBA may have set it already).
  */
-async function applyRoleSearchPath(pool: pg.Pool, cfg: PgRuntimeConfig): Promise<void> {
+async function ensureRoleSearchPath(host: HostSpec, cfg: PgRuntimeConfig): Promise<void> {
   if (!cfg.applyRoleSearchPath) return;
+  const setup = new Pool({ ...poolConfigFor(host, cfg), max: 1 });
   try {
-    await pool.query(`ALTER ROLE CURRENT_USER SET search_path TO ${cfg.schema}, public`);
+    await setup.query(`ALTER ROLE CURRENT_USER SET search_path TO ${cfg.schema}, public`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     globalThis.console.warn(
       `[db] could not ALTER ROLE search_path to "${cfg.schema}" (continuing; ` +
         `set it manually or grant the role ALTER privilege): ${msg}`
     );
+  } finally {
+    await setup.end().catch(() => {});
   }
 }
 
@@ -122,8 +130,10 @@ async function discoverPrimary(): Promise<pg.Pool> {
   // Single host (or no cluster): no discovery needed, that host is the target.
   if (cfg.hosts.length === 1) {
     _writeHost = cfg.hosts[0];
+    // Set the role default BEFORE the pool opens any connection, so every
+    // pooled backend inherits the schema search_path (no startup race).
+    await ensureRoleSearchPath(_writeHost, cfg);
     _writePool = makePool(poolConfigFor(_writeHost, cfg));
-    await applyRoleSearchPath(_writePool, cfg);
     return _writePool;
   }
 
@@ -146,8 +156,9 @@ async function discoverPrimary(): Promise<pg.Pool> {
   }
 
   _writeHost = primary.host;
+  // Role default before the pool connects (see single-host branch).
+  await ensureRoleSearchPath(_writeHost, cfg);
   _writePool = makePool(poolConfigFor(_writeHost, cfg));
-  await applyRoleSearchPath(_writePool, cfg);
 
   if (replica && "host" in replica) {
     _readHost = replica.host;
