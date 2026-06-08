@@ -29,7 +29,6 @@ import { CircuitBreakerOpenError, getCircuitBreaker } from "../../shared/utils/c
 import { classify429FromError, type FailureKind } from "../../shared/utils/classify429";
 import { resolveUseUpstream429BreakerHints } from "../../shared/utils/providerHints";
 
-import { logProxyEvent } from "../../lib/proxyLogger";
 import { logTranslationEvent } from "../../lib/translatorEvents";
 import { getRuntimeProviderProfile } from "@omniroute/open-sse/services/accountFallback.ts";
 
@@ -595,36 +594,6 @@ export function safeLogEvents({
   clientRawRequest,
   tlsFingerprintUsed = false,
 }) {
-  try {
-    const rawIp =
-      clientRawRequest?.headers?.["x-forwarded-for"] ||
-      clientRawRequest?.headers?.["x-real-ip"] ||
-      clientRawRequest?.headers?.["cf-connecting-ip"] ||
-      null;
-    const rawIpValue = Array.isArray(rawIp) ? rawIp[0] : rawIp;
-    const clientIp = typeof rawIpValue === "string" ? rawIpValue.split(",")[0].trim() : null;
-
-    logProxyEvent({
-      status: result.success
-        ? "success"
-        : result.status === 408 || result.status === 504
-          ? "timeout"
-          : "error",
-      proxy: proxyInfo?.proxy || null,
-      level: proxyInfo?.level || "direct",
-      levelId: proxyInfo?.levelId || null,
-      provider,
-      targetUrl: `${provider}/${model}`,
-      clientIp,
-      latencyMs: proxyLatency,
-      error: result.success ? null : result.error || null,
-      connectionId: credentials.connectionId,
-      comboId: comboName || null,
-      account: credentials.connectionId?.slice(0, 8) || null,
-      tlsFingerprint: tlsFingerprintUsed,
-    });
-  } catch {}
-
   try {
     logTranslationEvent({
       provider,

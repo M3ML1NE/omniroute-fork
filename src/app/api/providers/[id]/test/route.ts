@@ -14,7 +14,6 @@ import { getCliRuntimeStatus } from "@/shared/services/cliRuntime";
 // Use the shared open-sse token refresh with built-in dedup/race-condition cache
 import { getAccessToken } from "@omniroute/open-sse/services/tokenRefresh.ts";
 import { saveCallLog } from "@/lib/usageDb";
-import { logProxyEvent } from "@/lib/proxyLogger";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 const buildGitLabOAuthEndpoints = (baseUrl: string) => ({
   tokenUrl: `${baseUrl}/oauth/token`,
@@ -760,24 +759,6 @@ export async function testSingleConnection(connectionId: string, validationModel
       sourceFormat: "test",
       targetFormat: "test",
     }).catch(() => {});
-  } catch {}
-
-  // Log to Proxy tab (proxy_logs table)
-  try {
-    logProxyEvent({
-      status: result.valid ? "success" : "error",
-      proxy: proxyInfo?.proxy || null,
-      level: proxyInfo?.level || "provider-test",
-      levelId: proxyInfo?.levelId || null,
-      provider,
-      targetUrl: `${provider}/connection-test`,
-      latencyMs,
-      error: result.valid ? null : result.error || null,
-      connectionId,
-      comboId: null,
-      account: connectionId?.slice(0, 8) || null,
-      tlsFingerprint: false,
-    });
   } catch {}
 
   return {

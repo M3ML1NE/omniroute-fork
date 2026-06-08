@@ -8,7 +8,7 @@ import {
   validateProxyUrl,
   upsertUpstreamProxyConfig,
   getUpstreamProxyConfig,
-} from "@/lib/db/upstreamProxy";
+} from "@/lib/localDb";
 import { getProviderConnections } from "@/lib/db/providers";
 const clearCliproxyapiUrlCache = (): void => {};
 import {

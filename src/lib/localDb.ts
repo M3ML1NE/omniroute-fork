@@ -159,26 +159,6 @@ export {
 export type { UserDatabaseSettings } from "./db/databaseSettings";
 
 export {
-  // Proxy Registry
-  listProxies,
-  getProxyById,
-  createProxy,
-  createProxyAndAssign,
-  updateProxy,
-  updateProxyAndAssign,
-  upsertProxy,
-  deleteProxyById,
-  getProxyAssignments,
-  getProxyWhereUsed,
-  assignProxyToScope,
-  resolveProxyForConnectionFromRegistry,
-  resolveProxyForProvider,
-  migrateLegacyProxyConfigToRegistry,
-  getProxyHealthStats,
-  bulkAssignProxyToScope,
-} from "./db/proxies";
-
-export {
   // Backup Management
   backupDbFile,
   cleanupDbBackups,
@@ -262,17 +242,6 @@ export {
 } from "./db/syncTokens";
 
 export {
-  getUpstreamProxyConfigs,
-  getUpstreamProxyConfig,
-  upsertUpstreamProxyConfig,
-  updateUpstreamProxyConfig,
-  deleteUpstreamProxyConfig,
-  getProvidersByMode,
-  getFallbackChainForProvider,
-  validateProxyUrl,
-} from "./db/upstreamProxy";
-
-export {
   getProviderLimitsCache,
   getAllProviderLimitsCache,
   setProviderLimitsCache,
@@ -308,19 +277,6 @@ export {
 
 export type { ReasoningCacheEntry, ReasoningCacheStats } from "./db/reasoningCache";
 
-export {
-  // 1proxy Integration (#1788)
-  listOneproxyProxies,
-  getOneproxyStats,
-  upsertOneproxyProxy,
-  getOneproxyProxyById,
-  deleteOneproxyProxy,
-  clearAllOneproxyProxies,
-  getOneproxyProxyForRotation,
-  markOneproxyProxyFailed,
-} from "./db/oneproxy";
-
-export type { OneproxyProxyRecord, OneproxyStats } from "./db/oneproxy";
 
 export {
   getSessionAccountAffinity,
@@ -434,19 +390,6 @@ export type {
   RelayTokenWithSecret,
 } from "./db/relayProxies";
 
-export {
-  upsertFreeProxy,
-  listFreeProxies,
-  listFreeProxiesBySource,
-  getFreeProxyById,
-  markFreeProxyInPool,
-  promoteFreeProxyToPool,
-  deleteFreeProxy,
-  clearFreeProxiesBySource,
-  getFreeProxyStats,
-} from "./db/freeProxies";
-
-export type { FreeProxyRecord, FreeProxyStats } from "./db/freeProxies";
 
 export {
   // Per-API-Key Token Limits (migration 073)
@@ -477,5 +420,29 @@ export {
   deletePlugin,
   pluginExists,
 } from "./db/plugins";
+
+// ── Proxy subsystem removed (GigaChat fork) ──────────────────────────────────
+// The proxy/1proxy/upstream-proxy registry was deleted. These stubs preserve the
+// call signatures of the old DB helpers so the many upstream-fetch call sites
+// keep compiling; with no proxy configured they all resolve to a direct
+// connection (null). Outbound proxying, if needed, is handled by HTTPS_PROXY env
+// in open-sse/utils/proxyFetch.
+export async function resolveProxyForProvider(_provider?: string): Promise<null> {
+  return null;
+}
+export async function getUpstreamProxyConfig(
+  _providerId?: string
+): Promise<Record<string, unknown> | null> {
+  return null;
+}
+export async function getUpstreamProxyConfigs(): Promise<Record<string, unknown>[]> {
+  return [];
+}
+export async function upsertUpstreamProxyConfig(_cfg?: unknown): Promise<void> {
+  /* no-op: upstream-proxy registry removed */
+}
+export function validateProxyUrl(_url?: string): { valid: boolean; error?: string } {
+  return { valid: true };
+}
 
 export type { PluginRow, PluginCreateInput } from "./db/plugins";
