@@ -5,13 +5,6 @@ import {
   TOKEN_EXPIRY_BUFFER_MS as BUFFER_MS,
   getRefreshLeadMs as _getRefreshLeadMs,
   refreshAccessToken as _refreshAccessToken,
-  refreshClaudeOAuthToken as _refreshClaudeOAuthToken,
-  refreshGoogleToken as _refreshGoogleToken,
-  refreshQwenToken as _refreshQwenToken,
-  refreshCodexToken as _refreshCodexToken,
-  refreshQoderToken as _refreshQoderToken,
-  refreshGitHubToken as _refreshGitHubToken,
-  refreshCopilotToken as _refreshCopilotToken,
   getAccessToken as _getAccessToken,
   refreshTokenByProvider as _refreshTokenByProvider,
   formatProviderCredentials as _formatProviderCredentials,
@@ -35,46 +28,6 @@ export const refreshAccessToken = async (
 ) => {
   const proxy = await resolveProxyForProvider(provider);
   return _refreshAccessToken(provider, refreshToken, credentials, log, proxy);
-};
-
-export const refreshClaudeOAuthToken = async (refreshToken: string) => {
-  const proxy = await resolveProxyForProvider("claude");
-  return _refreshClaudeOAuthToken(refreshToken, log, proxy);
-};
-
-export const refreshGoogleToken = async (
-  refreshToken: string,
-  clientId: string,
-  clientSecret: string,
-  provider: string = "gemini"
-) => {
-  const proxy = await resolveProxyForProvider(provider);
-  return _refreshGoogleToken(refreshToken, clientId, clientSecret, log, proxy);
-};
-
-export const refreshQwenToken = async (refreshToken: string) => {
-  const proxy = await resolveProxyForProvider("qwen");
-  return _refreshQwenToken(refreshToken, log, proxy);
-};
-
-export const refreshCodexToken = async (refreshToken: string) => {
-  const proxy = await resolveProxyForProvider("codex");
-  return _refreshCodexToken(refreshToken, log, proxy);
-};
-
-export const refreshQoderToken = async (refreshToken: string) => {
-  const proxy = await resolveProxyForProvider("qoder");
-  return _refreshQoderToken(refreshToken, log, proxy);
-};
-
-export const refreshGitHubToken = async (refreshToken: string) => {
-  const proxy = await resolveProxyForProvider("github");
-  return _refreshGitHubToken(refreshToken, log, proxy);
-};
-
-export const refreshCopilotToken = async (githubAccessToken: string) => {
-  const proxy = await resolveProxyForProvider("github");
-  return _refreshCopilotToken(githubAccessToken, log, proxy);
 };
 
 export const getAccessToken = async (
@@ -202,55 +155,5 @@ export async function checkAndRefreshToken(provider: string, credentials: any) {
     }
   }
 
-  // Check GitHub copilot token expiry
-  if (provider === "github" && updatedCredentials.providerSpecificData?.copilotTokenExpiresAt) {
-    const copilotExpiresAt = updatedCredentials.providerSpecificData.copilotTokenExpiresAt * 1000;
-    const now = Date.now();
-
-    if (copilotExpiresAt - now < TOKEN_EXPIRY_BUFFER_MS) {
-      log.info("TOKEN_REFRESH", "Copilot token expiring soon, refreshing proactively", {
-        provider,
-        expiresIn: Math.round((copilotExpiresAt - now) / 1000),
-      });
-
-      const copilotToken = await refreshCopilotToken(updatedCredentials.accessToken);
-      if (copilotToken) {
-        await updateProviderCredentials(updatedCredentials.connectionId, {
-          providerSpecificData: {
-            ...updatedCredentials.providerSpecificData,
-            copilotToken: copilotToken.token,
-            copilotTokenExpiresAt: copilotToken.expiresAt,
-          },
-        });
-
-        updatedCredentials.providerSpecificData = {
-          ...updatedCredentials.providerSpecificData,
-          copilotToken: copilotToken.token,
-          copilotTokenExpiresAt: copilotToken.expiresAt,
-        };
-        // Sync to top-level so buildHeaders() picks up the fresh token
-        updatedCredentials.copilotToken = copilotToken.token;
-      }
-    }
-  }
-
   return updatedCredentials;
-}
-
-// Local-specific: Refresh GitHub and Copilot tokens together
-export async function refreshGitHubAndCopilotTokens(credentials: any) {
-  const newGitHubCredentials = await refreshGitHubToken(credentials.refreshToken);
-  if (newGitHubCredentials?.accessToken) {
-    const copilotToken = await refreshCopilotToken(newGitHubCredentials.accessToken);
-    if (copilotToken) {
-      return {
-        ...newGitHubCredentials,
-        providerSpecificData: {
-          copilotToken: copilotToken.token,
-          copilotTokenExpiresAt: copilotToken.expiresAt,
-        },
-      };
-    }
-  }
-  return newGitHubCredentials;
 }
