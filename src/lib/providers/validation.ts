@@ -82,15 +82,6 @@ function normalizeAzureOpenAIBaseUrl(baseUrl: string) {
     .replace(/\/openai\/deployments\/[^/]+\/chat\/completions.*$/i, "");
 }
 
-function normalizeAnthropicBaseUrl(baseUrl: string) {
-  const normalized = baseUrl || "";
-  // Strip common API suffixes for anthropic-compatible providers
-  return normalized
-    .replace(/\/messages\/?$/, "")
-    .replace(/\/chat\/completions\/?$/, "")
-    .replace(/\/responses\/?$/, "");
-}
-
 function addModelsSuffix(baseUrl: string) {
   const normalized = normalizeBaseUrl(baseUrl);
   if (!normalized) return "";
@@ -2277,94 +2268,7 @@ async function validateOpenAICompatibleProvider({ apiKey, providerSpecificData =
   }
 }
 
-async function validateAnthropicCompatibleProvider({
-  apiKey,
-  providerSpecificData = {},
-  isLocal = false,
-}: any) {
-  let baseUrl = normalizeAnthropicBaseUrl(providerSpecificData.baseUrl);
-  if (!baseUrl) {
-    return { valid: false, error: "No base URL configured for Anthropic compatible provider" };
-  }
-
-  const headers = applyCustomUserAgent(
-    {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    providerSpecificData
-  );
-
-  // Step 1: Try GET /models
-  try {
-    const modelsPath = providerSpecificData?.modelsPath || "/models";
-    const modelsUrl = new URL(baseUrl).href.replace(/\/$/, "") + modelsPath;
-    const modelsRes = await validationRead(modelsUrl, {
-        method: "GET",
-        headers,
-      },
-      isLocal
-    );
-
-    if (modelsRes.ok) {
-      return { valid: true, error: null };
-    }
-
-    if (modelsRes.status === 401 || modelsRes.status === 403) {
-      return { valid: false, error: "Invalid API key" };
-    }
-  } catch {
-    // /models fetch failed — fall through to messages test
-  }
-
-  // Step 2: Fallback — try a minimal messages request
-  const testModelId = providerSpecificData?.validationModelId || "claude-3-5-sonnet-20241022";
-  try {
-    const messagesPath = providerSpecificData?.chatPath || "/messages";
-    const messagesUrl = new URL(baseUrl).href.replace(/\/$/, "") + messagesPath;
-    const messagesRes = await validationWrite(
-      messagesUrl,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: testModelId,
-          max_tokens: 1,
-          messages: [{ role: "user", content: "test" }],
-        }),
-      },
-      isLocal
-    );
-
-    if (messagesRes.status === 401 || messagesRes.status === 403) {
-      return { valid: false, error: "Invalid API key" };
-    }
-
-    // Any other response (200, 400, 422, etc.) means auth passed
-    return { valid: true, error: null };
-  } catch (error: any) {
-    return toValidationErrorResult(error);
-  }
-}
-
 // ── Search provider validators (factored) ──
-
-async function validateGenericProvider(
-  baseUrl: string,
-  apiKey: string,
-  providerSpecificData: any = {},
-  provider: string,
-  isLocal: boolean = false
-) {
-  const config = SEARCH_VALIDATOR_CONFIGS[provider];
-  if (!config) {
-    return { valid: false, error: "Validator not found", unsupported: true };
-  }
-  const { url, init } = config(apiKey, providerSpecificData);
-  return validateSearchProvider(url, init, providerSpecificData, isLocal);
-}
 
 async function validateSearchProvider(
   url: string,
