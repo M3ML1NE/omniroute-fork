@@ -3,34 +3,14 @@
  */
 
 import { PROVIDERS } from "../config/constants.ts";
-import {
-  getAntigravityFetchAvailableModelsUrls,
-  ANTIGRAVITY_BASE_URLS,
-} from "../config/antigravityUpstream.ts";
-import { isUserCallableAntigravityModelId } from "../config/antigravityModelAliases.ts";
 import { getGlmQuotaUrl } from "../config/glmProvider.ts";
 import { getGitHubCopilotInternalUserHeaders } from "../config/providerHeaderProfiles.ts";
 import { safePercentage } from "@/shared/utils/formatting";
 // Quota fetchers removed (Wave 1 cleanup) — stubs inline below
-import {
-  applyAntigravityClientProfileHeaders,
-  getAntigravityBootstrapHeaders,
-  getAntigravityClientProfile,
-} from "./antigravityClientProfile.ts";
-import {
-  antigravityUserAgent,
-  getAntigravityHeaders,
-  getAntigravityLoadCodeAssistMetadata,
-} from "./antigravityHeaders.ts";
-// Stripdown: antigravity / claudeIdentity executors removed; stub helpers locally.
-const getAntigravityRemainingCredits = (_accountId: string): number | null => null;
-const updateAntigravityRemainingCredits = (_accountId: string, _balance: number): void => {};
-import { getCreditsMode } from "./antigravityCredits.ts";
 const CLAUDE_CODE_VERSION = "0.0.0";
 const fetchClaudeBootstrap = async (
   _accessToken: string,
 ): Promise<{ organization_rate_limit_tier?: string } | null> => null;
-import { generateAntigravityRequestId, getAntigravitySessionId } from "./antigravityIdentity.ts";
 import {
   extractCodeAssistOnboardTierId,
   extractCodeAssistSubscriptionTier,
@@ -45,21 +25,6 @@ const GEMINI_CLI_USAGE_URL =
 const CODEWHISPERER_BASE_URL =
   process.env.OMNIROUTE_CODEWHISPERER_BASE_URL ?? "https://codewhisperer.us-east-1.amazonaws.com";
 
-// Antigravity API config (credentials from PROVIDERS via credential loader)
-const ANTIGRAVITY_CONFIG = {
-  quotaApiUrls: getAntigravityFetchAvailableModelsUrls(),
-  loadProjectApiUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist",
-  tokenUrl: "https://oauth2.googleapis.com/token",
-  get clientId() {
-    return PROVIDERS.antigravity.clientId;
-  },
-  get clientSecret() {
-    return PROVIDERS.antigravity.clientSecret;
-  },
-  get userAgent() {
-    return antigravityUserAgent();
-  },
-};
 
 // Codex (OpenAI) API config
 const CODEX_CONFIG = {
@@ -133,7 +98,7 @@ type UsageQuota = {
   /**
    * True when the upstream provider reported the remaining fraction. False
    * means the API didn't include the field and the 0 value here is a sentinel,
-   * NOT a confirmed-exhausted state. Antigravity-specific.
+   * NOT a confirmed-exhausted state. Gemini CLI-specific.
    */
   fractionReported?: boolean;
   displayName?: string;
@@ -1199,7 +1164,6 @@ async function getCursorUsage(accessToken: string, providerSpecificData?: unknow
 export const USAGE_FETCHER_PROVIDERS = [
   "github",
   "gemini-cli",
-  "antigravity",
   "claude",
   "codex",
   "cursor",
@@ -1242,8 +1206,6 @@ export async function getUsageForProvider(
       return await getGitHubUsage(accessToken, providerSpecificData);
     case "gemini-cli":
       return await getGeminiUsage(accessToken, providerSpecificData, projectId);
-    case "antigravity":
-      return await getAntigravityUsage(accessToken, providerSpecificData, projectId, id, options);
     case "claude":
       return await getClaudeUsage(accessToken);
     case "codex":
@@ -1533,8 +1495,8 @@ const GEMINI_CLI_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Gemini CLI Usage — fetch per-model quota from Cloud Code Assist API.
- * Gemini CLI and Antigravity share the same upstream (cloudcode-pa.googleapis.com),
- * so this follows the same pattern as getAntigravityUsage().
+ * Gemini CLI uses the cloudcode-pa.googleapis.com upstream,
+ * upstream usage pattern.
  */
 async function getGeminiUsage(
   accessToken?: string,
@@ -1655,94 +1617,10 @@ async function getGeminiCliSubscriptionInfo(accessToken: string): Promise<unknow
 }
 
 /**
- * Map Gemini CLI subscription tier to display label (same tiers as Antigravity).
+ * Map Gemini CLI subscription tier to display label.
  */
 function getGeminiCliPlanLabel(subscriptionInfo: unknown): string {
   return mapCodeAssistSubscriptionToPlanLabel(subscriptionInfo);
-}
-
-// ── Antigravity subscription info cache ──────────────────────────────────────
-// Prevents duplicate loadCodeAssist calls within the same quota cycle.
-// Key: truncated accessToken → { data, fetchedAt }
-const _antigravitySubCache = new Map<string, SubscriptionCacheEntry>();
-const ANTIGRAVITY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const ANTIGRAVITY_MODELS_CACHE_TTL_MS = 60 * 1000;
-const ANTIGRAVITY_CREDIT_PROBE_TTL_MS = 5 * 60 * 1000;
-const _antigravityAvailableModelsCache = new Map<string, { data: unknown; fetchedAt: number }>();
-const _antigravityAvailableModelsInflight = new Map<string, Promise<unknown>>();
-const _antigravityCreditProbeCache = new Map<string, { data: number | null; fetchedAt: number }>();
-const _antigravityCreditProbeInflight = new Map<string, Promise<number | null>>();
-
-interface AntigravityUsageOptions {
-  forceRefresh?: boolean;
-}
-
-function buildAntigravityUsageCacheKey(accessToken: string, projectId?: string | null): string {
-  return `${accessToken.substring(0, 16)}:${projectId || "default"}`;
-}
-
-async function fetchAntigravityAvailableModelsCached(
-  accessToken: string,
-  projectId?: string | null,
-  options: AntigravityUsageOptions = {}
-): Promise<unknown> {
-  if (!accessToken) throw new Error("Access token is required");
-
-  const cacheKey = buildAntigravityUsageCacheKey(accessToken, projectId);
-  const cached = _antigravityAvailableModelsCache.get(cacheKey);
-  if (
-    !options.forceRefresh &&
-    cached &&
-    Date.now() - cached.fetchedAt < ANTIGRAVITY_MODELS_CACHE_TTL_MS
-  ) {
-    return cached.data;
-  }
-
-  const inflight = _antigravityAvailableModelsInflight.get(cacheKey);
-  if (inflight) return inflight;
-
-  const promise = (async () => {
-    let response: Response | null = null;
-    let lastError: Error | null = null;
-
-    for (const quotaApiUrl of ANTIGRAVITY_CONFIG.quotaApiUrls) {
-      try {
-        response = await fetch(quotaApiUrl, {
-          method: "POST",
-          headers: getAntigravityHeaders("fetchAvailableModels", accessToken),
-          body: JSON.stringify(projectId ? { project: projectId } : {}),
-          signal: AbortSignal.timeout(10000),
-        });
-
-        if (response.ok || response.status === 401 || response.status === 403) {
-          break;
-        }
-      } catch (error) {
-        lastError = error as Error;
-      }
-    }
-
-    if (!response) {
-      throw lastError || new Error("Antigravity API unavailable");
-    }
-
-    if (response.status === 403) {
-      return { __antigravityForbidden: true };
-    }
-
-    if (!response.ok) {
-      throw new Error(`Antigravity API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    _antigravityAvailableModelsCache.set(cacheKey, { data, fetchedAt: Date.now() });
-    return data;
-  })().finally(() => {
-    _antigravityAvailableModelsInflight.delete(cacheKey);
-  });
-
-  _antigravityAvailableModelsInflight.set(cacheKey, promise);
-  return promise;
 }
 
 function extractCodeAssistTierId(subscription: JsonRecord): string {
@@ -1820,363 +1698,6 @@ function mapCodeAssistSubscriptionToPlanLabel(subscriptionInfo: unknown): string
   if (currentTier.upgradeSubscriptionType) return "Free";
   if (tierName) return tierName.charAt(0).toUpperCase() + tierName.slice(1).toLowerCase();
   return "Free";
-}
-
-const KNOWN_ANTIGRAVITY_PLAN_LABELS = new Set([
-  "Ultra",
-  "Pro",
-  "Enterprise",
-  "Business",
-  "Plus",
-  "Lite",
-]);
-
-/**
- * Map raw loadCodeAssist tier data to short display labels (Antigravity Manager parity).
- */
-function getAntigravityPlanLabel(subscriptionInfo: unknown, fallbackInfo?: unknown): string {
-  const livePlan = mapCodeAssistSubscriptionToPlanLabel(subscriptionInfo);
-  const fallbackPlan = mapCodeAssistSubscriptionToPlanLabel(fallbackInfo);
-
-  if (KNOWN_ANTIGRAVITY_PLAN_LABELS.has(livePlan)) return livePlan;
-  if (KNOWN_ANTIGRAVITY_PLAN_LABELS.has(fallbackPlan)) return fallbackPlan;
-  if (livePlan !== "Free") return livePlan;
-  return fallbackPlan !== "Free" ? fallbackPlan : livePlan;
-}
-
-/**
- * Proactive credit balance probe for Antigravity.
- *
- * Fires a minimal streamGenerateContent request with GOOGLE_ONE_AI credits enabled
- * and maxOutputTokens=1 to extract the `remainingCredits` field from the SSE stream.
- * This uses ~1 credit but lets us show the balance on the dashboard without waiting
- * for a real user request.
- *
- * Returns the credit balance, or null if the probe failed.
- */
-async function probeAntigravityCreditBalance(
-  accessToken: string,
-  accountId: string,
-  projectId?: string | null,
-  options: AntigravityUsageOptions = {},
-  providerSpecificData: JsonRecord = {}
-): Promise<number | null> {
-  if (!accessToken) return null;
-
-  const cacheKey = buildAntigravityUsageCacheKey(accessToken, projectId || accountId);
-  const cached = _antigravityCreditProbeCache.get(cacheKey);
-  if (
-    !options.forceRefresh &&
-    cached &&
-    Date.now() - cached.fetchedAt < ANTIGRAVITY_CREDIT_PROBE_TTL_MS
-  ) {
-    return cached.data;
-  }
-
-  const inflight = _antigravityCreditProbeInflight.get(cacheKey);
-  if (inflight) return inflight;
-
-  const promise = probeAntigravityCreditBalanceUncached(
-    accessToken,
-    accountId,
-    projectId,
-    providerSpecificData
-  )
-    .then(
-      (data) => {
-        _antigravityCreditProbeCache.set(cacheKey, { data, fetchedAt: Date.now() });
-        return data;
-      },
-      (error) => {
-        _antigravityCreditProbeCache.set(cacheKey, { data: null, fetchedAt: Date.now() });
-        throw error;
-      }
-    )
-    .finally(() => {
-      _antigravityCreditProbeInflight.delete(cacheKey);
-    });
-
-  _antigravityCreditProbeInflight.set(cacheKey, promise);
-  return promise;
-}
-
-async function probeAntigravityCreditBalanceUncached(
-  accessToken: string,
-  accountId: string,
-  projectId?: string | null,
-  providerSpecificData: JsonRecord = {}
-): Promise<number | null> {
-  try {
-    if (!projectId) return null;
-
-    // Try all base URLs (some accounts only work with specific endpoints)
-    for (const baseUrl of ANTIGRAVITY_BASE_URLS) {
-      const url = `${baseUrl}/v1internal:streamGenerateContent?alt=sse`;
-
-      const sessionId = getAntigravitySessionId({ connectionId: accountId, projectId });
-      const body = {
-        project: projectId,
-        model: "gemini-2-flash",
-        userAgent: "antigravity",
-        requestType: "agent",
-        requestId: generateAntigravityRequestId(),
-        enabledCreditTypes: ["GOOGLE_ONE_AI"],
-        request: {
-          model: "gemini-2-flash",
-          contents: [{ role: "user", parts: [{ text: "hi" }] }],
-          generationConfig: { maxOutputTokens: 1 },
-          sessionId,
-        },
-      };
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "text/event-stream",
-      };
-      applyAntigravityClientProfileHeaders(
-        headers,
-        { connectionId: accountId, projectId, providerSpecificData },
-        body
-      );
-
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(10_000),
-        });
-
-        if (!res.ok) continue;
-
-        // Read the full SSE response and scan for remainingCredits
-        const rawSSE = await res.text();
-        const lines = rawSSE.split("\n");
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(payload);
-            if (Array.isArray(parsed?.remainingCredits)) {
-              const googleCredit = parsed.remainingCredits.find(
-                (c: { creditType?: string }) => c?.creditType === "GOOGLE_ONE_AI"
-              );
-              if (googleCredit) {
-                const balance = parseInt(googleCredit.creditAmount, 10);
-                if (!isNaN(balance)) {
-                  updateAntigravityRemainingCredits(accountId, balance);
-                  return balance;
-                }
-              }
-            }
-          } catch {
-            // Skip malformed SSE lines
-          }
-        }
-      } catch {
-        // Individual endpoint failure; try next
-      }
-    }
-
-    return null;
-  } catch {
-    // Probe is best-effort — don't let it break the usage fetch
-    return null;
-  }
-}
-
-/**
- * Antigravity Usage - Fetch quota from Google Cloud Code API
- * Uses fetchAvailableModels API which returns ALL models (including Claude)
- * with per-model quotaInfo (remainingFraction, resetTime).
- * retrieveUserQuota only returns Gemini models — not suitable for Antigravity.
- */
-async function getAntigravityUsage(
-  accessToken?: string,
-  providerSpecificData?: JsonRecord,
-  connectionProjectId?: string,
-  connectionId?: string,
-  options: AntigravityUsageOptions = {}
-) {
-  if (!accessToken) {
-    return { plan: "Free", message: "Antigravity access token not available." };
-  }
-
-  let subscriptionInfo: unknown = null;
-  try {
-    subscriptionInfo = await getAntigravitySubscriptionInfoCached(
-      accessToken,
-      providerSpecificData,
-      options
-    );
-    const savedProjectId =
-      typeof providerSpecificData?.projectId === "string" && providerSpecificData.projectId.trim()
-        ? providerSpecificData.projectId.trim()
-        : null;
-    const subscriptionProject = toRecord(subscriptionInfo).cloudaicompanionProject;
-    const projectId =
-      savedProjectId ||
-      connectionProjectId ||
-      (typeof subscriptionProject === "string"
-        ? subscriptionProject
-        : typeof toRecord(subscriptionProject).id === "string"
-          ? (toRecord(subscriptionProject).id as string)
-          : null);
-
-    // Derive accountId for credit balance cache.
-    // Must match executor key: credentials.connectionId
-    const accountId: string = connectionId || "unknown";
-
-    // Read cached credit balance (hydrated from DB on first access)
-    let creditBalance = getAntigravityRemainingCredits(accountId);
-
-    // If no cached balance and credits mode is enabled, fire a minimal probe
-    const creditsMode = getCreditsMode();
-    if ((options.forceRefresh || creditBalance === null) && creditsMode !== "off") {
-      creditBalance = await probeAntigravityCreditBalance(
-        accessToken,
-        accountId,
-        projectId,
-        options,
-        providerSpecificData || {}
-      );
-    }
-
-    const data = await fetchAntigravityAvailableModelsCached(accessToken, projectId, options);
-    const dataObj = toRecord(data);
-    if (dataObj.__antigravityForbidden === true) {
-      return { message: "Antigravity access forbidden. Check subscription." };
-    }
-    const modelEntries = toRecord(dataObj.models);
-    const quotas: Record<string, UsageQuota> = {};
-
-    // Parse per-model quota info from fetchAvailableModels response.
-    for (const [modelKey, infoValue] of Object.entries(modelEntries)) {
-      const info = toRecord(infoValue);
-      const quotaInfo = toRecord(info.quotaInfo);
-
-      // Skip internal, excluded, and models without quota info
-      if (
-        info.isInternal === true ||
-        !isUserCallableAntigravityModelId(modelKey) ||
-        Object.keys(quotaInfo).length === 0
-      ) {
-        continue;
-      }
-
-      const rawFraction = toNumber(quotaInfo.remainingFraction, -1);
-      const resetAt = parseResetTime(quotaInfo.resetTime);
-      // Distinguish "upstream did not report remainingFraction" from "remaining is 0%".
-      // A schema drift in Antigravity's quota API (very plausible — internal Google product)
-      // would otherwise silently mark every model as exhausted across the dashboard.
-      const fractionReported = rawFraction >= 0;
-      if (!fractionReported) {
-        console.warn(
-          `[Antigravity] model ${modelKey} returned no remainingFraction — quota unknown`
-        );
-      }
-      const remainingFraction = fractionReported ? Math.max(0, Math.min(1, rawFraction)) : 0;
-      // Models with no resetTime AND a reported full fraction are unlimited
-      // (e.g. tab-completion models). Unreported fraction is NEVER unlimited.
-      const isUnlimited = fractionReported && !resetAt && remainingFraction >= 1;
-      const remainingPercentage = remainingFraction * 100;
-      const QUOTA_NORMALIZED_BASE = 1000;
-      const total = QUOTA_NORMALIZED_BASE;
-      const remaining = Math.round(total * remainingFraction);
-      const used = isUnlimited ? 0 : Math.max(0, total - remaining);
-
-      quotas[modelKey] = {
-        used,
-        total: isUnlimited ? 0 : total,
-        resetAt,
-        remainingPercentage: isUnlimited ? 100 : remainingPercentage,
-        unlimited: isUnlimited,
-        fractionReported,
-      };
-    }
-
-    return {
-      plan: getAntigravityPlanLabel(subscriptionInfo, providerSpecificData),
-      quotas: {
-        ...quotas,
-        ...(creditBalance !== null && {
-          credits: {
-            used: 0,
-            total: 0,
-            remaining: creditBalance,
-            unlimited: false,
-            resetAt: null,
-          },
-        }),
-      },
-      subscriptionInfo,
-    };
-  } catch (error) {
-    return {
-      plan: getAntigravityPlanLabel(subscriptionInfo, providerSpecificData),
-      subscriptionInfo,
-      message: `Antigravity error: ${(error as Error).message}`,
-    };
-  }
-}
-
-/**
- * Get Antigravity subscription info (cached, 5 min TTL)
- * Prevents duplicate loadCodeAssist calls within the same quota cycle.
- */
-async function getAntigravitySubscriptionInfoCached(
-  accessToken: string,
-  providerSpecificData?: JsonRecord,
-  options: AntigravityUsageOptions = {}
-): Promise<unknown> {
-  const profile = getAntigravityClientProfile({ providerSpecificData });
-  const cacheKey = `${accessToken.substring(0, 16)}:${profile}`;
-
-  if (options.forceRefresh) {
-    _antigravitySubCache.delete(cacheKey);
-  } else {
-    const cached = _antigravitySubCache.get(cacheKey);
-    if (cached && Date.now() - cached.fetchedAt < ANTIGRAVITY_CACHE_TTL_MS) {
-      return cached.data;
-    }
-  }
-
-  const data = await getAntigravitySubscriptionInfo(accessToken, providerSpecificData);
-  if (data != null) {
-    _antigravitySubCache.set(cacheKey, { data, fetchedAt: Date.now() });
-  }
-  return data;
-}
-
-/**
- * Get Antigravity subscription info using correct Antigravity headers.
- * Must match the headers used in providers.js postExchange (not CLI headers).
- */
-async function getAntigravitySubscriptionInfo(
-  accessToken: string,
-  providerSpecificData?: JsonRecord
-): Promise<unknown | null> {
-  try {
-    const profile = getAntigravityClientProfile({ providerSpecificData });
-    const response = await fetch(ANTIGRAVITY_CONFIG.loadProjectApiUrl, {
-      method: "POST",
-      headers:
-        profile === "harness"
-          ? getAntigravityBootstrapHeaders(profile, accessToken)
-          : getAntigravityHeaders("loadCodeAssist", accessToken),
-      body: JSON.stringify({ metadata: getAntigravityLoadCodeAssistMetadata() }),
-    });
-
-    if (!response.ok) return null;
-
-    return await response.json();
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -2763,7 +2284,6 @@ export const __testing = {
   formatGitHubQuotaSnapshot,
   inferGitHubPlanName,
   getGeminiCliPlanLabel,
-  getAntigravityPlanLabel,
   extractCodeAssistSubscriptionTier,
   extractCodeAssistOnboardTierId,
   getMiniMaxPlanLabel,

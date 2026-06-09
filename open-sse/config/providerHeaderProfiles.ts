@@ -1,4 +1,3 @@
-import { antigravityUserAgent } from "../services/antigravityHeaders.ts";
 
 export const GITHUB_COPILOT_API_VERSION = "2025-04-01";
 export const GITHUB_COPILOT_EDITOR_VERSION = "vscode/1.117.0";
@@ -147,16 +146,6 @@ export function getQoderDashscopeCompatHeaders(): Record<string, string> {
     "x-stainless-arch": normalizeStainlessArch(),
     "x-stainless-lang": QWEN_STAINLESS_LANG,
     "x-stainless-os": normalizeStainlessPlatform(),
-  };
-}
-
-export function getAntigravityUserAgent(): string {
-  return antigravityUserAgent();
-}
-
-export function getAntigravityProviderHeaders(): Record<string, string> {
-  return {
-    "User-Agent": getAntigravityUserAgent(),
   };
 }
 

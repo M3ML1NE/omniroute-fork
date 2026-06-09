@@ -20,19 +20,12 @@ import {
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { getStaticQoderModels } from "@omniroute/open-sse/services/qoderCli.ts";
-import { getAntigravityHeaders } from "@omniroute/open-sse/services/antigravityHeaders.ts";
-import { ensureAntigravityProjectAssigned } from "@omniroute/open-sse/services/antigravityProjectBootstrap.ts";
-import {
-  getAntigravityModelsDiscoveryUrls,
-  getAntigravityFetchAvailableModelsUrls,
-} from "@omniroute/open-sse/config/antigravityUpstream.ts";
 import {
   buildGlmCodingHeaders,
   buildGlmModelsUrl,
 } from "@omniroute/open-sse/config/glmProvider.ts";
 import { getImageProvider } from "@omniroute/open-sse/config/imageRegistry.ts";
 import { getVideoProvider } from "@omniroute/open-sse/config/videoRegistry.ts";
-import { resolveAntigravityVersion } from "@omniroute/open-sse/services/antigravityVersion.ts";
 import {
   discoverBedrockNativeModels,
   isBedrockNativeApiError,
@@ -56,12 +49,6 @@ import {
   WATSONX_DEFAULT_BASE_URL,
   buildWatsonxModelsUrl,
 } from "@omniroute/open-sse/config/watsonx.ts";
-import {
-  getClientVisibleAntigravityModelName,
-  isUserCallableAntigravityModelId,
-  toClientAntigravityModelId,
-} from "@omniroute/open-sse/config/antigravityModelAliases.ts";
-import { normalizeAntigravityClientProfile } from "@/shared/constants/antigravityClientProfile";
 import { getEmbeddingProvider } from "@omniroute/open-sse/config/embeddingRegistry.ts";
 import { getRerankProvider } from "@omniroute/open-sse/config/rerankRegistry.ts";
 import {
@@ -76,10 +63,6 @@ import {
 import { fetchCursorAgentModels } from "@/lib/providerModels/cursorAgent";
 
 type JsonRecord = Record<string, unknown>;
-const antigravityDiscoveryInflight = new Map<
-  string,
-  Promise<Array<{ id: string; name: string }>>
->();
 
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
@@ -161,124 +144,6 @@ function buildNamedOpenAiStyleHeaders(
   }
 
   return headers;
-}
-
-function normalizeAntigravityModelsResponse(data: unknown): Array<{ id: string; name: string }> {
-  const payload = asRecord(data).models;
-
-  if (Array.isArray(payload)) {
-    return payload
-      .map((value) => {
-        const item = asRecord(value);
-        const id =
-          typeof item.id === "string"
-            ? item.id
-            : typeof item.name === "string"
-              ? item.name
-              : typeof item.model === "string"
-                ? item.model
-                : "";
-        const name =
-          typeof item.displayName === "string"
-            ? item.displayName
-            : typeof item.name === "string"
-              ? item.name
-              : id;
-        return id ? { id, name } : null;
-      })
-      .filter((value): value is { id: string; name: string } => Boolean(value));
-  }
-
-  const modelsById = asRecord(payload);
-  return Object.entries(modelsById)
-    .map(([id, value]) => {
-      const item = asRecord(value);
-      const name =
-        typeof item.displayName === "string"
-          ? item.displayName
-          : typeof item.name === "string"
-            ? item.name
-            : id;
-      return id ? { id, name } : null;
-    })
-    .filter((value): value is { id: string; name: string } => Boolean(value));
-}
-
-function filterUserCallableAntigravityModels(models: Array<{ id: string; name: string }>) {
-  return models.filter((model) => isUserCallableAntigravityModelId(model.id));
-}
-
-function mapAntigravityModelForClient(model: { id: string; name: string }): {
-  id: string;
-  name: string;
-} {
-  const clientId = toClientAntigravityModelId(model.id);
-  return {
-    id: clientId,
-    name: getClientVisibleAntigravityModelName(clientId, model.name),
-  };
-}
-
-async function fetchAntigravityDiscoveryModelsCached(
-  accessToken: string,
-  connectionId: string,
-  proxy: unknown,
-  providerSpecificData?: unknown
-): Promise<Array<{ id: string; name: string }>> {
-  const profile = normalizeAntigravityClientProfile(asRecord(providerSpecificData).clientProfile);
-  const cacheKey = `${connectionId}:${accessToken.substring(0, 16)}:${profile}`;
-  const inflight = antigravityDiscoveryInflight.get(cacheKey);
-  if (inflight) return inflight;
-
-  const promise = (async () => {
-    await resolveAntigravityVersion();
-    await ensureAntigravityProjectAssigned(
-      accessToken,
-      fetch,
-      normalizeAntigravityClientProfile(asRecord(providerSpecificData).clientProfile)
-    );
-
-    for (const discoveryUrl of [
-      ...getAntigravityFetchAvailableModelsUrls(),
-      ...getAntigravityModelsDiscoveryUrls(),
-    ]) {
-      try {
-        const response = await safeOutboundFetch(discoveryUrl, {
-          ...SAFE_OUTBOUND_FETCH_PRESETS.modelsDiscovery,
-          guard: getProviderOutboundGuard(),
-          proxyConfig: proxy,
-          method: "POST",
-          headers: getAntigravityHeaders("models", accessToken),
-          body: JSON.stringify({}),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.warn(
-            `[models] antigravity discovery failed at ${discoveryUrl} (${response.status}): ${errorText}`
-          );
-          continue;
-        }
-
-        const models = filterUserCallableAntigravityModels(
-          normalizeAntigravityModelsResponse(await response.json())
-        ).map(mapAntigravityModelForClient);
-        if (models.length > 0) {
-          return models;
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`[models] antigravity discovery threw for ${discoveryUrl}: ${message}`);
-      }
-    }
-
-    return [];
-  })().finally(() => {
-    antigravityDiscoveryInflight.delete(cacheKey);
-  });
-
-  antigravityDiscoveryInflight.set(cacheKey, promise);
-  return promise;
 }
 
 function normalizeDataRobotCatalogResponse(data: unknown): Array<{ id: string; name: string }> {
@@ -448,15 +313,6 @@ const PROVIDER_MODELS_CONFIG: Record<string, ProviderModelsConfigEntry> = {
     authHeader: "Authorization",
     authPrefix: "Bearer ",
     parseResponse: (data) => data.data || [],
-  },
-  antigravity: {
-    url: getAntigravityModelsDiscoveryUrls()[0],
-    method: "POST",
-    headers: getAntigravityHeaders("models"),
-    authHeader: "Authorization",
-    authPrefix: "Bearer ",
-    body: {},
-    parseResponse: (data) => data.models || [],
   },
   openai: {
     url: "https://api.openai.com/v1/models",
@@ -1825,51 +1681,6 @@ export async function GET(
       }
     }
 
-    if (provider === "antigravity") {
-      const cachedResponse = maybeReturnCachedDiscovery();
-      if (cachedResponse) return cachedResponse;
-
-      const autoFetchDisabledResponse = maybeReturnAutoFetchDisabled();
-      if (autoFetchDisabledResponse) return autoFetchDisabledResponse;
-
-      const staticModels = getStaticModelsForProvider("antigravity") || [];
-
-      if (!accessToken) {
-        const fallback = buildDiscoveryFallbackResponse({
-          cacheWarning: "OAuth token unavailable — using cached catalog",
-          localWarning: "OAuth token unavailable — using local catalog",
-        });
-        if (fallback) return fallback;
-        return buildResponse({
-          provider,
-          connectionId,
-          models: staticModels,
-          source: "local_catalog",
-          warning: "OAuth token unavailable — using local catalog",
-        });
-      }
-
-      const remoteModels = await fetchAntigravityDiscoveryModelsCached(
-        accessToken,
-        connectionId,
-        proxy,
-        connection.providerSpecificData
-      );
-      if (remoteModels.length > 0) {
-        return buildApiDiscoveryResponse(remoteModels);
-      }
-
-      const fallback = buildDiscoveryFallbackResponse();
-      if (fallback) return fallback;
-
-      return buildResponse({
-        provider,
-        connectionId,
-        models: staticModels,
-        source: "local_catalog",
-        warning: "API unavailable — using local catalog",
-      });
-    }
 
     if (isOpenAICompatibleProvider(provider)) {
       const cachedResponse = maybeReturnCachedDiscovery();
