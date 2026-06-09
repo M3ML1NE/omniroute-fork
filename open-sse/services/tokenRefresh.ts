@@ -47,8 +47,6 @@ export const REFRESH_LEAD_MS: Record<string, number> = {
   // Google OAuth refresh_tokens are permanent (non-rotating) — longer lead
   // is safe and reduces unnecessary upstream chatter.
   "gemini-cli": 15 * 60 * 1000,
-  antigravity: 15 * 60 * 1000,
-  agy: 15 * 60 * 1000, // same Google backend as antigravity (non-rotating refresh tokens)
 };
 
 /**
@@ -704,7 +702,7 @@ export async function refreshClaudeOAuthToken(refreshToken, log, proxyConfig: un
 }
 
 /**
- * Specialized refresh for Google providers (Gemini, Antigravity)
+ * Specialized refresh for Google providers (Gemini)
  */
 export async function refreshGoogleToken(
   refreshToken,
@@ -1297,8 +1295,6 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
   switch (provider) {
     case "gemini":
     case "gemini-cli":
-    case "antigravity":
-    case "agy":
       return await refreshGoogleToken(
         credentials.refreshToken,
         PROVIDERS[provider].clientId,
@@ -1372,8 +1368,6 @@ export function supportsTokenRefresh(provider) {
   const explicitlySupported = new Set([
     "gemini",
     "gemini-cli",
-    "antigravity",
-    "agy",
     "claude",
     "codex",
     "qwen",
@@ -1677,8 +1671,6 @@ export function formatProviderCredentials(provider, credentials, log) {
         accessToken: credentials.accessToken,
       };
 
-    case "antigravity":
-    case "agy":
     case "gemini-cli":
       return {
         accessToken: credentials.accessToken,
