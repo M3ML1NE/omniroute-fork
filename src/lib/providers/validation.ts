@@ -1,6 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { getEmbeddingProvider } from "@omniroute/open-sse/config/embeddingRegistry.ts";
-import { getRerankProvider } from "@omniroute/open-sse/config/rerankRegistry.ts";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
 import {
   isLocalProvider,
@@ -15,54 +12,7 @@ import {
   safeOutboundFetch,
 } from "@/shared/network/safeOutboundFetch";
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
-import { extractCookieValue, normalizeSessionCookieHeader } from "@/lib/providers/webCookieAuth";
 import { getGigachatAccessToken } from "@omniroute/open-sse/services/gigachatAuth.ts";
-import { validateQoderCliPat } from "@omniroute/open-sse/services/qoderCli.ts";
-import {
-  AZURE_AI_DEFAULT_BASE_URL,
-  buildAzureAiChatUrl,
-  buildAzureAiModelsUrl,
-} from "@omniroute/open-sse/config/azureAi.ts";
-import {
-  discoverBedrockNativeModels,
-  isBedrockNativeApiError,
-  isBedrockNativeAuthError,
-} from "@omniroute/open-sse/services/bedrock.ts";
-import {
-  DATAROBOT_DEFAULT_BASE_URL,
-  buildDataRobotCatalogUrl,
-  buildDataRobotChatUrl,
-  isDataRobotDeploymentUrl,
-} from "@omniroute/open-sse/config/datarobot.ts";
-import {
-  OCI_DEFAULT_BASE_URL,
-  buildOciChatUrl,
-  buildOciModelsUrl,
-} from "@omniroute/open-sse/config/oci.ts";
-import {
-  SAP_DEFAULT_BASE_URL,
-  buildSapChatUrl,
-  buildSapModelsUrl,
-  getSapResourceGroup,
-  isSapDeploymentUrl,
-} from "@omniroute/open-sse/config/sap.ts";
-import {
-  WATSONX_DEFAULT_BASE_URL,
-  buildWatsonxChatUrl,
-  buildWatsonxModelsUrl,
-} from "@omniroute/open-sse/config/watsonx.ts";
-import {
-  buildRunwayApiUrl,
-  buildRunwayHeaders,
-  normalizeRunwayBaseUrl,
-} from "@omniroute/open-sse/config/runway.ts";
-import { PETALS_DEFAULT_MODEL, normalizePetalsBaseUrl } from "@omniroute/open-sse/config/petals.ts";
-import {
-  buildMaritalkChatUrl,
-  buildMaritalkModelsUrl,
-} from "@omniroute/open-sse/config/maritalk.ts";
-import { signAwsRequest } from "@omniroute/open-sse/utils/awsSigV4.ts";
-import { validateImageProviderApiKey } from "@/lib/providers/imageValidation";
 
 const OPENAI_LIKE_FORMATS = new Set(["openai", "openai-responses"]);
 const GEMINI_LIKE_FORMATS = new Set(["gemini", "gemini-cli"]);
@@ -75,7 +25,6 @@ function normalizeBaseUrl(baseUrl: string) {
   const value = typeof baseUrl === "string" ? baseUrl : "";
   return value.trim().replace(/\/$/, "");
 }
-
 
 function addModelsSuffix(baseUrl: string) {
   const normalized = normalizeBaseUrl(baseUrl);
@@ -126,9 +75,6 @@ function resolveChatUrl(provider: string, baseUrl: string, providerSpecificData:
   return normalized;
 }
 
-
-
-
 function normalizeGigachatChatUrl(baseUrl: string) {
   const normalized = normalizeBaseUrl(baseUrl).replace(/\/chat\/completions$/, "");
   if (!normalized) return "";
@@ -151,7 +97,6 @@ function applyCustomUserAgent(headers: Record<string, string>, providerSpecificD
   return headers;
 }
 
-
 function buildBearerHeaders(apiKey: string, providerSpecificData: any = {}) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -161,10 +106,6 @@ function buildBearerHeaders(apiKey: string, providerSpecificData: any = {}) {
   }
   return applyCustomUserAgent(headers, providerSpecificData);
 }
-
-
-
-
 
 async function validationRead(url: string, init: RequestInit, isLocal: boolean = false) {
   return safeOutboundFetch(url, {
@@ -197,7 +138,6 @@ function toValidationErrorResult(error: unknown) {
     ...(statusCode === 503 ? { securityBlocked: true } : {}),
   };
 }
-
 
 async function validateOpenAILikeProvider({
   provider = "openai",
@@ -335,10 +275,6 @@ async function validateDirectChatProvider({
     return toValidationErrorResult(error);
   }
 }
-
-
-
-
 
 async function validateAnthropicLikeProvider({
   apiKey,
@@ -589,21 +525,6 @@ async function validateGeminiLikeProvider({
 
 // ── Specialty providers (non-standard APIs) ──
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function validateGigachatProvider({ apiKey, providerSpecificData = {} }: any) {
   const baseUrl =
     normalizeBaseUrl(providerSpecificData.baseUrl) || "https://gigachat.devices.sberbank.ru/api/v1";
@@ -633,18 +554,6 @@ async function validateGigachatProvider({ apiKey, providerSpecificData = {} }: a
     providerSpecificData,
   });
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 async function validateOpenAICompatibleProvider({ apiKey, providerSpecificData = {} }: any) {
   const baseUrl = normalizeBaseUrl(providerSpecificData.baseUrl);
