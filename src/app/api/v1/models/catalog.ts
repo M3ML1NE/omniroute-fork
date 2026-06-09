@@ -59,19 +59,7 @@ interface CustomModelEntry {
   isHidden?: boolean;
 }
 
-const FALLBACK_ALIAS_TO_PROVIDER = {
-  ag: "antigravity",
-  cc: "claude",
-  cl: "cline",
-  cu: "cursor",
-  cx: "codex",
-  gc: "gemini-cli",
-  gh: "github",
-  kc: "kilocode",
-  kmc: "kimi-coding",
-  kr: "kiro",
-  qw: "qwen",
-};
+const FALLBACK_ALIAS_TO_PROVIDER: Record<string, string> = {};
 
 type ComboCatalogTarget = {
   modelStr?: string;
