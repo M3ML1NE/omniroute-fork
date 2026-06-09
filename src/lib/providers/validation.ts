@@ -3310,58 +3310,6 @@ async function validateGeminiWebProvider({ apiKey, providerSpecificData = {} }: 
 }
 
 // ── Copilot Web token validator ──
-async function validateCopilotWebProvider({ apiKey, providerSpecificData = {} }: any) {
-  try {
-    const raw = String(apiKey || "").trim();
-    if (!raw) {
-      return {
-        valid: false,
-        error: "Paste your access_token from copilot.microsoft.com DevTools → Cookies",
-      };
-    }
-
-    // Extract token — may be bare JWT, cookie string with access_token=, or Bearer prefix
-    const { extractAccessToken } = await import("@omniroute/open-sse/executors/copilot-web.ts");
-    const token = extractAccessToken(raw);
-    if (!token) {
-      return { valid: false, error: "Could not extract access_token from input" };
-    }
-
-    // Probe Copilot's conversation API to verify token
-    const response = await validationWrite(
-      "https://copilot.microsoft.com/c/api/conversations?language=en",
-      {
-        method: "GET",
-        headers: applyCustomUserAgent(
-          {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-            Origin: "https://copilot.microsoft.com",
-            Referer: "https://copilot.microsoft.com/",
-          },
-          providerSpecificData
-        ),
-      }
-    );
-
-    if (response.status === 401 || response.status === 403) {
-      return {
-        valid: false,
-        error: "Invalid or expired access_token — re-paste from copilot.microsoft.com DevTools → Cookies",
-      };
-    }
-
-    if (response.status >= 500) {
-      return { valid: false, error: `Copilot unavailable (${response.status})` };
-    }
-
-    // 200, 400, 404 etc. all indicate the token was accepted
-    return { valid: true, error: null };
-  } catch (error: any) {
-    return toValidationErrorResult(error);
-  }
-}
-
 // ── t3.chat Web cookie validator ──
 async function validateT3WebProvider({ apiKey, providerSpecificData = {} }: any) {
   try {
@@ -3626,7 +3574,6 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     "adapta-web": validateAdaptaWebProvider,
     "claude-web": validateClaudeWebProvider,
     "gemini-web": validateGeminiWebProvider,
-    "copilot-web": validateCopilotWebProvider,
     "t3-web": validateT3WebProvider,
     "azure-openai": validateAzureOpenAIProvider,
     "azure-ai": validateAzureAiProvider,
@@ -3670,29 +3617,6 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
         return { valid: true, error: null };
       } catch (error: any) {
         return toValidationErrorResult(error);
-      }
-    },
-    vertex: async ({ apiKey }: any) => {
-      try {
-        const { parseSAFromApiKey, getAccessToken } =
-          await import("@omniroute/open-sse/executors/vertex.ts");
-        const sa = parseSAFromApiKey(apiKey);
-        // Validates credentials by successfully successfully exchanging them for a JWT from Google Identity
-        await getAccessToken(sa);
-        return { valid: true, error: null };
-      } catch (error: any) {
-        return { valid: false, error: "Invalid Service Account JSON: " + error.message };
-      }
-    },
-    "vertex-partner": async ({ apiKey }: any) => {
-      try {
-        const { parseSAFromApiKey, getAccessToken } =
-          await import("@omniroute/open-sse/executors/vertex.ts");
-        const sa = parseSAFromApiKey(apiKey);
-        await getAccessToken(sa);
-        return { valid: true, error: null };
-      } catch (error: any) {
-        return { valid: false, error: "Invalid Service Account JSON: " + error.message };
       }
     },
     // LongCat AI — does not expose /v1/models; validate via chat completions directly (#592)
