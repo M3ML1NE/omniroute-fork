@@ -34,22 +34,7 @@ export type WizardProviderOption = {
   deprecated: boolean;
 };
 
-export const SUPPORTED_WIZARD_OAUTH_PROVIDER_IDS = new Set([
-  "claude",
-  "codex",
-  "gemini-cli",
-  "antigravity",
-  "agy",
-  "qwen",
-  "kimi-coding",
-  "github",
-  "gitlab-duo",
-  "kiro",
-  "amazon-q",
-  "cursor",
-  "kilocode",
-  "cline",
-]);
+export const SUPPORTED_WIZARD_OAUTH_PROVIDER_IDS = new Set<string>([]);
 
 function toProviderOption(
   provider: WizardProviderDefinition,
