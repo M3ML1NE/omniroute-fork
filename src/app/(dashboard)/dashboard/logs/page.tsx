@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { ConfirmModal, RequestLoggerV2, ProxyLogger, SegmentedControl } from "@/shared/components";
+import { ConfirmModal, RequestLoggerV2, SegmentedControl } from "@/shared/components";
 import ConsoleLogViewer from "@/shared/components/ConsoleLogViewer";
 import EmailPrivacyToggle from "@/shared/components/EmailPrivacyToggle";
 import ActiveRequestsPanel from "@/shared/components/ActiveRequestsPanel";
@@ -18,7 +18,6 @@ const TIME_RANGES = [
 
 const TAB_TO_LOG_TYPE: Record<string, string> = {
   "request-logs": "request-logs",
-  "proxy-logs": "proxy-logs",
   "audit-logs": "call-logs",
   console: "call-logs",
 };
@@ -113,7 +112,6 @@ export default function LogsPage() {
         <SegmentedControl
           options={[
             { value: "request-logs", label: t("requestLogs") },
-            { value: "proxy-logs", label: t("proxyLogs") },
             { value: "audit-logs", label: t("auditLog") },
             { value: "console", label: t("console") },
           ]}
@@ -220,7 +218,6 @@ export default function LogsPage() {
           <RequestLoggerV2 key={requestLogKey} />
         </div>
       )}
-      {activeTab === "proxy-logs" && <ProxyLogger />}
       {activeTab === "audit-logs" && <AuditLogTab />}
       {activeTab === "console" && <ConsoleLogViewer />}
 

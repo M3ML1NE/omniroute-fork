@@ -29,7 +29,6 @@ import {
   CursorAuthModal,
   Toggle,
   Select,
-  ProxyConfigModal,
   NoAuthProviderCard,
 } from "@/shared/components";
 import {
@@ -4833,17 +4832,6 @@ export default function ProviderDetailPage() {
             </div>
           </div>
         </div>
-      )}
-      {/* Proxy Config Modal */}
-      {proxyTarget && (
-        <ProxyConfigModal
-          isOpen={!!proxyTarget}
-          onClose={() => setProxyTarget(null)}
-          level={proxyTarget.level}
-          levelId={proxyTarget.id}
-          levelLabel={proxyTarget.label}
-          onSaved={() => void loadConnProxies(connections)}
-        />
       )}
       {/* Import Progress Modal */}
       <Modal

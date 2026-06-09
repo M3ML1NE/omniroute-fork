@@ -50,9 +50,6 @@ import { useTranslations } from "next-intl";
 const ModelSelectModal = dynamic(() => import("@/shared/components/ModelSelectModal"), {
   ssr: false,
 });
-const ProxyConfigModal = dynamic(() => import("@/shared/components/ProxyConfigModal"), {
-  ssr: false,
-});
 
 // Validate combo name: letters, numbers, spaces, -, _, /, ., [ and ].
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_/.\-\[\] ]+$/;
@@ -1238,16 +1235,6 @@ export default function CombosPage() {
         comboConfigMode={comboConfigMode}
       />
 
-      {/* Proxy Config Modal */}
-      {proxyTargetCombo && (
-        <ProxyConfigModal
-          isOpen={!!proxyTargetCombo}
-          onClose={() => setProxyTargetCombo(null)}
-          level="combo"
-          levelId={proxyTargetCombo.id}
-          levelLabel={proxyTargetCombo.name}
-        />
-      )}
     </div>
   );
 }
