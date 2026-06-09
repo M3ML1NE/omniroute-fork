@@ -29,8 +29,3 @@ export function getWebSessionCredentialRequirement(
     ] ?? null
   );
 }
-
-export function requiresWebSessionCredential(providerId: unknown): boolean {
-  const requirement = getWebSessionCredentialRequirement(providerId);
-  return !!requirement && requirement.kind !== "none";
-}
