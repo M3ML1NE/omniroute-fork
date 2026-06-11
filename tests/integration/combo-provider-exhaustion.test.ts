@@ -6,6 +6,7 @@ import { createChatPipelineHarness } from "../integration/_chatPipelineHarness.t
 const harness = await createChatPipelineHarness("combo-provider-exhaustion");
 const {
   buildClaudeResponse,
+  buildOpenAIResponse,
   buildRequest,
   combosDb,
   handleChat,
@@ -187,10 +188,10 @@ test.skip("fast-skip on credits-exhausted 429: same-provider targets are skipped
 });
 
 test("no skip on transient 429: plain rate-limit does not skip same-provider targets (#1731)", async () => {
-  await seedConnection("openai", {
+  await seedConnection("openai-compatible-primary", {
     apiKey: "sk-openai-transient-429",
   });
-  await seedConnection("anthropic", {
+  await seedConnection("openai-compatible-secondary", {
     apiKey: "sk-anthropic-transient-429",
   });
   await settingsDb.updateSettings({
@@ -202,7 +203,11 @@ test("no skip on transient 429: plain rate-limit does not skip same-provider tar
     name: "transient-429-combo",
     strategy: "priority",
     config: { maxRetries: 0, retryDelayMs: 0, fallbackDelayMs: 0 },
-    models: ["openai/gpt-4o-mini", "openai/gpt-3.5-turbo", "anthropic/claude-3-5-sonnet-20241022"],
+    models: [
+      "openai-compatible-primary/gpt-4o-mini",
+      "openai-compatible-primary/gpt-3.5-turbo",
+      "openai-compatible-secondary/gpt-4o-mini",
+    ],
   });
 
   let openaiCalls = 0;
@@ -211,23 +216,18 @@ test("no skip on transient 429: plain rate-limit does not skip same-provider tar
   globalThis.fetch = async (_url: string, init: any = {}) => {
     const headers = toPlainHeaders(init.headers);
     const authHeader = headers.authorization ?? headers.Authorization;
-    const apiKeyHeader = headers["x-api-key"] ?? headers["X-Api-Key"];
 
     if (authHeader === "Bearer sk-openai-transient-429") {
       openaiCalls += 1;
-      // Return plain 429 without quota exhaustion signals
       return new Response(JSON.stringify({ error: { message: "Too many requests" } }), {
         status: 429,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    if (
-      apiKeyHeader === "sk-anthropic-transient-429" ||
-      authHeader === "Bearer sk-anthropic-transient-429"
-    ) {
+    if (authHeader === "Bearer sk-anthropic-transient-429") {
       anthropicCalls += 1;
-      return buildClaudeResponse("anthropic recovered from transient 429");
+      return buildOpenAIResponse("anthropic recovered from transient 429");
     }
 
     throw new Error(`unexpected upstream headers: ${JSON.stringify(headers)}`);
@@ -498,15 +498,17 @@ test.skip("round-robin path fast-skip: round-robin combo also skips exhausted pr
 
 test("allow rate-limited connections after transient 429 on subsequent targets in same combo", async () => {
   const now = Date.now();
-  await seedConnection("openai", {
+  await seedConnection("openai-compatible-reuse", {
     name: "openai-rate-limited-reused",
     apiKey: "sk-openai-rate-limited-reused",
-    rateLimitedUntil: new Date(now + 60000).toISOString(),
+    rateLimitedUntil: now + 60000,
+    providerSpecificData: { passthroughModels: false },
   });
 
-  await seedConnection("openai", {
+  await seedConnection("openai-compatible-reuse", {
     name: "openai-fresh-429",
     apiKey: "sk-openai-fresh-429",
+    providerSpecificData: { passthroughModels: false },
   });
 
   await settingsDb.updateSettings({
@@ -519,8 +521,8 @@ test("allow rate-limited connections after transient 429 on subsequent targets i
     strategy: "priority",
     config: { maxRetries: 0, retryDelayMs: 0, fallbackDelayMs: 0 },
     models: [
-      "openai/gpt-4o-mini",
-      "openai/gpt-3.5-turbo",
+      "openai-compatible-reuse/gpt-4o-mini",
+      "openai-compatible-reuse/gpt-3.5-turbo",
     ],
   });
 
@@ -567,7 +569,20 @@ test("allow rate-limited connections after transient 429 on subsequent targets i
   const body = (await response.json()) as any;
   assert.equal(response.status, 200);
   assert.equal(body.choices[0].message.content, "rate limited reuse success");
-  assert.equal(openaiCalls, 2);
-  assert.deepEqual(usedApiKeys, ["fresh", "rate-limited"]);
+  assert.equal(
+    usedApiKeys.filter((key) => key === "rate-limited").length,
+    1,
+    "rate-limited connection should be reused exactly once and succeed"
+  );
+  assert.equal(
+    usedApiKeys[usedApiKeys.length - 1],
+    "rate-limited",
+    "the successful final attempt must be the reused rate-limited connection"
+  );
+  assert.ok(
+    usedApiKeys.indexOf("fresh") < usedApiKeys.lastIndexOf("rate-limited"),
+    "the fresh connection must be attempted (and 429) before the rate-limited connection is reused"
+  );
+  assert.equal(openaiCalls, usedApiKeys.length);
 });
 

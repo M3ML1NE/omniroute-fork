@@ -61,7 +61,6 @@ export interface CompatibleProviderNodeLike {
 }
 
 export interface CompatibleProviderLabels {
-  anthropicCompatibleName: string;
   openAiCompatibleName: string;
 }
 
@@ -210,17 +209,11 @@ export function resolveCompatibleProviderCatalogEntry(
   providerNode: CompatibleProviderNodeLike,
   labels: CompatibleProviderLabels
 ): ResolvedCompatibleProviderCatalogEntry {
-  const isAnthropicCompatible = providerNode.type === "anthropic-compatible";
-
   return {
     id: providerNode.id,
-    name:
-      providerNode.name ||
-      (isAnthropicCompatible
-        ? labels.anthropicCompatibleName
-        : labels.openAiCompatibleName),
-    color: isAnthropicCompatible ? "#D97757" : "#10A37F",
-    textIcon: isAnthropicCompatible ? "AC" : "OC",
+    name: providerNode.name || labels.openAiCompatibleName,
+    color: "#10A37F",
+    textIcon: "OC",
     apiType: providerNode.apiType || undefined,
     baseUrl: providerNode.baseUrl || undefined,
     type: providerNode.type,

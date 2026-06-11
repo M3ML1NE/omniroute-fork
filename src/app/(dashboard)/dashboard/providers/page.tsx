@@ -32,11 +32,6 @@ import {
 } from "./providerPageUtils";
 import type { ProviderEntry } from "./providerPageUtils";
 import { readConfiguredOnlyPreference, writeConfiguredOnlyPreference } from "./providerPageStorage";
-import {
-  getCodexEffectiveServiceTier,
-  getCodexGlobalServiceMode,
-  type CodexGlobalServiceMode,
-} from "@/lib/providers/codexFastTier";
 import AddCompatibleProviderModal from "./components/AddCompatibleProviderModal";
 import { CategoryDot } from "./components/CategoryDot";
 import ProviderCard from "./components/ProviderCard";
@@ -163,8 +158,6 @@ export default function ProvidersPage() {
   const [connections, setConnections] = useState<any[]>([]);
   const [providerNodes, setProviderNodes] = useState<any[]>([]);
   const [expirations, setExpirations] = useState<any>(null);
-  const [codexGlobalServiceMode, setCodexGlobalServiceMode] =
-    useState<CodexGlobalServiceMode>("none");
   const [loading, setLoading] = useState(true);
   const [showAllProviders, setShowAllProviders] = useState(false);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
@@ -218,22 +211,19 @@ export default function ProvidersPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [connectionsRes, nodesRes, expirationsRes, settingsRes] = await Promise.all([
+        const [connectionsRes, nodesRes, expirationsRes] = await Promise.all([
           fetch("/api/providers"),
           fetch("/api/provider-nodes"),
           fetch("/api/providers/expiration"),
-          fetch("/api/settings", { cache: "no-store" }),
         ]);
         const connectionsData = await connectionsRes.json();
         const nodesData = await nodesRes.json();
         const expirationsData = await expirationsRes.json();
-        const settingsData = settingsRes.ok ? await settingsRes.json() : null;
         if (connectionsRes.ok) setConnections(connectionsData.connections || []);
         if (nodesRes.ok) {
           setProviderNodes(nodesData.nodes || []);
         }
         if (expirationsRes.ok && expirationsData) setExpirations(expirationsData);
-        setCodexGlobalServiceMode(getCodexGlobalServiceMode(settingsData));
       } catch (error) {
         console.log("Error fetching data:", error);
       } finally {
@@ -341,15 +331,6 @@ export default function ProvidersPage() {
     if (hasExpired) expiryStatus = "expired";
     else if (hasExpiringSoon) expiryStatus = "expiring_soon";
 
-    const codexConnectionServiceTiers = [
-      ...new Set(
-        providerConnections
-          .map((connection) =>
-            getCodexEffectiveServiceTier(connection.providerSpecificData, "none")
-          )
-          .filter((tier) => tier !== "default")
-      ),
-    ];
     // Count API keys in "warning" state across all connections
     const warning = providerConnections.reduce((warnCount, conn) => {
       const health = (conn as any).providerSpecificData?.apiKeyHealth as

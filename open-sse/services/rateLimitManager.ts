@@ -11,8 +11,6 @@
 import Bottleneck from "bottleneck";
 import { parseRetryAfterFromBody } from "./accountFallback.ts";
 import { getProviderCategory } from "../config/providerRegistry.ts";
-// Stripdown: codex executor removed; stub rate-limit key.
-const getCodexRateLimitKey = (connectionId: string, _model: string): string => connectionId;
 import {
   DEFAULT_RESILIENCE_SETTINGS,
   resolveResilienceSettings,
@@ -366,9 +364,6 @@ export function isRateLimitEnabled(connectionId) {
  * Get or create a limiter for a given provider+connection combination
  */
 function getLimiterKey(provider, connectionId, model = null) {
-  if (provider === "codex" && model) {
-    return `${provider}:${getCodexRateLimitKey(connectionId, model)}`;
-  }
   // Gemini AI Studio and GitHub Copilot have per-model quotas — use model-scoped
   // limiter keys so a 429 on one model doesn't pause requests for other models.
   if ((provider === "gemini" || provider === "github") && model) {

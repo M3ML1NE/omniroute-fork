@@ -123,15 +123,11 @@ export async function registerNodejs(): Promise<void> {
   }
 
   try {
-    const [
-      { migrateCodexConnectionDefaultsFromLegacySettings },
-      { startSessionAccountAffinityCleanup },
-      { seedDefaultModelAliases },
-    ] = await Promise.all([
-      import("@/lib/providers/codexConnectionDefaults"),
-      import("@/lib/db/sessionAccountAffinity"),
-      import("@/lib/modelAliasSeed"),
-    ]);
+    const [{ startSessionAccountAffinityCleanup }, { seedDefaultModelAliases }] =
+      await Promise.all([
+        import("@/lib/db/sessionAccountAffinity"),
+        import("@/lib/modelAliasSeed"),
+      ]);
     let settings = await getSettings();
     const passwordState = await ensurePersistentManagementPasswordHash({
       logger: console,
@@ -161,22 +157,6 @@ export async function registerNodejs(): Promise<void> {
       `[STARTUP] Model alias seed: applied=${seededModelAliases.applied.length}, skipped=${seededModelAliases.skipped.length}, failed=${seededModelAliases.failed.length}`
     );
     startSessionAccountAffinityCleanup();
-
-    const migration = await migrateCodexConnectionDefaultsFromLegacySettings();
-    if (migration.migrated) {
-      console.log(
-        `[STARTUP] Migrated Codex connection defaults for ${migration.updatedConnectionIds.length} connection(s)`
-      );
-      if (settings.cloudEnabled === true) {
-        const [{ syncToCloud }, { getConsistentMachineId }] = await Promise.all([
-          import("@/lib/cloudSync"),
-          import("@/shared/utils/machineId"),
-        ]);
-        const machineId = await getConsistentMachineId();
-        await syncToCloud(machineId);
-        console.log("[STARTUP] Synced migrated Codex connection defaults to cloud");
-      }
-    }
 
     startRuntimeConfigHotReload();
   } catch (err: unknown) {

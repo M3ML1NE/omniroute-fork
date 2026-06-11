@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import { updateProviderConnectionSchema } from "../../src/shared/validation/schemas.js";
 
-describe("Antigravity Project ID Schema Validation", () => {
+describe("Provider Project ID Schema Validation", () => {
   it("should accept projectId and providerSpecificData.projectId", () => {
     const result = updateProviderConnectionSchema.safeParse({
       projectId: "anti-project",

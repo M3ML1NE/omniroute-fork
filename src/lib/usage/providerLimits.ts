@@ -12,15 +12,10 @@ import {
   type ProviderLimitsCacheEntry,
 } from "@/lib/localDb";
 import { syncToCloud } from "@/lib/cloudSync";
-import { buildClaudeExtraUsageConnectionUpdate } from "@/lib/providers/claudeExtraUsage";
 import { getMachineId } from "@/shared/utils/machine";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { getExecutor } from "@omniroute/open-sse/executors/index.ts";
 import { getUsageForProvider } from "@omniroute/open-sse/services/usage.ts";
-import {
-  extractCodeAssistOnboardTierId,
-  extractCodeAssistSubscriptionTier,
-} from "@omniroute/open-sse/services/codeAssistSubscription.ts";
 import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -116,8 +111,6 @@ async function refreshAndUpdateCredentials(connection: ProviderConnectionLike) {
     refreshToken: connection.refreshToken,
     expiresAt: connection.tokenExpiresAt || connection.expiresAt || null,
     providerSpecificData: connection.providerSpecificData,
-    copilotToken: connection.providerSpecificData?.copilotToken,
-    copilotTokenExpiresAt: connection.providerSpecificData?.copilotTokenExpiresAt,
   };
 
   if (!executor.needsRefresh(credentials)) {
@@ -127,9 +120,6 @@ async function refreshAndUpdateCredentials(connection: ProviderConnectionLike) {
   const refreshResult = await executor.refreshCredentials(credentials, console);
 
   if (!refreshResult) {
-    if (connection.provider === "github" && connection.accessToken) {
-      return { connection, refreshed: false };
-    }
     throw withStatus(
       new Error("Failed to refresh credentials. Please re-authorize the connection."),
       401
@@ -154,14 +144,6 @@ async function refreshAndUpdateCredentials(connection: ProviderConnectionLike) {
     updateData.expiresAt = refreshResult.expiresAt;
     updateData.tokenExpiresAt = refreshResult.expiresAt;
   }
-  if (refreshResult.copilotToken || refreshResult.copilotTokenExpiresAt) {
-    updateData.providerSpecificData = {
-      ...(connection.providerSpecificData || {}),
-      copilotToken: refreshResult.copilotToken,
-      copilotTokenExpiresAt: refreshResult.copilotTokenExpiresAt,
-    };
-  }
-
   await updateProviderConnection(connection.id, updateData);
 
   return {
@@ -210,94 +192,6 @@ async function syncExpiredStatusIfNeeded(connection: ProviderConnectionLike, usa
   }
 }
 
-async function syncClaudeExtraUsageStateIfNeeded(
-  connection: ProviderConnectionLike,
-  usage: JsonRecord
-): Promise<ProviderConnectionLike> {
-  const update = buildClaudeExtraUsageConnectionUpdate(connection, usage);
-  if (!update) return connection;
-
-  await updateProviderConnection(connection.id, update);
-  return {
-    ...connection,
-    ...update,
-  };
-}
-
-/** Persist Antigravity tier from live loadCodeAssist on quota refresh (not only OAuth). */
-async function syncAntigravitySubscriptionIfNeeded(
-  connection: ProviderConnectionLike,
-  usage: JsonRecord
-): Promise<ProviderConnectionLike> {
-  if (connection.provider !== "antigravity") return connection;
-
-  const subscriptionInfo = usage.subscriptionInfo;
-  if (!subscriptionInfo) return connection;
-
-  const psd = (connection.providerSpecificData || {}) as JsonRecord;
-  const nextPsd: JsonRecord = { ...psd };
-  let changed = false;
-
-  const tierId = extractCodeAssistOnboardTierId(subscriptionInfo);
-  if (tierId && tierId !== "legacy-tier" && psd.tier !== tierId) {
-    nextPsd.tier = tierId;
-    changed = true;
-  }
-
-  const subscriptionTier = extractCodeAssistSubscriptionTier(subscriptionInfo);
-  if (subscriptionTier && psd.subscriptionTier !== subscriptionTier) {
-    nextPsd.subscriptionTier = subscriptionTier;
-    changed = true;
-  }
-
-  const plan = typeof usage.plan === "string" ? usage.plan.trim() : "";
-  if (plan && psd.plan !== plan) {
-    nextPsd.plan = plan;
-    changed = true;
-  }
-
-  if (!changed) return connection;
-
-  await updateProviderConnection(connection.id, { providerSpecificData: nextPsd });
-  return { ...connection, providerSpecificData: nextPsd };
-}
-
-/** Persist refreshed Claude bootstrap fields into psd; writes only on diff. */
-async function syncClaudeBootstrapIfNeeded(
-  connection: ProviderConnectionLike,
-  usage: JsonRecord
-): Promise<ProviderConnectionLike> {
-  if (connection.provider !== "claude") return connection;
-  const bootstrap = usage?.bootstrap as Record<string, string | null> | null | undefined;
-  if (!bootstrap || typeof bootstrap !== "object") return connection;
-
-  const psd = (connection.providerSpecificData || {}) as JsonRecord;
-  const mapping: Array<[keyof typeof bootstrap, string]> = [
-    ["account_uuid", "accountUUID"],
-    ["organization_uuid", "organizationUUID"],
-    ["organization_name", "organizationName"],
-    ["organization_type", "organizationType"],
-    ["organization_rate_limit_tier", "organizationRateLimitTier"],
-  ];
-
-  const nextPsd: JsonRecord = { ...psd };
-  let changed = false;
-  for (const [bsKey, psdKey] of mapping) {
-    const next = bootstrap[bsKey];
-    if (typeof next === "string" && next.length > 0 && psd[psdKey] !== next) {
-      nextPsd[psdKey] = next;
-      changed = true;
-    }
-  }
-
-  if (!changed) return connection;
-
-  await updateProviderConnection(connection.id, { providerSpecificData: nextPsd });
-  return {
-    ...connection,
-    providerSpecificData: nextPsd,
-  };
-}
 
 export function getProviderLimitsSyncIntervalMinutes(): number {
   const raw = Number.parseInt(process.env.PROVIDER_LIMITS_SYNC_INTERVAL_MINUTES ?? "", 10);
@@ -354,9 +248,6 @@ async function fetchLiveProviderLimitsWithOptions(
   if (connection.authType !== "oauth") {
     const usage = (await getUsageForProvider(connection, options)) as JsonRecord;
     await syncExpiredStatusIfNeeded(connection, usage);
-    connection = await syncClaudeExtraUsageStateIfNeeded(connection, usage);
-    connection = await syncClaudeBootstrapIfNeeded(connection, usage);
-    connection = await syncAntigravitySubscriptionIfNeeded(connection, usage);
     return { connection, usage };
   }
 
@@ -412,9 +303,6 @@ async function fetchLiveProviderLimitsWithOptions(
   }
 
   await syncExpiredStatusIfNeeded(connection, result.usage);
-  connection = await syncClaudeExtraUsageStateIfNeeded(connection, result.usage);
-  connection = await syncClaudeBootstrapIfNeeded(connection, result.usage);
-  connection = await syncAntigravitySubscriptionIfNeeded(connection, result.usage);
 
   return {
     connection,

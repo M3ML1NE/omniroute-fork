@@ -74,13 +74,13 @@ test("CLI config helpers enforce safe config homes and expose per-tool config pa
   assert.equal(cliRuntime.getCliConfigHome(), homeDir);
 
   process.env.CLI_CONFIG_HOME = safeOverride;
-  assert.deepEqual(cliRuntime.getCliConfigPaths("codex"), {
-    config: path.join(safeOverride, ".codex", "config.toml"),
-    auth: path.join(safeOverride, ".codex", "auth.json"),
+  assert.deepEqual(cliRuntime.getCliConfigPaths("qwen"), {
+    settings: path.join(safeOverride, ".qwen", "settings.json"),
+    env: path.join(safeOverride, ".qwen", ".env"),
   });
   assert.equal(
-    cliRuntime.getCliPrimaryConfigPath("codex"),
-    path.join(safeOverride, ".codex", "config.toml")
+    cliRuntime.getCliPrimaryConfigPath("qwen"),
+    path.join(safeOverride, ".qwen", "settings.json")
   );
   assert.equal(cliRuntime.getCliConfigPaths("unknown"), null);
 
@@ -110,19 +110,19 @@ test("getCliRuntimeStatus rejects unsafe env overrides and reports validated run
 
 test("getCliRuntimeStatus reports not_executable for absolute env override files without execute permission", async () => {
   const tempDir = createTempDir("omniroute-cli-notexec-");
-  const scriptName = process.platform === "win32" ? "codex.cmd" : "codex";
+  const scriptName = process.platform === "win32" ? "qwen.cmd" : "qwen";
   const scriptPath = writeScript(
     tempDir,
     scriptName,
     process.platform === "win32"
-      ? "@echo off\r\necho codex 1.0.0\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\necho codex 1.0.0\n# padding padding padding\n",
+      ? "@echo off\r\necho qwen 1.0.0\r\nREM padding padding padding\r\n"
+      : "#!/bin/sh\necho qwen 1.0.0\n# padding padding padding\n",
     false
   );
 
-  process.env.CLI_CODEX_BIN = scriptPath;
+  process.env.CLI_QWEN_BIN = scriptPath;
   const cliRuntime = await importFresh("not-executable");
-  const status = await cliRuntime.getCliRuntimeStatus("codex");
+  const status = await cliRuntime.getCliRuntimeStatus("qwen");
 
   assert.equal(status.installed, true);
   if (process.platform === "win32") {
@@ -137,7 +137,7 @@ test("getCliRuntimeStatus reports not_executable for absolute env override files
 
 test("getCliRuntimeStatus reports healthcheck_failed when a binary exists but does not answer version probes", async () => {
   const tempDir = createTempDir("omniroute-cli-healthcheck-");
-  const scriptName = process.platform === "win32" ? "qodercli.cmd" : "qodercli";
+  const scriptName = process.platform === "win32" ? "qwen.cmd" : "qwen";
   const scriptPath = writeScript(
     tempDir,
     scriptName,
@@ -146,10 +146,10 @@ test("getCliRuntimeStatus reports healthcheck_failed when a binary exists but do
       : "#!/bin/sh\nexit 1\n# padding padding padding\n"
   );
 
-  process.env.CLI_QODER_BIN = scriptPath;
+  process.env.CLI_QWEN_BIN = scriptPath;
   process.env.CLI_MODE = "invalid-mode";
   const cliRuntime = await importFresh("healthcheck-failed");
-  const status = await cliRuntime.getCliRuntimeStatus("qoder");
+  const status = await cliRuntime.getCliRuntimeStatus("qwen");
 
   assert.equal(status.installed, true);
   assert.equal(status.runnable, false);
@@ -159,39 +159,39 @@ test("getCliRuntimeStatus reports healthcheck_failed when a binary exists but do
 
 test("getCliRuntimeStatus discovers binaries from CLI_EXTRA_PATHS during PATH lookup", async () => {
   const tempDir = createTempDir("omniroute-cli-extra-path-");
-  const scriptName = process.platform === "win32" ? "qodercli.cmd" : "qodercli";
+  const scriptName = process.platform === "win32" ? "qwen.cmd" : "qwen";
   writeScript(
     tempDir,
     scriptName,
     process.platform === "win32"
-      ? "@echo off\r\necho qodercli 1.2.3\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\necho qodercli 1.2.3\n# padding padding padding\n"
+      ? "@echo off\r\necho qwen 1.2.3\r\nREM padding padding padding\r\n"
+      : "#!/bin/sh\necho qwen 1.2.3\n# padding padding padding\n"
   );
 
   process.env.CLI_EXTRA_PATHS = tempDir;
   process.env.PATH = process.platform === "win32" ? process.env.PATH || "" : "/bin:/usr/bin";
 
   const cliRuntime = await importFresh("extra-paths");
-  const status = await cliRuntime.getCliRuntimeStatus("qoder");
+  const status = await cliRuntime.getCliRuntimeStatus("qwen");
 
   assert.equal(status.installed, true);
   assert.equal(status.runnable, true);
   assert.equal(status.reason, null);
   assert.equal(
     path.basename(String(status.commandPath)).toLowerCase(),
-    process.platform === "win32" ? "qodercli.cmd" : "qodercli"
+    process.platform === "win32" ? "qwen.cmd" : "qwen"
   );
 });
 
 test("getCliRuntimeStatus resolves known binaries from npm global prefix discovered via npm config", async () => {
   const prefixDir = createTempDir("omniroute-cli-prefix-");
-  const scriptName = process.platform === "win32" ? "qodercli.cmd" : "qodercli";
+  const scriptName = process.platform === "win32" ? "kilocode.cmd" : "kilocode";
   const scriptPath = writeScript(
     path.join(prefixDir, process.platform === "win32" ? "" : "bin"),
     scriptName,
     process.platform === "win32"
-      ? "@echo off\r\necho qodercli 1.2.3\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\necho qodercli 1.2.3\n# padding padding padding\n"
+      ? "@echo off\r\necho kilocode 1.2.3\r\nREM padding padding padding\r\n"
+      : "#!/bin/sh\necho kilocode 1.2.3\n# padding padding padding\n"
   );
 
   delete process.env.npm_config_prefix;
@@ -204,7 +204,7 @@ test("getCliRuntimeStatus resolves known binaries from npm global prefix discove
   syncBuiltinESMExports();
 
   const cliRuntime = await importFresh("npm-prefix-known-path");
-  const status = await cliRuntime.getCliRuntimeStatus("qoder");
+  const status = await cliRuntime.getCliRuntimeStatus("kilo");
 
   assert.equal(status.installed, true);
   assert.equal(status.runnable, true);
@@ -215,7 +215,7 @@ test("getCliRuntimeStatus resolves known binaries from npm global prefix discove
 test("getCliRuntimeStatus ignores suspicious known-path binaries and symlink escapes", async () => {
   const prefixDir = createTempDir("omniroute-cli-suspicious-");
   const binDir = path.join(prefixDir, process.platform === "win32" ? "" : "bin");
-  const scriptName = process.platform === "win32" ? "qodercli.exe" : "qodercli";
+  const scriptName = process.platform === "win32" ? "kilocode.cmd" : "kilocode";
   fs.mkdirSync(binDir, { recursive: true });
   fs.writeFileSync(path.join(binDir, scriptName), "");
 
@@ -223,7 +223,7 @@ test("getCliRuntimeStatus ignores suspicious known-path binaries and symlink esc
   process.env.PATH = process.platform === "win32" ? process.env.PATH || "" : "/bin:/usr/bin";
 
   const cliRuntime = await importFresh("suspicious-size");
-  const suspiciousStatus = await cliRuntime.getCliRuntimeStatus("qoder");
+  const suspiciousStatus = await cliRuntime.getCliRuntimeStatus("kilo");
 
   assert.equal(suspiciousStatus.installed, false);
   assert.equal(suspiciousStatus.reason, "suspicious_size");
@@ -234,16 +234,16 @@ test("getCliRuntimeStatus ignores suspicious known-path binaries and symlink esc
     const outsideDir = createTempDir("omniroute-cli-outside-");
     const outsideTarget = writeScript(
       outsideDir,
-      "qodercli",
-      "#!/bin/sh\necho qodercli 9.9.9\n# padding padding padding\n"
+      "kilocode",
+      "#!/bin/sh\necho kilocode 9.9.9\n# padding padding padding\n"
     );
 
     fs.mkdirSync(escapeBinDir, { recursive: true });
-    fs.symlinkSync(outsideTarget, path.join(escapeBinDir, "qodercli"));
+    fs.symlinkSync(outsideTarget, path.join(escapeBinDir, "kilocode"));
     process.env.npm_config_prefix = escapePrefix;
 
     const escapedRuntime = await importFresh("symlink-escape");
-    const escapedStatus = await escapedRuntime.getCliRuntimeStatus("qoder");
+    const escapedStatus = await escapedRuntime.getCliRuntimeStatus("kilo");
 
     assert.equal(escapedStatus.installed, false);
     assert.equal(escapedStatus.reason, "symlink_escape");

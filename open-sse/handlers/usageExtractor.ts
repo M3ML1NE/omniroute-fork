@@ -2,14 +2,8 @@
  * Extract usage from non-streaming response body
  * Handles different provider response formats
  */
-export function extractUsageFromResponse(responseBody, provider) {
+export function extractUsageFromResponse(responseBody) {
   if (!responseBody || typeof responseBody !== "object") return null;
-  const providerId = typeof provider === "string" ? provider.toLowerCase() : "";
-  const isClaudeProvider =
-    providerId === "claude" ||
-    providerId === "anthropic" ||
-    providerId.startsWith("anthropic-compatible");
-
   // OpenAI format (has prompt_tokens / completion_tokens)
   if (
     responseBody.usage &&
@@ -31,29 +25,6 @@ export function extractUsageFromResponse(responseBody, provider) {
         responseBody.usage.completion_tokens_details?.reasoning_tokens ??
         responseBody.usage.output_tokens_details?.reasoning_tokens ??
         responseBody.usage.reasoning_tokens,
-    };
-  }
-
-  // Claude format
-  if (
-    isClaudeProvider &&
-    responseBody.usage &&
-    typeof responseBody.usage === "object" &&
-    (responseBody.usage.input_tokens !== undefined ||
-      responseBody.usage.output_tokens !== undefined)
-  ) {
-    const inputTokens = responseBody.usage.input_tokens || 0;
-    const cacheRead = responseBody.usage.cache_read_input_tokens || 0;
-    const cacheCreation = responseBody.usage.cache_creation_input_tokens || 0;
-
-    // Total prompt tokens = input + cache_read + cache_creation (per Claude API docs)
-    const promptTokens = inputTokens + cacheRead + cacheCreation;
-
-    return {
-      prompt_tokens: promptTokens,
-      completion_tokens: responseBody.usage.output_tokens || 0,
-      cache_read_input_tokens: cacheRead,
-      cache_creation_input_tokens: cacheCreation,
     };
   }
 

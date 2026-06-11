@@ -21,7 +21,6 @@ function makeBody() {
 test("#2390 web_search fallback is FLAT for Responses API target", () => {
   const { body, fallback } = prepareWebSearchFallbackBody(makeBody(), {
     targetFormat: "openai-responses",
-    nativeCodexPassthrough: false,
   });
 
   assert.equal(fallback.enabled, true);
@@ -39,7 +38,6 @@ test("#2390 web_search fallback is FLAT for Responses API target", () => {
 test("#2390 web_search fallback stays NESTED for Chat Completions target", () => {
   const { body, fallback } = prepareWebSearchFallbackBody(makeBody(), {
     targetFormat: "openai",
-    nativeCodexPassthrough: false,
   });
 
   assert.equal(fallback.enabled, true);
@@ -58,7 +56,7 @@ test("#2390 web_search fallback stays NESTED for Chat Completions target", () =>
 test("#2390 tool_choice matches the injected tool shape per target format", () => {
   const responses = prepareWebSearchFallbackBody(
     { ...makeBody(), tool_choice: { type: "web_search" } },
-    { targetFormat: "openai-responses", nativeCodexPassthrough: false }
+    { targetFormat: "openai-responses" }
   );
   const rChoice = responses.body.tool_choice as Record<string, unknown>;
   assert.equal(rChoice.name, OMNIROUTE_WEB_SEARCH_FALLBACK_TOOL_NAME);
@@ -66,7 +64,7 @@ test("#2390 tool_choice matches the injected tool shape per target format", () =
 
   const chat = prepareWebSearchFallbackBody(
     { ...makeBody(), tool_choice: { type: "web_search" } },
-    { targetFormat: "openai", nativeCodexPassthrough: false }
+    { targetFormat: "openai" }
   );
   const cChoice = chat.body.tool_choice as Record<string, unknown>;
   const cFn = cChoice.function as Record<string, unknown> | undefined;

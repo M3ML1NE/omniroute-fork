@@ -110,37 +110,6 @@ test("oauth connections upsert by provider and email instead of duplicating rows
   assert.equal(rows[0].testStatus, "retrying");
 });
 
-test("codex workspace uniqueness uses workspaceId alongside email", async () => {
-  const workspaceA = await providersDb.createProviderConnection({
-    provider: "codex",
-    authType: "oauth",
-    email: "workspace@example.com",
-    providerSpecificData: { workspaceId: "ws-a" },
-  });
-  const workspaceAUpdate = await providersDb.createProviderConnection({
-    provider: "codex",
-    authType: "oauth",
-    email: "workspace@example.com",
-    providerSpecificData: { workspaceId: "ws-a" },
-    accessToken: "updated-token",
-  });
-  const workspaceB = await providersDb.createProviderConnection({
-    provider: "codex",
-    authType: "oauth",
-    email: "workspace@example.com",
-    providerSpecificData: { workspaceId: "ws-b" },
-  });
-
-  const rows = await providersDb.getProviderConnections({ provider: "codex" });
-
-  assert.equal(workspaceAUpdate.id, workspaceA.id);
-  assert.notEqual(workspaceB.id, workspaceA.id);
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows.map((row) => (row.providerSpecificData as any).workspaceId).sort(), [
-    "ws-a",
-    "ws-b",
-  ]);
-});
 
 test("updateProviderConnection reorders priorities and returns decrypted payloads", async () => {
   const first = await providersDb.createProviderConnection({

@@ -182,11 +182,15 @@ async function discoverPrimary(): Promise<pg.Pool> {
 
   // Single host (or no cluster): no discovery needed, that host is the target.
   if (cfg.hosts.length === 1) {
-    _writeHost = cfg.hosts[0];
+    // Hold the host in a local: a concurrent closePool() (e.g. test teardown)
+    // can null out `_writeHost` across the await below, so we must not re-read
+    // the mutable module field after awaiting.
+    const host = cfg.hosts[0];
+    _writeHost = host;
     // Set the role default BEFORE the pool opens any connection, so every
     // pooled backend inherits the schema search_path (no startup race).
-    await ensureRoleSearchPath(_writeHost, cfg);
-    _writePool = makePool(poolConfigFor(_writeHost, cfg), cfg);
+    await ensureRoleSearchPath(host, cfg);
+    _writePool = makePool(poolConfigFor(host, cfg), cfg);
     return _writePool;
   }
 

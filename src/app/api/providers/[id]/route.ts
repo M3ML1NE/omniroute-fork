@@ -18,10 +18,6 @@ import {
   normalizeProviderSpecificData,
   sanitizeProviderSpecificDataForResponse,
 } from "@/lib/providers/requestDefaults";
-import {
-  buildClaudeExtraUsageStateClearUpdate,
-  isClaudeExtraUsageBlockEnabled,
-} from "@/lib/providers/claudeExtraUsage";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { isApiKeyRevealEnabled, maskStoredApiKey } from "@/lib/apiKeyExposure";
 
@@ -193,15 +189,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           : {};
       const mergedPsd = { ...existingPsd, ...incomingPsd };
 
-      // Deep-merge and normalize Codex limit policy defaults.
-      if (existing.provider === "codex") {
-        const incomingRecord = incomingPsd as Record<string, unknown>;
-        if ("codexLimitPolicy" in incomingRecord || "codexLimitPolicy" in existingPsd) {
-          mergedPsd.codexLimitPolicy = normalizeCodexLimitPolicy(
-            incomingRecord.codexLimitPolicy,
-            (existingPsd as Record<string, unknown>).codexLimitPolicy
-          );
-        }
       }
 
       updateData.providerSpecificData =
@@ -258,22 +245,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         }
       }
 
-      if (!isClaudeExtraUsageBlockEnabled(existing.provider, updateData.providerSpecificData)) {
-        const clearExtraUsageUpdate = buildClaudeExtraUsageStateClearUpdate({
-          provider: existing.provider,
-          testStatus: existing.testStatus,
-          lastError: existing.lastError,
-          lastErrorAt: existing.lastErrorAt,
-          lastErrorType: existing.lastErrorType,
-          lastErrorSource: existing.lastErrorSource,
-          errorCode: existing.errorCode,
-          rateLimitedUntil: existing.rateLimitedUntil,
-          backoffLevel: existing.backoffLevel,
-        });
-        if (clearExtraUsageUpdate) {
-          Object.assign(updateData, clearExtraUsageUpdate);
-        }
-      }
     }
 
     const updated = await updateProviderConnection(id, updateData);

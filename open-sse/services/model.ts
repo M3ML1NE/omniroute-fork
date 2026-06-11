@@ -106,9 +106,6 @@ for (const [aliasOrId, models] of Object.entries(PROVIDER_MODELS)) {
   }
 }
 const KNOWN_MODEL_IDS = new Set(MODEL_TO_PROVIDERS.keys());
-const CODEX_PREFERRED_UNPREFIXED_MODELS = new Set(["gpt-5.5"]);
-const CODEX_PREFERRED_UNPREFIXED_MODEL_ALIASES = new Map([["gpt-5.5", "gpt-5.5-medium"]]);
-export const CODEX_NATIVE_UNPREFIXED_MODELS = new Set(["codex-auto-review"]);
 
 interface ProviderConnectionLike {
   provider?: unknown;
@@ -186,35 +183,12 @@ function hasKnownProviderModel(providerOrAlias: string | null | undefined, model
   return true;
 }
 
-function hasCodexPreferredUnprefixedModel(modelId: string) {
-  const canonicalModel = CODEX_PREFERRED_UNPREFIXED_MODEL_ALIASES.get(modelId);
-  if (!canonicalModel) return false;
-
-  const providerAlias = PROVIDER_ID_TO_ALIAS.codex || "codex";
-  const models = PROVIDER_MODELS[providerAlias] || PROVIDER_MODELS.codex || [];
-  return models.some((entry) => entry?.id === canonicalModel);
-}
-
 function resolveInferredProviderModel(provider: string, modelId: string) {
-  const codexPreferredModel = CODEX_PREFERRED_UNPREFIXED_MODEL_ALIASES.get(modelId);
-  if (provider === "codex" && codexPreferredModel) {
-    return codexPreferredModel;
-  }
   return resolveProviderModelAlias(provider, modelId);
 }
 
 function getInferredProvidersForModel(modelId: string) {
-  const providers = [...(MODEL_TO_PROVIDERS.get(modelId) || [])];
-
-  if (
-    CODEX_PREFERRED_UNPREFIXED_MODELS.has(modelId) &&
-    hasCodexPreferredUnprefixedModel(modelId) &&
-    !providers.includes("codex")
-  ) {
-    providers.push("codex");
-  }
-
-  return providers;
+  return [...(MODEL_TO_PROVIDERS.get(modelId) || [])];
 }
 
 function isProviderConnectionActive(connection: ProviderConnectionLike) {
@@ -416,14 +390,6 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
 
   const nonOpenAIProviders = providers.filter((p) => p !== "openai");
 
-  if (CODEX_NATIVE_UNPREFIXED_MODELS.has(modelId)) {
-    return {
-      provider: "codex",
-      model: modelId,
-      extendedContext,
-    };
-  }
-
   const activeProviders = await getActiveProviderSet();
 
   // Preserve historical behavior: OpenAI stays default when model exists there.
@@ -433,19 +399,6 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
     return {
       provider: "openai",
       model: modelId,
-      extendedContext,
-    };
-  }
-
-  if (
-    activeProviders?.has("codex") &&
-    !activeProviders.has("openai") &&
-    providers.includes("codex") &&
-    CODEX_PREFERRED_UNPREFIXED_MODELS.has(modelId)
-  ) {
-    return {
-      provider: "codex",
-      model: resolveInferredProviderModel("codex", modelId),
       extendedContext,
     };
   }
@@ -480,18 +433,6 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
       candidateProviders: candidatesToUse,
       candidateAliases: aliasesForHint,
     };
-  }
-
-  // Fallback: infer provider from known model name prefixes before defaulting to openai
-  // FIX #73: Models like claude-haiku-4-5-20251001 sent without provider prefix
-  // would incorrectly route to OpenAI. Use heuristic prefix detection first.
-  if (/^claude-/i.test(modelId)) {
-    // Claude models → Anthropic provider (canonical source for Claude models)
-    return { provider: "anthropic", model: modelId, extendedContext };
-  }
-  if (/^gemini-/i.test(modelId) || /^gemma-/i.test(modelId)) {
-    // Gemini/Gemma models → Gemini provider
-    return { provider: "gemini", model: modelId, extendedContext };
   }
 
   // Last resort: no provider could be inferred — return a clear error instead

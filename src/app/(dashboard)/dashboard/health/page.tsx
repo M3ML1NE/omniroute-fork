@@ -786,12 +786,6 @@ export default function HealthPage() {
               providerInfo = { color: "#10A37F", textIcon: "OC" };
               if (customName.length > 12) displayName += ` (${customName.slice(0, 8)}…)`;
               else if (customName) displayName += ` (${customName})`;
-            } else if (providerId.startsWith("anthropic-compatible-")) {
-              const customName = providerId.replace("anthropic-compatible-", "");
-              displayName = tp("anthropicCompatibleName");
-              providerInfo = { color: "#D97757", textIcon: "AC" };
-              if (customName.length > 12) displayName += ` (${customName.slice(0, 8)}…)`;
-              else if (customName) displayName += ` (${customName})`;
             } else {
               displayName = getProviderDisplayName(providerId, providerInfo);
             }

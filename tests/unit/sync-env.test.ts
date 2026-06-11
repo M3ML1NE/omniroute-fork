@@ -24,7 +24,7 @@ function writeEnvExample(rootDir: string) {
       "STORAGE_ENCRYPTION_KEY=",
       "MACHINE_ID_SALT=",
       "CLAUDE_OAUTH_CLIENT_ID=claude-default",
-      "CODEX_OAUTH_CLIENT_ID=codex-default",
+      "QWEN_OAUTH_CLIENT_ID=qwen-default",
       'CLAUDE_USER_AGENT="claude-cli/2.1.145 (external, cli)"',
       "# COMMENTED_KEY=skip-me",
       "",
@@ -41,7 +41,7 @@ function writeOauthEnvExample(rootDir: string) {
       "#   OAUTH PROVIDER CREDENTIALS",
       "# ═══════════════════════════════════════════════════",
       "CLAUDE_OAUTH_CLIENT_ID=claude-default",
-      "CODEX_OAUTH_CLIENT_ID=codex-default",
+      "QWEN_OAUTH_CLIENT_ID=qwen-default",
       "# ─────────────────────────────────────────────────────────────────────────────",
       "# Provider User-Agent Overrides (optional — customize per-provider UA headers)",
       "# ─────────────────────────────────────────────────────────────────────────────",
@@ -71,7 +71,7 @@ test("syncEnv creates .env from .env.example and generates install-time secrets"
     assert.match(envContent, /^STORAGE_ENCRYPTION_KEY=$/m);
     assert.match(envContent, /^MACHINE_ID_SALT=omniroute-/m);
     assert.match(envContent, /^CLAUDE_OAUTH_CLIENT_ID=claude-default$/m);
-    assert.match(envContent, /^CODEX_OAUTH_CLIENT_ID=codex-default$/m);
+    assert.match(envContent, /^QWEN_OAUTH_CLIENT_ID=qwen-default$/m);
     assert.match(envContent, /^CLAUDE_USER_AGENT="claude-cli\/2\.1\.145 \(external, cli\)"$/m);
     assert.doesNotMatch(envContent, /^COMMENTED_KEY=/m);
   } finally {
@@ -106,7 +106,7 @@ test("syncEnv appends only missing keys and preserves existing values", () => {
     assert.match(envContent, /^API_KEY_SECRET=.{32,}$/m);
     assert.match(envContent, /^STORAGE_ENCRYPTION_KEY=$/m);
     assert.match(envContent, /^MACHINE_ID_SALT=omniroute-/m);
-    assert.match(envContent, /^CODEX_OAUTH_CLIENT_ID=codex-default$/m);
+    assert.match(envContent, /^QWEN_OAUTH_CLIENT_ID=qwen-default$/m);
     assert.match(envContent, /^CLAUDE_USER_AGENT=claude-cli\/2\.1\.145 \(external, cli\)$/m);
     assert.match(envContent, /Auto-added by sync-env/);
   } finally {
@@ -129,7 +129,7 @@ test("syncEnv treats quoted and unquoted values as equivalent", () => {
         "STORAGE_ENCRYPTION_KEY=storage-secret",
         "MACHINE_ID_SALT=machine-salt",
         "CLAUDE_OAUTH_CLIENT_ID=claude-default",
-        "CODEX_OAUTH_CLIENT_ID=codex-default",
+        "QWEN_OAUTH_CLIENT_ID=qwen-default",
         'CLAUDE_USER_AGENT="claude-cli/2.1.145 (external, cli)"',
         "",
       ].join("\n"),
@@ -178,7 +178,7 @@ test("syncEnv oauth scope only copies oauth defaults", () => {
 
     assert.deepEqual(result, { created: true, added: 2 });
     assert.match(envContent, /^CLAUDE_OAUTH_CLIENT_ID=claude-default$/m);
-    assert.match(envContent, /^CODEX_OAUTH_CLIENT_ID=codex-default$/m);
+    assert.match(envContent, /^QWEN_OAUTH_CLIENT_ID=qwen-default$/m);
     assert.doesNotMatch(envContent, /^JWT_SECRET=/m);
     assert.doesNotMatch(envContent, /^Provider User-Agent Overrides/m);
   } finally {

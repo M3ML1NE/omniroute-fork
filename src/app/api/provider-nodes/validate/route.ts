@@ -14,13 +14,6 @@ import {
 import { providerNodeValidateSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
-function sanitizeAnthropicBaseUrl(baseUrl: string) {
-  return (baseUrl || "")
-    .trim()
-    .replace(/\/$/, "")
-    .replace(/\/messages(?:\?[^#]*)?$/i, "");
-}
-
 function sanitizeAuditBaseUrl(baseUrl: string) {
   if (!baseUrl) return null;
   try {
@@ -57,29 +50,7 @@ export async function POST(request) {
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { baseUrl, apiKey, type, chatPath, modelsPath } = validation.data;
-
-    // Anthropic Compatible Validation
-    if (type === "anthropic-compatible") {
-      // Robustly construct URL: remove trailing slash, and remove trailing /messages if user added it
-      const normalizedBase = sanitizeAnthropicBaseUrl(baseUrl);
-
-      // Use /models endpoint for validation as many compatible providers support it (like OpenAI)
-      const modelsUrl = `${normalizedBase}${modelsPath || "/models"}`;
-
-      const res = await safeOutboundFetch(modelsUrl, {
-        ...SAFE_OUTBOUND_FETCH_PRESETS.validationRead,
-        guard: getProviderOutboundGuard(),
-        method: "GET",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          Authorization: `Bearer ${apiKey}`, // Add Bearer token for hybrid proxies
-        },
-      });
-
-      return NextResponse.json({ valid: res.ok, error: res.ok ? null : "Invalid API key" });
-    }
+    const { baseUrl, apiKey, modelsPath } = validation.data;
 
     // OpenAI Compatible Validation (Default)
     const modelsUrl = `${baseUrl.replace(/\/$/, "")}${modelsPath || "/models"}`;

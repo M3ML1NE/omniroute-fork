@@ -15,6 +15,7 @@ import path from "node:path";
 
 // --- Environment setup (must come before dynamic imports) ---
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-perf-regression-"));
+(process.env as Record<string, string>).NODE_ENV = process.env.NODE_ENV || "test";
 process.env.DATA_DIR = TEST_DATA_DIR;
 process.env.REQUIRE_API_KEY = "false";
 if (!process.env.API_KEY_SECRET) {
@@ -27,7 +28,6 @@ const { createApiKey } = await import("../../src/lib/db/apiKeys.ts");
 const { createMemory, listMemories, deleteMemory } = await import("../../src/lib/memory/store.ts");
 const { retrieveMemories } = await import("../../src/lib/memory/retrieval.ts");
 const { MemoryType } = await import("../../src/lib/memory/types.ts");
-const { skillRegistry } = await import("../../src/lib/skills/registry.ts");
 const { GET: memoryRouteGET } = await import("../../src/app/api/memory/route.ts");
 
 // --- Work around FTS5 trigger bug ---
@@ -47,13 +47,10 @@ const TEST_API_KEY_ID = "perf-test-api-key";
 const TEST_MACHINE_ID = "perf-test-machine";
 const TEST_SESSION_ID = "perf-test-session";
 const MEMORY_COUNT = 1000;
-const SKILL_COUNT = 100;
 let managementApiKey = "";
 
 // --- Thresholds (2x buffer for CI) ---
 const THRESHOLD_LIST_MEMORIES_MS = 200;
-const THRESHOLD_SKILLS_CACHED_MS = 100;
-const THRESHOLD_SKILLS_UNCACHED_MS = 400;
 const THRESHOLD_SEARCH_MS = 400;
 const THRESHOLD_API_ROUTE_MS = 1000;
 
@@ -105,61 +102,6 @@ describe("Performance: listMemories pagination (1000 records)", () => {
     assert.ok(
       elapsed < THRESHOLD_LIST_MEMORIES_MS,
       `listMemories took ${elapsed.toFixed(1)}ms, expected <${THRESHOLD_LIST_MEMORIES_MS}ms`
-    );
-  });
-});
-
-// ============================================================
-// Test 2: Skills registry - cached vs uncached list
-// ============================================================
-describe("Performance: skills registry cached vs uncached", () => {
-  before(async () => {
-    // Register 100 skills in the database
-    for (let i = 0; i < SKILL_COUNT; i++) {
-      await skillRegistry.register({
-        name: `perf-skill-${i}`,
-        version: "1.0.0",
-        description: `Performance test skill ${i}`,
-        schema: { input: {}, output: {} },
-        handler: `echo "skill ${i}"`,
-        enabled: true,
-        apiKeyId: TEST_API_KEY_ID,
-      });
-    }
-  });
-
-  after(async () => {
-    // Clean up skills
-    const db = core.getDbInstance();
-    db.prepare("DELETE FROM skills WHERE api_key_id = ?").run(TEST_API_KEY_ID);
-    skillRegistry.invalidateCache();
-  });
-
-  it(`should load skills from DB (uncached) in <${THRESHOLD_SKILLS_UNCACHED_MS}ms`, async () => {
-    // Force cache invalidation so loadFromDatabase actually hits DB
-    skillRegistry.invalidateCache();
-
-    const start = performance.now();
-    await skillRegistry.loadFromDatabase();
-    const elapsed = performance.now() - start;
-
-    assert.ok(
-      elapsed < THRESHOLD_SKILLS_UNCACHED_MS,
-      `Uncached loadFromDatabase took ${elapsed.toFixed(1)}ms, expected <${THRESHOLD_SKILLS_UNCACHED_MS}ms`
-    );
-  });
-
-  it(`should list skills from cache in <${THRESHOLD_SKILLS_CACHED_MS}ms`, async () => {
-    // Ensure cache is warm (loadFromDatabase was just called above)
-    // Call list() which reads from in-memory Map
-    const start = performance.now();
-    const skills = skillRegistry.list();
-    const elapsed = performance.now() - start;
-
-    assert.ok(skills.length >= SKILL_COUNT, `Should have at least ${SKILL_COUNT} skills`);
-    assert.ok(
-      elapsed < THRESHOLD_SKILLS_CACHED_MS,
-      `Cached list() took ${elapsed.toFixed(1)}ms, expected <${THRESHOLD_SKILLS_CACHED_MS}ms`
     );
   });
 });

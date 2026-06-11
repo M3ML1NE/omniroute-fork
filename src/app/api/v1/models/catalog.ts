@@ -16,7 +16,6 @@ import { getAllModerationModels } from "@omniroute/open-sse/config/moderationReg
 import { getAllVideoModels } from "@omniroute/open-sse/config/videoRegistry";
 import { getAllMusicModels } from "@omniroute/open-sse/config/musicRegistry";
 import { REGISTRY } from "@omniroute/open-sse/config/providerRegistry";
-import { CODEX_NATIVE_UNPREFIXED_MODELS } from "@omniroute/open-sse/services/model";
 import { resolveNestedComboTargets } from "@omniroute/open-sse/services/combo";
 import { getAllSyncedAvailableModels, type SyncedAvailableModel } from "@/lib/db/models";
 import { getCompatibleFallbackModels } from "@/lib/providers/managedAvailableModels";
@@ -680,33 +679,6 @@ export async function getUnifiedModelsResponse(
             ...(providerVisionFields || {}),
           });
         }
-      }
-    }
-
-    for (const modelId of CODEX_NATIVE_UNPREFIXED_MODELS) {
-      if (!providerSupportsModel("codex", modelId)) continue;
-      if (await getModelIsHidden("codex", modelId)) continue;
-
-      const alias = providerIdToAlias.codex || "cx";
-      const aliasId = `${alias}/${modelId}`;
-      const providerIdModel = `codex/${modelId}`;
-      const entries = [
-        { id: aliasId, parent: null },
-        { id: providerIdModel, parent: aliasId },
-        { id: modelId, parent: providerIdModel },
-      ];
-
-      for (const entry of entries) {
-        if (models.some((existingModel) => existingModel.id === entry.id)) continue;
-        models.push({
-          id: entry.id,
-          object: "model",
-          created: timestamp,
-          owned_by: "codex",
-          permission: [],
-          root: modelId,
-          parent: entry.parent,
-        });
       }
     }
 

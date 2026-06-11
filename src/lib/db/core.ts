@@ -167,6 +167,7 @@ function buildPgAdapter(): DbLike {
       };
     },
     async exec(sql: string): Promise<void> {
+      if (typeof sql !== "string" || sql.trim().length === 0) return;
       await query(sql);
     },
     pragma(_value?: string): void {

@@ -131,14 +131,11 @@ function buildFallbackTool(tool: JsonRecord, targetFormat?: string | null): Json
 
 export function supportsNativeWebSearchFallbackBypass({
   targetFormat,
-  nativeCodexPassthrough,
 }: {
   provider?: string | null;
   sourceFormat?: string | null;
-  targetFormat: string | null | undefined;
-  nativeCodexPassthrough: boolean;
+  targetFormat?: string | null;
 }): boolean {
-  if (nativeCodexPassthrough) return true;
   return targetFormat === FORMATS.GEMINI;
 }
 
@@ -148,7 +145,6 @@ export function prepareWebSearchFallbackBody<T extends JsonRecord>(
     provider?: string | null;
     sourceFormat?: string | null;
     targetFormat?: string | null;
-    nativeCodexPassthrough: boolean;
   }
 ): { body: T; fallback: WebSearchFallbackPlan } {
   const tools = Array.isArray(body.tools) ? body.tools : null;

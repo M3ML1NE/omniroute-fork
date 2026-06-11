@@ -1,14 +1,7 @@
 type JsonRecord = Record<string, unknown>;
-const CLAUDE_CODE_COMPATIBLE_PROVIDER_PREFIX = "anthropic-compatible-cc-";
 
 import { normalizeExcludedModelPatterns } from "@/domain/connectionModelRules";
 import { normalizeRoutingTags } from "@/domain/tagRouter";
-
-export const CODEX_REASONING_EFFORT_VALUES = ["none", "low", "medium", "high", "xhigh"] as const;
-
-export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORT_VALUES)[number];
-
-const CODEX_REASONING_EFFORT_SET = new Set<string>(CODEX_REASONING_EFFORT_VALUES);
 
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
@@ -32,34 +25,6 @@ function hasNonEmptyString(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isClaudeCodeCompatibleProvider(provider: string | null | undefined): boolean {
-  return (
-    typeof provider === "string" && provider.startsWith(CLAUDE_CODE_COMPATIBLE_PROVIDER_PREFIX)
-  );
-}
-
-export function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort | undefined {
-  const normalized = normalizeString(value);
-  if (!normalized || !CODEX_REASONING_EFFORT_SET.has(normalized)) {
-    return undefined;
-  }
-  return normalized as CodexReasoningEffort;
-}
-
-export type CodexServiceTier = "default" | "priority" | "flex";
-
-export function normalizeCodexServiceTier(value: unknown): CodexServiceTier | undefined {
-  const normalized = normalizeString(value);
-  if (!normalized) return undefined;
-  if (normalized === "fast" || normalized === "priority") return "priority";
-  if (normalized === "default" || normalized === "flex") return normalized;
-  return undefined;
-}
-
-export function normalizeClaudeCodeCompatibleContext1m(value: unknown): true | undefined {
-  return value === true ? true : undefined;
-}
-
 export function normalizeRequestDefaults(
   provider: string | null | undefined,
   value: unknown
@@ -68,31 +33,6 @@ export function normalizeRequestDefaults(
   if (Object.keys(record).length === 0) return undefined;
 
   const normalized: JsonRecord = { ...record };
-
-  if (provider === "codex") {
-    const reasoningEffort = normalizeCodexReasoningEffort(record.reasoningEffort);
-    if (reasoningEffort) {
-      normalized.reasoningEffort = reasoningEffort;
-    } else {
-      delete normalized.reasoningEffort;
-    }
-
-    const serviceTier = normalizeCodexServiceTier(record.serviceTier);
-    if (serviceTier) {
-      normalized.serviceTier = serviceTier;
-    } else {
-      delete normalized.serviceTier;
-    }
-  }
-
-  if (isClaudeCodeCompatibleProvider(provider)) {
-    const context1m = normalizeClaudeCodeCompatibleContext1m(record.context1m);
-    if (context1m) {
-      normalized.context1m = true;
-    } else {
-      delete normalized.context1m;
-    }
-  }
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
@@ -237,28 +177,4 @@ export function getProviderRequestDefaults(
   return normalizeRequestDefaults(provider, asRecord(providerSpecificData).requestDefaults) || {};
 }
 
-export function getCodexRequestDefaults(providerSpecificData: unknown): {
-  reasoningEffort?: CodexReasoningEffort;
-  serviceTier?: CodexServiceTier;
-} {
-  const defaults = getProviderRequestDefaults("codex", providerSpecificData);
-  const reasoningEffort = normalizeCodexReasoningEffort(defaults.reasoningEffort);
-  const serviceTier = normalizeCodexServiceTier(defaults.serviceTier);
-  return {
-    ...(reasoningEffort ? { reasoningEffort } : {}),
-    ...(serviceTier ? { serviceTier } : {}),
-  };
-}
 
-export function getClaudeCodeCompatibleRequestDefaults(providerSpecificData: unknown): {
-  context1m?: true;
-} {
-  const defaults = getProviderRequestDefaults(
-    "anthropic-compatible-cc-default",
-    providerSpecificData
-  );
-  const context1m = normalizeClaudeCodeCompatibleContext1m(defaults.context1m);
-  return {
-    ...(context1m ? { context1m } : {}),
-  };
-}

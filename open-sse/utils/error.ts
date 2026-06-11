@@ -254,11 +254,6 @@ export async function parseUpstreamError(response: Response, provider: string | 
     }
   }
 
-  // Parse Antigravity-specific retry time from error message
-  if (provider === "antigravity" && response.status === 429) {
-    retryAfterMs = parseAntigravityRetryTime(messageStr);
-  }
-
   // Also parse retry time for other providers (Qwen, etc.) with "quota will reset after XhYmZs" format
   if (response.status === 429 && !retryAfterMs) {
     retryAfterMs = parseAntigravityRetryTime(messageStr);

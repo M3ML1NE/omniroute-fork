@@ -6,22 +6,14 @@ const catalog =
 const api =
   await import("../../src/app/(dashboard)/dashboard/providers/components/onboarding/providerOnboardingApi.ts");
 
-test("provider onboarding catalog exposes API-key and OAuth providers for the wizard", () => {
+test("provider onboarding catalog exposes API-key providers for the wizard", () => {
   const apiKeyOptions = catalog.getWizardApiKeyProviderOptions();
   const oauthOptions = catalog.getWizardOAuthProviderOptions();
 
-  assert.ok(apiKeyOptions.some((option) => option.id === "openai"));
-  assert.ok(apiKeyOptions.some((option) => option.id === "openrouter"));
-  assert.ok(oauthOptions.some((option) => option.id === "claude"));
-  assert.ok(oauthOptions.some((option) => option.id === "kiro"));
-  assert.ok(oauthOptions.some((option) => option.id === "cursor"));
-  assert.ok(!oauthOptions.some((option) => option.id === "zed"));
-  assert.ok(!oauthOptions.some((option) => option.id === "windsurf"));
-  assert.ok(!oauthOptions.some((option) => option.id === "devin-cli"));
-  assert.ok(!oauthOptions.some((option) => option.id === "qoder"));
+  assert.ok(apiKeyOptions.some((option) => option.id === "gigachat"));
+  assert.equal(oauthOptions.length, 0);
 
   assert.ok(apiKeyOptions.every((option) => option.authKind === "apikey"));
-  assert.ok(oauthOptions.every((option) => option.authKind === "oauth"));
 });
 
 test("provider onboarding option filter matches id, name, alias, and description", () => {
@@ -215,7 +207,6 @@ test("provider onboarding loads provider node feature flags through the API help
 
     assert.deepEqual(result, {
       openaiCompatibleProviderEnabled: false,
-      anthropicCompatibleProviderEnabled: false,
     });
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "/api/provider-nodes");

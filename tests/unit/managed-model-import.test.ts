@@ -122,38 +122,3 @@ test("pruning stale connection available models during import", async () => {
   assert.ok(!ids.includes("shared/model-stale"));
 });
 
-test("antigravity sync dynamically builds and saves mitmAlias mappings", async () => {
-  const db = core.getDbInstance();
-  // Create an antigravity connection
-  db.prepare(
-    "INSERT INTO provider_connections (id, provider, auth_type, name, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run("antigravity-conn", "antigravity", "oauth", "Antigravity", 1, "2026-05-29", "2026-05-29");
-
-  await importManagedModels({
-    providerId: "antigravity",
-    connectionId: "antigravity-conn",
-    mode: "sync",
-    fetchedModels: [
-      { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash" },
-      { id: "custom-antigravity-model", name: "Custom Antigravity Model" },
-    ],
-  });
-
-  const models = await modelsDb.getSyncedAvailableModels("antigravity");
-  console.log("SYNCED MODELS IN TEST:", models);
-
-  const mitmMappings = await modelsDb.getMitmAlias("antigravity");
-  console.log("MITM MAPPINGS IN TEST:", mitmMappings);
-
-  // Should contain standard mapping
-  assert.equal(mitmMappings["gemini-3.5-flash"], "antigravity/gemini-3.5-flash");
-  assert.equal(mitmMappings["custom-antigravity-model"], "antigravity/custom-antigravity-model");
-
-  // Should contain reverse alias mappings (gemini-3.5-flash-preview maps to gemini-3.5-flash)
-  assert.equal(mitmMappings["gemini-3.5-flash-preview"], "antigravity/gemini-3.5-flash");
-  assert.equal(mitmMappings["gemini-3-flash-agent"], "antigravity/gemini-3.5-flash");
-
-  // Should contain forward alias mappings (gemini-3.5-flash-preview maps to gemini-3.5-flash)
-  assert.equal(mitmMappings["gemini-3.5-flash-preview"], "antigravity/gemini-3.5-flash");
-});
-

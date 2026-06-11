@@ -8,26 +8,6 @@ const VALID_RUNTIME_MODES = new Set(["auto", "host", "container"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
 const CLI_TOOLS: Record<string, any> = {
-  claude: {
-    defaultCommand: "claude",
-    envBinKey: "CLI_CLAUDE_BIN",
-    requiresBinary: true,
-    healthcheckTimeoutMs: 4000,
-    paths: {
-      settings: ".claude/settings.json",
-      auth: [".claude/.credentials.json", ".config/claude/credentials.json"],
-    },
-  },
-  codex: {
-    defaultCommand: "codex",
-    envBinKey: "CLI_CODEX_BIN",
-    requiresBinary: true,
-    healthcheckTimeoutMs: 4000,
-    paths: {
-      config: ".codex/config.toml",
-      auth: ".codex/auth.json",
-    },
-  },
   droid: {
     defaultCommand: "droid",
     envBinKey: "CLI_DROID_BIN",
@@ -467,27 +447,14 @@ const getKnownToolPaths = (toolId: string): string[] => {
   const nvmNodePath = getNvmNodePath();
 
   const toolBins: Record<string, [string, string][]> = {
-    claude: [
-      ["claude.cmd", "claude"],
-      ["claude.exe", "claude"],
-    ],
-    codex: [["codex.cmd", "codex"]],
     droid: [
       ["droid.cmd", "droid"],
       ["droid.exe", "droid"],
     ],
     openclaw: [["openclaw.cmd", "openclaw"]],
-    cursor: [
-      ["agent.cmd", "agent"],
-      ["cursor.cmd", "cursor"],
-    ],
     cline: [["cline.cmd", "cline"]],
     kilo: [["kilocode.cmd", "kilocode"]],
     opencode: [["opencode.cmd", "opencode"]],
-    qoder: [
-      ["qodercli.cmd", "qodercli"],
-      ["qodercli.exe", "qodercli"],
-    ],
     devin: [
       ["devin.exe", "devin"],
       ["devin.cmd", "devin"],
@@ -505,13 +472,6 @@ const getKnownToolPaths = (toolId: string): string[] => {
       userProfile,
     ]);
 
-    if (toolId === "claude") {
-      paths.push(path.join(home, ".local", "bin", "claude.exe"));
-      if (localAppData) {
-        paths.push(path.join(localAppData, "Programs", "Claude", "claude.exe"));
-        paths.push(path.join(localAppData, "claude-code", "claude.exe"));
-      }
-    }
 
     if (toolId === "droid") {
       paths.push(path.join(home, "bin", "droid.exe"));
@@ -555,15 +515,6 @@ const getKnownToolPaths = (toolId: string): string[] => {
 
       if (toolId === "opencode") {
         paths.push(path.join(home, ".opencode", "bin", posixName));
-      }
-      if (toolId === "claude") {
-        paths.push(path.join(home, ".claude", "bin", posixName));
-      }
-      // Devin CLI installs to ~/.local/share/devin/bin/devin (Linux)
-      // or via shell installer to ~/.devin/bin/devin
-      if (toolId === "devin") {
-        paths.push(path.join(home, ".local", "share", "devin", "bin", "devin"));
-        paths.push(path.join(home, ".devin", "bin", "devin"));
       }
     }
   }

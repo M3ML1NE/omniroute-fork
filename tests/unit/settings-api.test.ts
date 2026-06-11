@@ -120,19 +120,6 @@ describe("Settings API - persisted preferences", () => {
       );
     });
 
-    test("updateSettings persists antigravitySignatureCacheMode", async () => {
-      const result = await harness.updateSettings({
-        antigravitySignatureCacheMode: "bypass-strict",
-      });
-      assert.ok(result, "updateSettings should return truthy result");
-
-      const settings = await harness.getSettings();
-      assert.strictEqual(
-        settings.antigravitySignatureCacheMode,
-        "bypass-strict",
-        "antigravitySignatureCacheMode should be updated"
-      );
-    });
 
     test("PATCH /api/settings persists endpoint tunnel visibility", async () => {
       const response = await harness.settingsRoute.PATCH(
@@ -162,13 +149,13 @@ describe("Settings API - persisted preferences", () => {
       const response = await harness.settingsRoute.PUT(
         await makeManagementSessionRequest("http://localhost/api/settings", {
           method: "PUT",
-          body: { antigravitySignatureCacheMode: "bypass" },
+          body: { hideEndpointCloudflaredTunnel: true },
         })
       );
       const body = (await response.json()) as Record<string, unknown>;
 
       assert.equal(response.status, 200);
-      assert.equal(body.antigravitySignatureCacheMode, "bypass");
+      assert.equal(body.hideEndpointCloudflaredTunnel, true);
     });
   });
 });

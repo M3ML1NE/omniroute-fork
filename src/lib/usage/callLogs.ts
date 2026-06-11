@@ -262,9 +262,7 @@ async function resolveProviderPrefix(providerId: string): Promise<string | null>
 
 function isCompatibleProviderId(providerId: string | null): boolean {
   if (!providerId) return false;
-  return (
-    providerId.startsWith("openai-compatible-") || providerId.startsWith("anthropic-compatible-")
-  );
+  return providerId.startsWith("openai-compatible-");
 }
 
 function applyNodePrefix(
@@ -609,7 +607,25 @@ async function getLegacyInlineDetail(id: string) {
   };
 }
 
-export async function saveCallLog(entry: any) {
+const inFlightCallLogWrites = new Set<Promise<void>>();
+
+export async function drainCallLogWrites(): Promise<void> {
+  while (inFlightCallLogWrites.size > 0) {
+    await Promise.allSettled([...inFlightCallLogWrites]);
+  }
+}
+
+export async function saveCallLog(entry: any): Promise<void> {
+  const writePromise = saveCallLogInternal(entry);
+  inFlightCallLogWrites.add(writePromise);
+  try {
+    await writePromise;
+  } finally {
+    inFlightCallLogWrites.delete(writePromise);
+  }
+}
+
+async function saveCallLogInternal(entry: any) {
   if (!shouldPersistToDisk) return;
 
   try {
@@ -768,6 +784,7 @@ function runScheduledCallLogRotation() {
 
 export function scheduleCallLogRotation() {
   if (!CALL_LOGS_DIR) return;
+  if (process.env.NODE_ENV === "test") return;
   const elapsed = Date.now() - lastCallLogRotationScheduledAt;
   if (elapsed >= CALL_LOG_ROTATE_THROTTLE_MS) {
     lastCallLogRotationScheduledAt = Date.now();

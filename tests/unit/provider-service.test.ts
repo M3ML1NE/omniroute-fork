@@ -42,21 +42,6 @@ test("OpenAI-compatible legacy providers honor providerSpecificData.apiType", ()
   );
 });
 
-test("GitHub provider headers include request IDs and JSON accept for non-streaming requests", () => {
-  const headers = buildProviderHeaders(
-    "github",
-    {
-      copilotToken: "copilot-token",
-    },
-    false
-  );
-
-  assert.equal(headers.Authorization, "Bearer copilot-token");
-  assert.equal(typeof headers["x-request-id"], "string");
-  assert.match(headers["x-request-id"], /^[a-f0-9-]{36}$/i);
-  assert.equal(headers.Accept, "application/json");
-});
-
 test("Registry-driven headers support x-goog-api-key and bearer fallback", () => {
   const apiKeyHeaders = buildProviderHeaders(
     "gemini",

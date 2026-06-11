@@ -17,10 +17,7 @@ import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { handleComboChat } from "@omniroute/open-sse/services/combo.ts";
 import { resolveComboConfig } from "@omniroute/open-sse/services/comboConfig.ts";
 import { injectHandoffIntoBody } from "@omniroute/open-sse/services/contextHandoff.ts";
-import {
-  HTTP_STATUS,
-  ANTIGRAVITY_PRE_RESPONSE_TIMEOUT_CODE,
-} from "@omniroute/open-sse/config/constants.ts";
+import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { getTargetFormat } from "@omniroute/open-sse/services/provider.ts";
 import {
   getModelTargetFormat,
@@ -31,12 +28,7 @@ import * as log from "../utils/logger";
 import { checkAndRefreshToken } from "../services/tokenRefresh";
 import { createHookContext, runHooks, initPreRequestRegistry } from "@/lib/middleware/registry";
 import { deleteHandoff, getHandoff } from "@/lib/db/contextHandoffs";
-import {
-  deleteSessionAccountAffinity,
-  getCachedSettings,
-  getCombos,
-  getSessionAccountAffinity,
-} from "@/lib/localDb";
+import { getCachedSettings, getCombos } from "@/lib/localDb";
 import {
   ensureOpenAIStoreSessionFallback,
   isOpenAIResponsesStoreEnabled,
@@ -880,9 +872,6 @@ async function handleSingleModelChat(
       const storeEnabled = isOpenAIResponsesStoreEnabled(
         refreshedCredentials?.providerSpecificData ?? credentials?.providerSpecificData
       );
-      if (provider === "codex" && storeEnabled && runtimeOptions.sessionId) {
-        requestBody = ensureOpenAIStoreSessionFallback(requestBody, runtimeOptions.sessionId);
-      }
       if (runtimeOptions.sessionId && body?._omnirouteInternalRequest !== "context-handoff") {
         touchSession(runtimeOptions.sessionId, credentials.connectionId);
       }
@@ -952,111 +941,9 @@ async function handleSingleModelChat(
         return result.response;
       }
 
-      const isAntigravityStreamReadinessFailure =
-        provider === "antigravity" &&
-        (result.errorCode === "STREAM_READINESS_TIMEOUT" ||
-          result.errorCode === "STREAM_EARLY_EOF" ||
-          result.errorType === "stream_timeout" ||
-          result.errorType === "stream_early_eof");
-
-      if (
-        (result.errorType === "stream_timeout" || result.errorType === "stream_early_eof") &&
-        !isAntigravityStreamReadinessFailure
-      ) {
+      if (result.errorType === "stream_timeout" || result.errorType === "stream_early_eof") {
         // Stream readiness timeout is an upstream stall after an HTTP response was received,
         // not an account/quota failure. Do NOT mark the account unavailable here.
-        return result.response;
-      }
-
-      if (isAntigravityStreamReadinessFailure) {
-        const { shouldFallback, cooldownMs } = await markAccountUnavailable(
-          credentials.connectionId,
-          result.status || HTTP_STATUS.BAD_GATEWAY,
-          result.error || result.errorCode || "Antigravity stream ended before useful content",
-          provider,
-          model,
-          providerProfile
-        );
-
-        if (shouldFallback && !hasForcedConnection) {
-          log.warn(
-            "AUTH",
-            `Antigravity connection ${accountId}... produced no useful stream content, trying fallback connection`
-          );
-          if (Number.isFinite(cooldownMs) && cooldownMs > 0) {
-            lastCooldownMs = cooldownMs;
-            requestRetryLastCooldownMs = cooldownMs;
-          }
-          if (runtimeOptions.sessionAffinityKey) {
-            try {
-              const affinity = getSessionAccountAffinity(
-                runtimeOptions.sessionAffinityKey,
-                provider
-              );
-              if (affinity?.connectionId === credentials.connectionId) {
-                deleteSessionAccountAffinity(runtimeOptions.sessionAffinityKey, provider);
-              }
-            } catch {
-              // best-effort: selection also excludes this connection for the current retry.
-            }
-          }
-          excludedConnectionIds.add(credentials.connectionId);
-          lastError = result.error;
-          lastStatus = result.status;
-          requestRetryLastError = result.error;
-          requestRetryLastStatus = result.status;
-          continue;
-        }
-
-        return result.response;
-      }
-
-      const isAntigravityPreResponseTimeout =
-        provider === "antigravity" &&
-        result.status === HTTP_STATUS.GATEWAY_TIMEOUT &&
-        (result.errorType === "upstream_timeout" ||
-          result.errorCode === ANTIGRAVITY_PRE_RESPONSE_TIMEOUT_CODE);
-
-      if (isAntigravityPreResponseTimeout) {
-        const { shouldFallback, cooldownMs } = await markAccountUnavailable(
-          credentials.connectionId,
-          result.status,
-          result.error || ANTIGRAVITY_PRE_RESPONSE_TIMEOUT_CODE,
-          provider,
-          model,
-          providerProfile
-        );
-
-        if (shouldFallback && !hasForcedConnection) {
-          log.warn(
-            "AUTH",
-            `Antigravity connection ${accountId}... timed out before response headers, trying fallback connection`
-          );
-          if (Number.isFinite(cooldownMs) && cooldownMs > 0) {
-            lastCooldownMs = cooldownMs;
-            requestRetryLastCooldownMs = cooldownMs;
-          }
-          if (runtimeOptions.sessionAffinityKey) {
-            try {
-              const affinity = getSessionAccountAffinity(
-                runtimeOptions.sessionAffinityKey,
-                provider
-              );
-              if (affinity?.connectionId === credentials.connectionId) {
-                deleteSessionAccountAffinity(runtimeOptions.sessionAffinityKey, provider);
-              }
-            } catch {
-              // best-effort: selection also excludes this connection for the current retry.
-            }
-          }
-          excludedConnectionIds.add(credentials.connectionId);
-          lastError = result.error;
-          lastStatus = result.status;
-          requestRetryLastError = result.error;
-          requestRetryLastStatus = result.status;
-          continue;
-        }
-
         return result.response;
       }
 
@@ -1153,6 +1040,11 @@ async function handleSingleModelChat(
       const is401 = result.status === 401;
       const skipConnectionDisable = is401 && hasExtraKeys;
 
+      const failureKind = classify429FromError({
+        status: result.status,
+        headers: result.headers,
+        body: result.error,
+      });
       const { shouldFallback, cooldownMs } = skipConnectionDisable
         ? { shouldFallback: false, cooldownMs: 0 }
         : await markAccountUnavailable(
@@ -1163,8 +1055,11 @@ async function handleSingleModelChat(
             model,
             providerProfile,
             {
-              persistUnavailableState:
-                !(isCombo && result.status === 429 && (failureKind === "rate_limit" || failureKind === "transient")),
+              persistUnavailableState: !(
+                isCombo &&
+                result.status === 429 &&
+                (failureKind === "rate_limit" || failureKind === "transient")
+              ),
             }
           );
 

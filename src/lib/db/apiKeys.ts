@@ -1297,7 +1297,7 @@ export async function isModelAllowedForKey(
 
   // If key belongs to groups, also check group-level permissions
   if (metadata.id) {
-    const groupAccess = checkKeyModelAccess(metadata.id, modelId || "");
+    const groupAccess = await checkKeyModelAccess(metadata.id, modelId || "");
     if (!groupAccess.allowed) {
       allowed = false;
     }

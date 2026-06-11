@@ -60,14 +60,8 @@ export function getProviderDisplayName(
   if (!providerId) return "Unknown Provider";
 
   // Simplify dynamic compatible provider IDs
-  const match = providerId.match(
-    /^(openai|anthropic)-compatible-(?:chat|responses)-[0-9a-f-]{10,}$/i
-  );
+  const match = providerId.match(/^(openai)-compatible-(?:chat|responses)-[0-9a-f-]{10,}$/i);
   if (match) return `Compatible (${match[1]})`;
-
-  if (/^anthropic-compatible-cc-[0-9a-f-]{10,}$/i.test(providerId)) {
-    return "CC Compatible";
-  }
 
   return providerId;
 }

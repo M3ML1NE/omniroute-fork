@@ -73,7 +73,6 @@ export async function POST(request) {
       apiKey: connection.apiKey,
       accessToken: connection.accessToken,
       refreshToken: connection.refreshToken,
-      copilotToken: connection.copilotToken,
       projectId: connection.projectId,
       providerSpecificData: connection.providerSpecificData,
     };

@@ -12,11 +12,22 @@ const ORIGINAL_INITIAL_PASSWORD = process.env.INITIAL_PASSWORD;
 const core = await import("../../src/lib/db/core.ts");
 const combosDb = await import("../../src/lib/db/combos.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
-const proxiesDb = await import("../../src/lib/db/proxies.ts");
 const settingsDb = await import("../../src/lib/db/settings.ts");
+const readCacheDb = await import("../../src/lib/db/readCache.ts");
+const pgModule = await import("../../src/lib/db/postgres.ts");
+
+const MUTABLE_TEST_TABLES = ["key_value", "combos", "provider_connections", "usage_history"];
+
+async function purgePostgresTables() {
+  const schema = pgModule.getSchema();
+  const tables = MUTABLE_TEST_TABLES.map((table) => `${schema}.${table}`).join(", ");
+  await pgModule.query(`TRUNCATE ${tables} CASCADE`);
+}
 
 async function resetStorage() {
+  await purgePostgresTables();
   core.resetDbInstance();
+  readCacheDb.invalidateDbCache();
 
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
@@ -69,7 +80,6 @@ test("getSettings exposes defaults and updateSettings persists typed values", as
   assert.equal(defaults.idempotencyWindowMs, 5000);
   assert.equal(defaults.requestRetry, 3);
   assert.equal(defaults.maxRetryIntervalSec, 30);
-  assert.equal(defaults.antigravitySignatureCacheMode, "enabled");
   assert.equal(defaults.comboConfigMode, "guided");
   assert.equal(defaults.mcpEnabled, false);
   assert.equal(defaults.a2aEnabled, false);
@@ -78,7 +88,6 @@ test("getSettings exposes defaults and updateSettings persists typed values", as
   assert.equal(updated.stickyRoundRobinLimit, 7);
   assert.equal(updated.requestRetry, 5);
   assert.equal(updated.maxRetryIntervalSec, 12);
-  assert.equal(updated.antigravitySignatureCacheMode, "enabled");
   assert.equal(updated.label, "task-303");
   assert.equal(await settingsDb.isCloudEnabled(), true);
 });
@@ -97,14 +106,14 @@ test("INITIAL_PASSWORD marks onboarding as complete on first read", async () => 
 test("pricing layers merge synced, models.dev and user overrides", async () => {
   const db = core.getDbInstance();
 
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "pricing_synced",
     "layered-provider",
     JSON.stringify({
       "model-a": { prompt: 1, completion: 2 },
     })
   );
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "models_dev_pricing",
     "layered-provider",
     JSON.stringify({
@@ -121,7 +130,6 @@ test("pricing layers merge synced, models.dev and user overrides", async () => {
 
   const pricing = await settingsDb.getPricing();
   const direct = await settingsDb.getPricingForModel("layered-provider", "model-a");
-  const cnFallback = await settingsDb.getPricingForModel("openai-cn", "gpt-4o");
 
   assert.deepEqual(pricing["layered-provider"]["model-a"], {
     prompt: 9,
@@ -135,7 +143,6 @@ test("pricing layers merge synced, models.dev and user overrides", async () => {
     cached: 3,
     custom: 42,
   });
-  assert.ok(cnFallback);
 
   const afterModelReset = await settingsDb.resetPricing("layered-provider", "model-a");
   assert.equal(afterModelReset["layered-provider"]["model-a"], undefined);
@@ -152,7 +159,7 @@ test("pricing layers merge synced, models.dev and user overrides", async () => {
 test("getPricingWithSources reports the winning layer for each provider/model", async () => {
   const db = core.getDbInstance();
 
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "pricing_synced",
     "layer-source",
     JSON.stringify({
@@ -160,7 +167,7 @@ test("getPricingWithSources reports the winning layer for each provider/model", 
       "model-user": { prompt: 3 },
     })
   );
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "models_dev_pricing",
     "layer-source",
     JSON.stringify({
@@ -193,7 +200,6 @@ test("getPricingWithSources reports the winning layer for each provider/model", 
   assert.equal(sourceMap["layer-source"]["model-litellm"], "litellm");
   assert.equal(sourceMap["layer-source"]["model-modelsdev"], "modelsDev");
   assert.equal(sourceMap["layer-source"]["model-user"], "user");
-  assert.equal(sourceMap.openai["gpt-4o"], "default");
 });
 
 test("LKGP values can be set, read and cleared", async () => {
@@ -236,23 +242,19 @@ test("LKGP overwrites connectionId when updated without one", async () => {
 test("pricing helpers ignore malformed synced data and LKGP falls back to raw values", async () => {
   const db = core.getDbInstance();
 
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    "models_dev_pricing",
-    "broken-provider",
-    "{not-json"
-  );
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db
+    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run("models_dev_pricing", "broken-provider", "{not-json");
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "pricing",
     "alias-provider",
     JSON.stringify({
       "model-a": { prompt: 7 },
     })
   );
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    "lkgp",
-    "combo-raw:model-raw",
-    "raw-provider-id"
-  );
+  await db
+    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run("lkgp", "combo-raw:model-raw", "raw-provider-id");
 
   const pricing = await settingsDb.getPricing();
 
@@ -263,22 +265,22 @@ test("pricing helpers ignore malformed synced data and LKGP falls back to raw va
   });
 });
 
-test("pricing helpers resolve aliased providers and tolerate no-op resets", async () => {
+test("pricing helpers resolve stored providers and tolerate no-op resets", async () => {
   const db = core.getDbInstance();
 
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "pricing",
-    "cc",
+    "gigachat",
     JSON.stringify({
-      "claude-3-5-sonnet": { prompt: 4, completion: 6 },
+      "GigaChat-2-Max": { prompt: 4, completion: 6 },
     })
   );
 
-  const aliasPricing = await settingsDb.getPricingForModel("claude", "claude-3-5-sonnet");
+  const directPricing = await settingsDb.getPricingForModel("gigachat", "GigaChat-2-Max");
   const missingPricing = await settingsDb.getPricingForModel("missing-provider", "missing-model");
   const afterUnknownReset = await settingsDb.resetPricing("missing-provider", "missing-model");
 
-  assert.deepEqual(aliasPricing, { prompt: 4, completion: 6 });
+  assert.deepEqual(directPricing, { prompt: 4, completion: 6 });
   assert.equal(missingPricing, null);
   assert.equal(afterUnknownReset["missing-provider"], undefined);
 });
@@ -379,12 +381,10 @@ test("settings and pricing readers skip malformed rows while merging surviving l
 test("proxy config migrates legacy strings and supports bulk merge updates", async () => {
   const db = core.getDbInstance();
 
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    "proxyConfig",
-    "global",
-    JSON.stringify("http://user:pass@global.local:8080")
-  );
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db
+    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run("proxyConfig", "global", JSON.stringify("http://user:pass@global.local:8080"));
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "proxyConfig",
     "providers",
     JSON.stringify({
@@ -438,12 +438,10 @@ test("proxy config migrates legacy strings and supports bulk merge updates", asy
 test("proxy config migrates socks5 and host-only entries while preserving plural lookups", async () => {
   const db = core.getDbInstance();
 
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    "proxyConfig",
-    "global",
-    JSON.stringify("fallback-only-host")
-  );
-  db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+  await db
+    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run("proxyConfig", "global", JSON.stringify("fallback-only-host"));
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
     "proxyConfig",
     "providers",
     JSON.stringify({
@@ -513,7 +511,7 @@ test("proxy helpers resolve key, provider, global, and direct paths while tolera
     models: ["openai/gpt-4o-mini"],
     strategy: "priority",
   });
-  db.prepare("UPDATE combos SET data = ? WHERE id = ?").run("{not-json", combo.id);
+  await db.prepare("UPDATE combos SET data = ? WHERE id = ?").run("{not-json", combo.id);
 
   const providerResolved = await settingsDb.resolveProxyForConnection((connection as any).id);
 
@@ -577,7 +575,7 @@ test("proxy resolution skips combos without serialized data and falls back to pr
     host: "combo-null.local",
     port: 8080,
   });
-  db.prepare("UPDATE combos SET data = ? WHERE id = ?").run(0, combo.id);
+  await db.prepare("UPDATE combos SET data = ? WHERE id = ?").run(0, combo.id);
 
   const resolved = await settingsDb.resolveProxyForConnection((connection as any).id);
 
@@ -585,17 +583,17 @@ test("proxy resolution skips combos without serialized data and falls back to pr
   assert.equal(resolved.proxy.host, "provider-claude.local");
 });
 
-test("proxy resolution matches combo proxies through aliased model entries", async () => {
+test("proxy resolution matches combo proxies through model entries", async () => {
   const connection = await providersDb.createProviderConnection({
-    provider: "claude",
+    provider: "gigachat",
     authType: "apikey",
-    name: "Proxy Alias Combo",
-    apiKey: "sk-claude-alias",
+    name: "Proxy Combo",
+    apiKey: "sk-gigachat-combo",
   });
 
   const combo = await combosDb.createCombo({
     name: "combo-aliased-model",
-    models: [{ model: "cc/claude-3-5-sonnet" }],
+    models: [{ model: "gigachat/GigaChat-2-Max" }],
     strategy: "priority",
   });
   await settingsDb.setProxyForLevel("combo", (combo as any).id, {
@@ -611,34 +609,26 @@ test("proxy resolution matches combo proxies through aliased model entries", asy
   assert.equal(resolved.proxy.host, "combo-alias.local");
 });
 
-test("proxy resolution prefers legacy key and provider proxies over registry global fallback (#2601)", async () => {
+test("proxy resolution prefers legacy key and provider proxies (#2601)", async () => {
   const keyConnection = await providersDb.createProviderConnection({
-    provider: "openai",
+    provider: "openai-compatible-proxy-key",
     authType: "apikey",
     name: "Legacy Key Override",
     apiKey: "sk-key-override",
   });
   const providerConnection = await providersDb.createProviderConnection({
-    provider: "claude",
+    provider: "openai-compatible-proxy-provider",
     authType: "apikey",
     name: "Legacy Provider Override",
     apiKey: "sk-provider-override",
   });
-
-  const registryGlobal = await proxiesDb.createProxy({
-    name: "Registry Global Fallback",
-    type: "http",
-    host: "registry-global.local",
-    port: 8080,
-  });
-  await proxiesDb.assignProxyToScope("global", null, registryGlobal.id);
 
   await settingsDb.setProxyForLevel("key", (keyConnection as any).id, {
     type: "http",
     host: "legacy-key-override.local",
     port: 3128,
   });
-  await settingsDb.setProxyForLevel("provider", "claude", {
+  await settingsDb.setProxyForLevel("provider", "openai-compatible-proxy-provider", {
     type: "https",
     host: "legacy-provider-override.local",
     port: 443,
@@ -726,7 +716,7 @@ test("cache metrics, trend and no-op update/reset methods read from usage_histor
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  insertUsage.run(
+  await insertUsage.run(
     "openai",
     "gpt-4.1",
     "conn-1",
@@ -744,7 +734,7 @@ test("cache metrics, trend and no-op update/reset methods read from usage_histor
     null,
     oneHourAgo
   );
-  insertUsage.run(
+  await insertUsage.run(
     "anthropic",
     "claude-3-7-sonnet",
     "conn-2",
@@ -807,8 +797,8 @@ test("cache metrics and trend coerce null aggregate fields to zero", async () =>
     const text = String(sql);
 
     if (
-      text.includes("COUNT(*) as totalRequests") &&
-      text.includes("SUM(tokens_input) as totalInputTokens") &&
+      text.includes('COUNT(*) as "totalRequests"') &&
+      text.includes('SUM(tokens_input) as "totalInputTokens"') &&
       !text.includes("GROUP BY")
     ) {
       return {
@@ -821,7 +811,7 @@ test("cache metrics and trend coerce null aggregate fields to zero", async () =>
       };
     }
 
-    if (text.match(/SELECT\s+COUNT\(\*\)\s+as\s+totalRequests\s+FROM\s+usage_history\s*$/)) {
+    if (text.match(/SELECT\s+COUNT\(\*\)\s+as\s+"totalRequests"\s+FROM\s+usage_history\s*$/)) {
       return {
         get: () => ({
           totalRequests: 5,
@@ -858,7 +848,7 @@ test("cache metrics and trend coerce null aggregate fields to zero", async () =>
       };
     }
 
-    if (text.includes("strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour")) {
+    if (text.includes("date_trunc('hour', timestamp::timestamp)")) {
       return {
         all: () => [
           {

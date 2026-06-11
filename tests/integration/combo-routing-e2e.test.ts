@@ -7,8 +7,6 @@ const harness = await createChatPipelineHarness("combo-routing");
 const callLogs = await import("../../src/lib/usage/callLogs.ts");
 const {
   BaseExecutor,
-  buildClaudeResponse,
-  buildGeminiResponse,
   buildOpenAIResponse,
   buildRequest,
   combosDb,
@@ -43,11 +41,11 @@ function buildOpenAIChatBody(model, content = `Route ${model}`) {
 }
 
 test("combo routes requests by exact combo name", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-combo-exact" });
+  await seedConnection("openai-compatible-exact", { apiKey: "sk-openai-combo-exact" });
   await combosDb.createCombo({
     name: "router-priority",
     strategy: "priority",
-    models: ["openai/gpt-4o-mini"],
+    models: ["openai-compatible-exact/gpt-4o-mini"],
   });
 
   const fetchCalls = [];
@@ -74,29 +72,30 @@ test("combo routes requests by exact combo name", async () => {
 });
 
 test("round-robin combo cycles through three providers", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-rr" });
-  await seedConnection("claude", { apiKey: "sk-claude-rr" });
-  await seedConnection("gemini", { apiKey: "sk-gemini-rr" });
+  await seedConnection("openai-compatible-rr1", { apiKey: "sk-rr-1" });
+  await seedConnection("openai-compatible-rr2", { apiKey: "sk-rr-2" });
+  await seedConnection("openai-compatible-rr3", { apiKey: "sk-rr-3" });
   await combosDb.createCombo({
     name: "router-rr",
     strategy: "round-robin",
     config: { maxRetries: 0, retryDelayMs: 0 },
-    models: ["openai/gpt-4o-mini", "claude/claude-3-5-sonnet-20241022", "gemini/gemini-2.5-flash"],
+    models: [
+      "openai-compatible-rr1/gpt-4o-mini",
+      "openai-compatible-rr2/gpt-4o-mini",
+      "openai-compatible-rr3/gpt-4o-mini",
+    ],
   });
 
+  const authToProvider = {
+    "Bearer sk-rr-1": "rr1",
+    "Bearer sk-rr-2": "rr2",
+    "Bearer sk-rr-3": "rr3",
+  };
   const seenProviders = [];
-  globalThis.fetch = async (url) => {
-    const target = String(url);
-    if (target.includes("/chat/completions")) {
-      seenProviders.push("openai");
-      return buildOpenAIResponse("OpenAI round-robin");
-    }
-    if (target.includes("?beta=true")) {
-      seenProviders.push("claude");
-      return buildClaudeResponse("Claude round-robin");
-    }
-    seenProviders.push("gemini");
-    return buildGeminiResponse("Gemini round-robin");
+  globalThis.fetch = async (url, init = {}) => {
+    const auth = toPlainHeaders(init.headers).authorization;
+    seenProviders.push(authToProvider[auth]);
+    return buildOpenAIResponse("Round-robin response");
   };
 
   const first = await handleChat(buildRequest({ body: buildOpenAIChatBody("router-rr") }));
@@ -106,16 +105,19 @@ test("round-robin combo cycles through three providers", async () => {
   assert.equal(first.status, 200);
   assert.equal(second.status, 200);
   assert.equal(third.status, 200);
-  assert.deepEqual(seenProviders, ["openai", "claude", "gemini"]);
+  assert.deepEqual(seenProviders, ["rr1", "rr2", "rr3"]);
 });
 
 test("priority combo sticks to the primary model while healthy", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-priority" });
-  await seedConnection("claude", { apiKey: "sk-claude-priority" });
+  await seedConnection("openai-compatible-ph-primary", { apiKey: "sk-ph-primary" });
+  await seedConnection("openai-compatible-ph-secondary", { apiKey: "sk-ph-secondary" });
   await combosDb.createCombo({
     name: "router-priority-healthy",
     strategy: "priority",
-    models: ["openai/gpt-4o-mini", "claude/claude-3-5-sonnet-20241022"],
+    models: [
+      "openai-compatible-ph-primary/gpt-4o-mini",
+      "openai-compatible-ph-secondary/gpt-4o-mini",
+    ],
   });
 
   const seenTargets = [];
@@ -142,26 +144,28 @@ test("priority combo sticks to the primary model while healthy", async () => {
 });
 
 test("priority combo falls back to the secondary model when the first one fails", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-fallback" });
-  await seedConnection("claude", { apiKey: "sk-claude-fallback" });
+  await seedConnection("openai-compatible-fb-primary", { apiKey: "sk-fb-primary" });
+  await seedConnection("openai-compatible-fb-secondary", { apiKey: "sk-fb-secondary" });
   await combosDb.createCombo({
     name: "router-fallback",
     strategy: "priority",
     config: { maxRetries: 0, retryDelayMs: 0 },
-    models: ["openai/gpt-4o-mini", "claude/claude-3-5-sonnet-20241022"],
+    models: [
+      "openai-compatible-fb-primary/gpt-4o-mini",
+      "openai-compatible-fb-secondary/gpt-4o-mini",
+    ],
   });
 
   const attempts = [];
-  globalThis.fetch = async (url) => {
-    const target = String(url);
-    attempts.push(target);
+  globalThis.fetch = async (url, init = {}) => {
+    attempts.push(toPlainHeaders(init.headers).authorization);
     if (attempts.length === 1) {
       return new Response(JSON.stringify({ error: { message: "primary down" } }), {
         status: 503,
         headers: { "Content-Type": "application/json" },
       });
     }
-    return buildClaudeResponse("Fallback answered");
+    return buildOpenAIResponse("Fallback answered");
   };
 
   const response = await handleChat(buildRequest({ body: buildOpenAIChatBody("router-fallback") }));
@@ -169,17 +173,17 @@ test("priority combo falls back to the secondary model when the first one fails"
 
   assert.equal(response.status, 200);
   assert.equal(attempts.length, 2);
-  assert.match(attempts[0], /\/chat\/completions$/);
-  assert.match(attempts[1], /\?beta=true$/);
+  assert.equal(attempts[0], "Bearer sk-fb-primary");
+  assert.equal(attempts[1], "Bearer sk-fb-secondary");
   assert.equal(json.choices[0].message.content, "Fallback answered");
 });
 
 test("priority combo can repeat the same provider/model with different fixed accounts", async () => {
-  const firstConn = await seedConnection("openai", {
+  const firstConn = await seedConnection("openai-compatible-fixed", {
     name: "openai-fixed-1",
     apiKey: "sk-openai-fixed-1",
   });
-  const secondConn = await seedConnection("openai", {
+  const secondConn = await seedConnection("openai-compatible-fixed", {
     name: "openai-fixed-2",
     apiKey: "sk-openai-fixed-2",
   });
@@ -192,14 +196,14 @@ test("priority combo can repeat the same provider/model with different fixed acc
       {
         id: "step-openai-primary",
         kind: "model",
-        providerId: "openai",
+        providerId: "openai-compatible-fixed",
         model: "gpt-4o-mini",
         connectionId: firstConn.id,
       },
       {
         id: "step-openai-secondary",
         kind: "model",
-        providerId: "openai",
+        providerId: "openai-compatible-fixed",
         model: "gpt-4o-mini",
         connectionId: secondConn.id,
       },
@@ -271,11 +275,11 @@ test("priority combo can repeat the same provider/model with different fixed acc
 });
 
 test("model combo mappings route explicit model ids through the configured combo", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-mapped" });
+  await seedConnection("openai-compatible-mapped", { apiKey: "sk-openai-mapped" });
   const combo = await combosDb.createCombo({
     name: "mapped-router",
     strategy: "priority",
-    models: ["openai/gpt-4o-mini"],
+    models: ["openai-compatible-mapped/gpt-4o-mini"],
   });
   await modelComboMappingsDb.createModelComboMapping({
     pattern: "tenant/mapped-model",
@@ -306,11 +310,11 @@ test("model combo mappings route explicit model ids through the configured combo
 });
 
 test("wildcard model combo mappings resolve arbitrary matching models", async () => {
-  await seedConnection("gemini", { apiKey: "sk-gemini-wild" });
+  await seedConnection("openai-compatible-wild", { apiKey: "sk-wild" });
   const combo = await combosDb.createCombo({
     name: "wild-router",
     strategy: "priority",
-    models: ["gemini/gemini-2.5-flash"],
+    models: ["openai-compatible-wild/gpt-4o-mini"],
   });
   await modelComboMappingsDb.createModelComboMapping({
     pattern: "tenant/*",
@@ -324,7 +328,7 @@ test("wildcard model combo mappings resolve arbitrary matching models", async ()
       url: String(url),
       headers: toPlainHeaders(init.headers),
     });
-    return buildGeminiResponse("Wildcard combo route");
+    return buildOpenAIResponse("Wildcard combo route");
   };
 
   const response = await handleChat(
@@ -336,8 +340,8 @@ test("wildcard model combo mappings resolve arbitrary matching models", async ()
 
   assert.equal(response.status, 200);
   assert.equal(fetchCalls.length, 1);
-  assert.match(fetchCalls[0].url, /generateContent$/);
-  assert.equal(fetchCalls[0].headers["x-goog-api-key"], "sk-gemini-wild");
+  assert.match(fetchCalls[0].url, /\/chat\/completions$/);
+  assert.equal(fetchCalls[0].headers.authorization, "Bearer sk-wild");
   assert.equal(json.choices[0].message.content, "Wildcard combo route");
 });
 
@@ -354,23 +358,26 @@ test("unmapped custom model requests fail after combo resolution falls through",
 });
 
 test("strategy updates take effect for later requests on the same combo name", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-update" });
-  await seedConnection("claude", { apiKey: "sk-claude-update" });
+  await seedConnection("openai-compatible-dyn-primary", { apiKey: "sk-dyn-primary" });
+  await seedConnection("openai-compatible-dyn-secondary", { apiKey: "sk-dyn-secondary" });
   const combo = await combosDb.createCombo({
     name: "router-dynamic",
     strategy: "priority",
-    models: ["openai/gpt-4o-mini", "claude/claude-3-5-sonnet-20241022"],
+    models: [
+      "openai-compatible-dyn-primary/gpt-4o-mini",
+      "openai-compatible-dyn-secondary/gpt-4o-mini",
+    ],
   });
 
   const seenProviders = [];
-  globalThis.fetch = async (url) => {
-    const target = String(url);
-    if (target.includes("?beta=true")) {
-      seenProviders.push("claude");
-      return buildClaudeResponse("Claude after update");
+  globalThis.fetch = async (url, init = {}) => {
+    const auth = toPlainHeaders(init.headers).authorization;
+    if (auth === "Bearer sk-dyn-secondary") {
+      seenProviders.push("secondary");
+      return buildOpenAIResponse("Secondary after update");
     }
-    seenProviders.push("openai");
-    return buildOpenAIResponse("OpenAI before update");
+    seenProviders.push("primary");
+    return buildOpenAIResponse("Primary before update");
   };
 
   const initial = await handleChat(
@@ -396,5 +403,5 @@ test("strategy updates take effect for later requests on the same combo name", a
   assert.equal(initial.status, 200);
   assert.equal(second.status, 200);
   assert.equal(third.status, 200);
-  assert.deepEqual(seenProviders, ["openai", "openai", "claude"]);
+  assert.deepEqual(seenProviders, ["primary", "primary", "secondary"]);
 });

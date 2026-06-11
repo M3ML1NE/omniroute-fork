@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-chat-pipeline-"));
+(process.env as Record<string, string>).NODE_ENV = process.env.NODE_ENV || "test";
 process.env.DATA_DIR = TEST_DATA_DIR;
 process.env.REQUIRE_API_KEY = "false";
 process.env.API_KEY_SECRET = process.env.API_KEY_SECRET || "test-chat-pipeline-secret";
@@ -17,15 +18,38 @@ const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const callLogsDb = await import("../../src/lib/usage/callLogs.ts");
 const readCacheDb = await import("../../src/lib/db/readCache.ts");
 const { invalidateMemorySettingsCache } = await import("../../src/lib/memory/settings.ts");
-const { skillRegistry } = await import("../../src/lib/skills/registry.ts");
-const { skillExecutor } = await import("../../src/lib/skills/executor.ts");
 const { handleChat } = await import("../../src/sse/handlers/chat.ts");
 const { initTranslators } = await import("../../open-sse/translator/index.ts");
 const { clearInflight } = await import("../../open-sse/services/requestDedup.ts");
 const { BaseExecutor } = await import("../../open-sse/executors/base.ts");
 const { getCircuitBreaker, resetAllCircuitBreakers } =
   await import("../../src/shared/utils/circuitBreaker.ts");
-const { clearProviderFailure } = await import("../../open-sse/services/accountFallback.ts");
+const { clearProviderFailure, clearAllModelLockouts } = await import(
+  "../../open-sse/services/accountFallback.ts"
+);
+const pgModule = await import("../../src/lib/db/postgres.ts");
+
+const MUTABLE_TEST_TABLES = [
+  "combos",
+  "provider_connections",
+  "provider_nodes",
+  "api_keys",
+  "call_logs",
+  "memories",
+  "memory",
+  "key_value",
+  "model_combo_mappings",
+  "semantic_cache",
+  "session_account_affinity",
+  "request_detail_logs",
+  "routing_decisions",
+];
+
+async function purgePostgresTables() {
+  const schema = pgModule.getSchema();
+  const tables = MUTABLE_TEST_TABLES.map((table) => `${schema}.${table}`).join(", ");
+  await pgModule.query(`TRUNCATE ${tables} CASCADE`);
+}
 
 const originalFetch = globalThis.fetch;
 const originalRetryDelayMs = BaseExecutor.RETRY_CONFIG.delayMs;
@@ -281,8 +305,8 @@ function buildOpenAIStreamResponse(text = "streamed from openai") {
 }
 
 function buildOpenAIResponsesSSE({
-  text = "responses streamed from codex",
-  model = "gpt-5.1-codex",
+  text = "responses streamed from upstream",
+  model = "gpt-5.3",
   usage = null,
 } = {}) {
   return new Response(
@@ -326,48 +350,17 @@ function buildOpenAIResponsesSSE({
   );
 }
 
-function buildOpenAIResponsesJson({
-  text = "responses compacted from codex",
-  model = "gpt-5.5",
-  usage = null,
-} = {}) {
-  return new Response(
-    JSON.stringify({
-      id: "resp_compact",
-      object: "response",
-      status: "completed",
-      model,
-      output: [
-        {
-          id: "msg_compact",
-          type: "message",
-          role: "assistant",
-          content: [{ type: "output_text", text, annotations: [] }],
-        },
-      ],
-      output_text: text,
-      usage: usage || {
-        input_tokens: 90,
-        output_tokens: 15,
-        total_tokens: 105,
-      },
-    }),
-    {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }
-  );
-}
-
 async function resetStorage() {
   globalThis.fetch = originalFetch;
   process.env.REQUIRE_API_KEY = "false";
   clearInflight();
   resetAllCircuitBreakers();
+  clearAllModelLockouts();
   apiKeysDb.resetApiKeyState();
   readCacheDb.invalidateDbCache();
   invalidateMemorySettingsCache();
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await callLogsDb.drainCallLogWrites();
+  await purgePostgresTables();
   core.resetDbInstance();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
@@ -411,9 +404,9 @@ async function seedApiKey({
   return key;
 }
 
-function ensureLegacyMemoryTable() {
+async function ensureLegacyMemoryTable() {
   const db = core.getDbInstance();
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS memory (
       id TEXT PRIMARY KEY,
       apiKeyId TEXT NOT NULL,
@@ -429,15 +422,17 @@ function ensureLegacyMemoryTable() {
   `);
 }
 
-function insertLegacyMemory(apiKeyId, content) {
+async function insertLegacyMemory(apiKeyId, content) {
   const db = core.getDbInstance();
   const now = new Date().toISOString();
   const hasModernTable = Boolean(
-    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memories'").get()
+    await db
+      .prepare("SELECT 1 FROM information_schema.tables WHERE table_name = $1")
+      .get("memories")
   );
 
   if (hasModernTable) {
-    db.prepare(
+    await db.prepare(
       `
         INSERT INTO memories (
           id, api_key_id, session_id, type, key, content, metadata, created_at, updated_at, expires_at
@@ -458,8 +453,8 @@ function insertLegacyMemory(apiKeyId, content) {
     return;
   }
 
-  ensureLegacyMemoryTable();
-  db.prepare(
+  await ensureLegacyMemoryTable();
+  await db.prepare(
     `
       INSERT INTO memory (
         id, apiKeyId, sessionId, type, key, content, metadata, createdAt, updatedAt, expiresAt
@@ -521,7 +516,7 @@ test.after(async () => {
 });
 
 test("chat pipeline handles OpenAI passthrough with valid API key auth", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-primary" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-primary" });
   const apiKey = await seedApiKey();
   const fetchCalls: FetchCall[] = [];
 
@@ -539,7 +534,7 @@ test("chat pipeline handles OpenAI passthrough with valid API key auth", async (
     buildRequest({
       authKey: apiKey.key,
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Hello OpenAI" }],
       },
@@ -555,137 +550,11 @@ test("chat pipeline handles OpenAI passthrough with valid API key auth", async (
   assert.equal(json.choices[0].message.content, "OpenAI passthrough");
 });
 
-test("chat pipeline persists Codex responses cache and reasoning tokens to call logs", async () => {
-  await seedConnection("codex", { apiKey: "sk-codex-primary" });
-  const fetchCalls = [];
-
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildOpenAIResponsesSSE();
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      url: "http://localhost/v1/responses",
-      body: {
-        model: "codex/gpt-5.1-codex",
-        stream: false,
-        input: "Persist cache + reasoning usage",
-      },
-    })
-  );
-
-  const json = (await response.json()) as any;
-  const callLog = await waitFor(() => getLatestCallLog());
-
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  assert.match(fetchCalls[0].url, /\/responses$/);
-  assert.equal(fetchCalls[0].headers.Authorization, "Bearer sk-codex-primary");
-  assert.equal(json.object, "response");
-  assert.equal(json.output[0].type, "message");
-  assert.equal(json.output[0].content[0].text, "responses streamed from codex");
-  assert.equal(json.output_text, "responses streamed from codex");
-  assert.equal(json.usage.input_tokens_details.cached_tokens, 40);
-  assert.equal(json.usage.output_tokens_details.reasoning_tokens, 13);
-
-  assert.ok(callLog, "expected a call log row to be created");
-  assert.equal(callLog.provider, "codex");
-  assert.equal(callLog.path, "/v1/responses");
-  assert.equal(callLog.tokens.cacheRead, 40);
-  assert.equal(callLog.tokens.cacheWrite, 11);
-  assert.equal(callLog.tokens.reasoning, 13);
-});
-
-test("chat pipeline applies global Codex priority service tier inside combos", async () => {
-  await seedConnection("codex", { apiKey: "sk-codex-combo-priority" });
-  await settingsDb.updateSettings({
-    codexServiceTier: { enabled: true, tier: "priority" },
-  });
-  await combosDb.createCombo({
-    name: "codex-priority-combo",
-    strategy: "priority",
-    config: { maxRetries: 0, retryDelayMs: 0 },
-    models: ["codex/gpt-5.5"],
-  });
-  const fetchCalls = [];
-
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildOpenAIResponsesSSE({ text: "combo priority ok", model: "gpt-5.5" });
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      body: {
-        model: "codex-priority-combo",
-        stream: false,
-        messages: [{ role: "user", content: "Use Codex combo priority" }],
-      },
-    })
-  );
-
-  const json = (await response.json()) as any;
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  assert.match(fetchCalls[0].url, /\/responses$/);
-  assert.equal(fetchCalls[0].headers.Authorization, "Bearer sk-codex-combo-priority");
-  assert.equal(fetchCalls[0].body.service_tier, "priority");
-  assert.equal(json.choices[0].message.content, "combo priority ok");
-});
-
-test("chat pipeline treats Codex /responses/compact as non-streaming JSON", async () => {
-  await seedConnection("codex", { apiKey: "sk-codex-compact" });
-  const fetchCalls = [];
-
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildOpenAIResponsesJson();
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      url: "http://localhost/v1/responses/compact",
-      headers: { Accept: "text/event-stream" },
-      body: {
-        model: "codex/gpt-5.5",
-        input: "Compact this session",
-      },
-    })
-  );
-
-  const json = (await response.json()) as { object?: string; output_text?: string };
-  const callLog = await waitFor(() => getLatestCallLog());
-
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  assert.match(fetchCalls[0].url, /\/responses\/compact$/);
-  assert.equal(fetchCalls[0].headers.Accept, "application/json");
-  assert.equal(fetchCalls[0].body.stream, undefined);
-  assert.equal(fetchCalls[0].body.store, undefined);
-  assert.equal(json.object, "response");
-  assert.equal(json.output_text, "responses compacted from codex");
-
-  assert.ok(callLog, "expected a compact call log row to be created");
-  assert.equal(callLog.provider, "codex");
-  assert.equal(callLog.path, "/v1/responses/compact");
-  assert.equal(callLog.status, 200);
-});
-
 test("chat pipeline serves repeated /v1/responses requests as MISS then HIT and logs cache hits separately", async () => {
-  await seedConnection("codex", { apiKey: "sk-codex-cache-seq" });
+  await seedConnection("openai-compatible-pipeline", {
+    apiKey: "sk-openai-cache-seq",
+    providerSpecificData: { apiType: "responses" },
+  });
   const fetchCalls = [];
 
   globalThis.fetch = async (url, init: RequestInit = {}) => {
@@ -712,7 +581,7 @@ test("chat pipeline serves repeated /v1/responses requests as MISS then HIT and 
 
   const uniquePrompt = `semantic-cache-seq-${Math.random().toString(16).slice(2)}`;
   const requestBody = {
-    model: "codex/gpt-5.3-codex",
+    model: "openai-compatible-pipeline/gpt-5.3",
     stream: false,
     temperature: 0,
     input: [{ role: "user", content: [{ type: "input_text", text: uniquePrompt }] }],
@@ -774,143 +643,14 @@ test("chat pipeline serves repeated /v1/responses requests as MISS then HIT and 
   assert.equal(callLog.status, 200);
 });
 
-test("chat pipeline translates OpenAI requests to Claude and returns OpenAI-shaped responses", async () => {
-  await seedConnection("claude", { apiKey: "sk-claude-primary" });
-  const fetchCalls = [];
-
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildClaudeResponse("Claude translated reply");
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      body: {
-        model: "claude/claude-3-5-sonnet-20241022",
-        stream: false,
-        messages: [{ role: "user", content: "Hello Claude" }],
-      },
-    })
-  );
-
-  const json = (await response.json()) as any;
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  assert.match(fetchCalls[0].url, /\?beta=true$/);
-  assert.equal(fetchCalls[0].headers["x-api-key"], "sk-claude-primary");
-  assert.equal(fetchCalls[0].body.messages[0].role, "user");
-  assert.equal(fetchCalls[0].body.messages[0].content[0].text, "Hello Claude");
-  assert.equal(json.object, "chat.completion");
-  assert.equal(json.choices[0].message.content, "Claude translated reply");
-});
-
-test("chat pipeline translates OpenAI requests to Gemini and returns OpenAI-shaped responses", async () => {
-  await seedConnection("gemini", { apiKey: "sk-gemini-primary" });
-  const fetchCalls = [];
-
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildGeminiResponse("Gemini translated reply");
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      body: {
-        model: "gemini/gemini-2.5-flash",
-        stream: false,
-        messages: [{ role: "user", content: "Hello Gemini" }],
-      },
-    })
-  );
-
-  const json = (await response.json()) as any;
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  assert.match(fetchCalls[0].url, /generateContent$/);
-  assert.equal(fetchCalls[0].headers["x-goog-api-key"], "sk-gemini-primary");
-  assert.equal(fetchCalls[0].body.contents[0].role, "user");
-  assert.equal(fetchCalls[0].body.contents[0].parts[0].text, "Hello Gemini");
-  assert.equal(json.object, "chat.completion");
-  assert.equal(json.choices[0].message.content, "Gemini translated reply");
-});
-
-test("chat pipeline translates Claude-format requests into OpenAI upstream and back to Claude", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-claude-route" });
-  const fetchCalls = [];
-
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      headers: toPlainHeaders(init.headers),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildOpenAIResponse("OpenAI answered Claude client");
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      url: "http://localhost/v1/messages",
-      body: {
-        model: "openai/gpt-4o-mini",
-        stream: false,
-        max_tokens: 128,
-        system: [{ text: "Be brief" }],
-        messages: [{ role: "user", content: [{ type: "text", text: "Hello from Claude client" }] }],
-      },
-    })
-  );
-
-  const json = (await response.json()) as any;
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  assert.match(fetchCalls[0].url, /\/chat\/completions$/);
-  assert.equal(fetchCalls[0].body.messages[0].role, "system");
-  assert.equal(fetchCalls[0].body.messages[0].content, "Be brief");
-  assert.equal(fetchCalls[0].body.messages[1].content, "Hello from Claude client");
-  assert.equal(json.type, "message");
-  assert.equal(json.role, "assistant");
-  assert.equal(json.content[0].text, "OpenAI answered Claude client");
-});
-
-test("chat pipeline converts Claude SSE streams into OpenAI SSE output", async () => {
-  await seedConnection("claude", { apiKey: "sk-claude-stream" });
-
-  globalThis.fetch = async () => buildClaudeStreamResponse("Streamed Claude chunk");
-
-  const response = await handleChat(
-    buildRequest({
-      body: {
-        model: "claude/claude-sonnet-4-6",
-        stream: true,
-        messages: [{ role: "user", content: "Stream this" }],
-      },
-    })
-  );
-
-  const raw = await response.text();
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("Content-Type"), "text/event-stream");
-  assert.match(raw, /chat\.completion\.chunk/);
-  assert.match(raw, /Streamed Claude chunk/);
-  assert.match(raw, /\[DONE\]/);
-});
-
 test("chat pipeline rejects invalid API keys and malformed JSON bodies", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-invalid-key-path" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-invalid-key-path" });
 
   const invalidKeyResponse = await handleChat(
     buildRequest({
       authKey: "does-not-exist",
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         messages: [{ role: "user", content: "Hello" }],
       },
     })
@@ -938,7 +678,7 @@ test("chat pipeline allows unauthenticated requests through to provider resoluti
   const response = await handleChat(
     buildRequest({
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Missing auth" }],
       },
@@ -968,7 +708,7 @@ test("chat pipeline returns 400 when the model field is omitted", async () => {
 });
 
 test("chat pipeline treats Accept text/event-stream as streaming mode and returns a session header", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-accept-stream" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-accept-stream" });
 
   globalThis.fetch = async () => buildOpenAIStreamResponse("Accept header stream");
 
@@ -976,7 +716,7 @@ test("chat pipeline treats Accept text/event-stream as streaming mode and return
     buildRequest({
       headers: { Accept: "application/json, text/event-stream" },
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         messages: [{ role: "user", content: "Stream via Accept" }],
       },
     })
@@ -991,11 +731,11 @@ test("chat pipeline treats Accept text/event-stream as streaming mode and return
 });
 
 test("chat pipeline supports local mode without Authorization on explicit combos", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-local-combo" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-local-combo" });
   await combosDb.createCombo({
     name: "local-router",
     strategy: "priority",
-    models: ["openai/gpt-4o-mini"],
+    models: ["openai-compatible-pipeline/gpt-4o-mini"],
   });
   const fetchCalls = [];
 
@@ -1024,7 +764,7 @@ test("chat pipeline supports local mode without Authorization on explicit combos
 });
 
 test("chat pipeline honors noLog by redacting persisted call log payloads", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-no-log" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-no-log" });
   const apiKey = await seedApiKey({ noLog: true });
 
   globalThis.fetch = async () => buildOpenAIResponse("No-log reply");
@@ -1033,7 +773,7 @@ test("chat pipeline honors noLog by redacting persisted call log payloads", asyn
     buildRequest({
       authKey: apiKey.key,
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Do not persist payloads" }],
       },
@@ -1054,7 +794,7 @@ test("chat pipeline returns current no-credentials contract when no provider con
   const response = await handleChat(
     buildRequest({
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Hello" }],
       },
@@ -1067,7 +807,7 @@ test("chat pipeline returns current no-credentials contract when no provider con
 });
 
 test("chat pipeline surfaces upstream 500 responses as structured errors", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-500" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-500" });
 
   globalThis.fetch = async () =>
     new Response(JSON.stringify({ error: { message: "provider exploded" } }), {
@@ -1078,7 +818,7 @@ test("chat pipeline surfaces upstream 500 responses as structured errors", async
   const response = await handleChat(
     buildRequest({
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Trigger 500" }],
       },
@@ -1091,7 +831,7 @@ test("chat pipeline surfaces upstream 500 responses as structured errors", async
 });
 
 test("chat pipeline returns 429 with Retry-After when the upstream rate-limits the only account", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-429" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-429" });
   await settingsDb.updateSettings({
     requestRetry: 0,
     maxRetryIntervalSec: 0,
@@ -1116,7 +856,7 @@ test("chat pipeline returns 429 with Retry-After when the upstream rate-limits t
   const response = await handleChat(
     buildRequest({
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Trigger 429" }],
       },
@@ -1127,11 +867,12 @@ test("chat pipeline returns 429 with Retry-After when the upstream rate-limits t
   assert.equal(response.status, 429);
   assert.ok(attempts >= 1, "expected at least one upstream attempt");
   assert.ok(Number(response.headers.get("Retry-After")) >= 1);
-  assert.match(json.error.message, /\[openai\/gpt-4o-mini\]/);
+  assert.match(json.error.message, /All credentials for model gpt-4o-mini are cooling down/);
+  assert.equal(json.error.code, "model_cooldown");
 });
 
 test("chat pipeline keeps provider breaker closed for repeated connection-scoped 429s", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-429-breaker" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-429-breaker" });
   await settingsDb.updateSettings({
     requestRetry: 0,
     maxRetryIntervalSec: 0,
@@ -1154,7 +895,7 @@ test("chat pipeline keeps provider breaker closed for repeated connection-scoped
     const response = await handleChat(
       buildRequest({
         body: {
-          model: "openai/gpt-4o-mini",
+          model: "openai-compatible-pipeline/gpt-4o-mini",
           stream: false,
           messages: [{ role: "user", content: `Trigger 429 #${i + 1}` }],
         },
@@ -1163,7 +904,7 @@ test("chat pipeline keeps provider breaker closed for repeated connection-scoped
     assert.equal(response.status, 429);
   }
 
-  const breaker = getCircuitBreaker("openai");
+  const breaker = getCircuitBreaker("openai-compatible-pipeline");
   const status = breaker.getStatus();
 
   assert.equal(status.state, "CLOSED");
@@ -1171,7 +912,7 @@ test("chat pipeline keeps provider breaker closed for repeated connection-scoped
 });
 
 test("chat pipeline maps upstream timeouts to 504 responses", async () => {
-  await seedConnection("openai", { apiKey: "sk-openai-timeout" });
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-timeout" });
 
   globalThis.fetch = async () => {
     const error = new Error("upstream timed out");
@@ -1182,7 +923,7 @@ test("chat pipeline maps upstream timeouts to 504 responses", async () => {
   const response = await handleChat(
     buildRequest({
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Trigger timeout" }],
       },
@@ -1196,8 +937,8 @@ test("chat pipeline maps upstream timeouts to 504 responses", async () => {
 
 test("chat pipeline injects memory context before sending the upstream request", async () => {
   // Reset provider failure state to avoid circuit breaker interference
-  clearProviderFailure("openai");
-  await seedConnection("openai", { apiKey: "sk-openai-memory" });
+  clearProviderFailure("openai-compatible-pipeline");
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-memory" });
   const apiKey = await seedApiKey();
   await settingsDb.updateSettings({
     memoryEnabled: true,
@@ -1206,7 +947,7 @@ test("chat pipeline injects memory context before sending the upstream request",
     memoryStrategy: "recent",
   });
   invalidateMemorySettingsCache();
-  insertLegacyMemory(apiKey.id, "User prefers concise answers.");
+  await insertLegacyMemory(apiKey.id, "User prefers concise answers.");
 
   const fetchCalls = [];
   globalThis.fetch = async (url, init: RequestInit = {}) => {
@@ -1221,7 +962,7 @@ test("chat pipeline injects memory context before sending the upstream request",
     buildRequest({
       authKey: apiKey.key,
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Summarize my preference" }],
       },
@@ -1236,78 +977,15 @@ test("chat pipeline injects memory context before sending the upstream request",
   assert.equal(json.choices[0].message.content, "Memory-aware reply");
 });
 
-test("chat pipeline injects skills into tools and intercepts tool calls with skill output", async () => {
-  // Reset provider failure state to avoid circuit breaker interference
-  clearProviderFailure("openai");
-  await seedConnection("openai", { apiKey: "sk-openai-skills" });
-  const apiKey = await seedApiKey();
-  await settingsDb.updateSettings({ skillsEnabled: true });
-  invalidateMemorySettingsCache();
-
-  const handlerName = `weather-handler-${Date.now()}`;
-  skillExecutor.registerHandler(handlerName, async (input) => ({
-    forecast: `Sunny in ${input.location}`,
-  }));
-
-  await skillRegistry.register({
-    apiKeyId: apiKey.id,
-    name: "lookupWeather",
-    version: "1.0.0",
-    description: "Return a canned forecast",
-    schema: {
-      input: {
-        type: "object",
-        properties: {
-          location: { type: "string" },
-        },
-      },
-      output: {
-        type: "object",
-      },
-    },
-    handler: handlerName,
-    enabled: true,
-  });
-
-  const fetchCalls = [];
-  globalThis.fetch = async (url, init: RequestInit = {}) => {
-    fetchCalls.push({
-      url: String(url),
-      body: init.body ? JSON.parse(String(init.body)) : null,
-    });
-    return buildOpenAIToolCallResponse();
-  };
-
-  const response = await handleChat(
-    buildRequest({
-      authKey: apiKey.key,
-      body: {
-        model: "openai/gpt-4o-mini",
-        stream: false,
-        messages: [{ role: "user", content: "Check the weather" }],
-      },
-    })
-  );
-
-  const json = (await response.json()) as any;
-  assert.equal(response.status, 200);
-  assert.equal(fetchCalls.length, 1);
-  assert.ok(Array.isArray(fetchCalls[0].body.tools));
-  assert.equal(fetchCalls[0].body.tools[0].function.name, "lookupWeather@1.0.0");
-  assert.equal(json.choices[0].finish_reason, "tool_calls");
-  assert.equal(json.tool_results[0].tool_call_id, "call_weather");
-  assert.equal(JSON.parse(json.tool_results[0].output).forecast, "Sunny in Sao Paulo");
-});
-
 test("chat pipeline falls back to the next account after a provider failure", async () => {
   // Reset provider failure state to avoid circuit breaker interference
-  clearProviderFailure("openai");
-  await seedConnection("openai", {
+  clearProviderFailure("openai-compatible-pipeline");
+  await seedConnection("openai-compatible-pipeline", {
     name: "openai-primary",
     apiKey: "sk-openai-primary-fallback",
     priority: 1,
   });
-  await seedConnection("openai", {
+  await seedConnection("openai-compatible-pipeline", {
     name: "openai-secondary",
     apiKey: "sk-openai-secondary-fallback",
     priority: 2,
@@ -1329,7 +1007,7 @@ test("chat pipeline falls back to the next account after a provider failure", as
   const response = await handleChat(
     buildRequest({
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai-compatible-pipeline/gpt-4o-mini",
         stream: false,
         messages: [{ role: "user", content: "Use account fallback" }],
       },
@@ -1347,15 +1025,18 @@ test("chat pipeline falls back to the next account after a provider failure", as
 
 test("chat pipeline falls back across combo models when the first provider fails", async () => {
   // Reset provider failure state to avoid circuit breaker interference
-  clearProviderFailure("openai");
-  clearProviderFailure("claude");
-  await seedConnection("openai", { apiKey: "sk-openai-combo-fail" });
-  await seedConnection("claude", { apiKey: "sk-claude-combo-fail" });
+  clearProviderFailure("openai-compatible-pipeline");
+  clearProviderFailure("openai-compatible-fallback2");
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-combo-fail" });
+  await seedConnection("openai-compatible-fallback2", {
+    apiKey: "sk-fallback2-combo",
+    providerSpecificData: { baseUrl: "https://fallback2.example.com/v1" },
+  });
   await combosDb.createCombo({
     name: "combo-fallback",
     strategy: "priority",
     config: { maxRetries: 0, retryDelayMs: 0 },
-    models: ["openai/gpt-4o-mini", "claude/claude-3-5-sonnet-20241022"],
+    models: ["openai-compatible-pipeline/gpt-4o-mini", "openai-compatible-fallback2/gpt-4o-mini"],
   });
   const attempts = [];
 
@@ -1371,7 +1052,7 @@ test("chat pipeline falls back across combo models when the first provider fails
         headers: { "Content-Type": "application/json" },
       });
     }
-    return buildClaudeResponse("Claude combo fallback");
+    return buildOpenAIResponse("Fallback combo response");
   };
 
   const response = await handleChat(
@@ -1387,26 +1068,26 @@ test("chat pipeline falls back across combo models when the first provider fails
   const json = (await response.json()) as any;
   assert.equal(response.status, 200);
   assert.equal(attempts.length, 2);
-  assert.match(attempts[0].url, /\/chat\/completions$/);
-  assert.match(attempts[1].url, /\?beta=true$/);
-  assert.equal(json.choices[0].message.content, "Claude combo fallback");
+  assert.match(attempts[0].url, /api\.openai\.com\/v1\/chat\/completions$/);
+  assert.match(attempts[1].url, /fallback2\.example\.com\/v1\/chat\/completions$/);
+  assert.equal(json.choices[0].message.content, "Fallback combo response");
 });
 
 test("chat pipeline deduplicates concurrent identical non-stream requests", async () => {
   // Reset provider failure state to avoid circuit breaker interference
-  clearProviderFailure("openai");
-  await seedConnection("openai", { apiKey: "sk-openai-dedup" });
+  clearProviderFailure("openai-compatible-pipeline");
+  await seedConnection("openai-compatible-pipeline", { apiKey: "sk-openai-dedup" });
   let fetchCount = 0;
 
   globalThis.fetch = async () => {
     fetchCount += 1;
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 250));
     return buildOpenAIResponse("Deduplicated response");
   };
 
   const requestA = buildRequest({
     body: {
-      model: "openai/gpt-4o-mini",
+      model: "openai-compatible-pipeline/gpt-4o-mini",
       stream: false,
       temperature: 0,
       messages: [{ role: "user", content: "Deduplicate this request" }],
@@ -1414,7 +1095,7 @@ test("chat pipeline deduplicates concurrent identical non-stream requests", asyn
   });
   const requestB = buildRequest({
     body: {
-      model: "openai/gpt-4o-mini",
+      model: "openai-compatible-pipeline/gpt-4o-mini",
       stream: false,
       temperature: 0,
       messages: [{ role: "user", content: "Deduplicate this request" }],

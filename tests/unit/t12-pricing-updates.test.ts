@@ -33,14 +33,6 @@ test("T12: pricing table includes MiniMax, GLM, Kimi and gpt-5.4 mini entries", 
   assert.ok(pricing.anthropic["claude-opus-4-7"], "missing anthropic/claude-opus-4-7");
 });
 
-test("T12: codex catalog includes GPT 5.5 variations", () => {
-  const codexModels = new Map(REGISTRY.codex.models.map((m) => [m.id, m]));
-  assert.ok(codexModels.has("gpt-5.5-medium"), "missing codex/gpt-5.5-medium");
-  assert.ok(codexModels.has("gpt-5.5-xhigh"), "missing codex/gpt-5.5-xhigh");
-  assert.equal(codexModels.get("gpt-5.5-medium")?.name, "GPT 5.5 (Medium)");
-  assert.equal(codexModels.get("gpt-5.5-medium")?.targetFormat, "openai-responses");
-  assert.equal(codexModels.get("gpt-5.5-xhigh")?.targetFormat, "openai-responses");
-});
 
 test("T12: minimax default model list starts with M2.7", () => {
   const minimaxModels = REGISTRY.minimax.models.map((m) => m.id);

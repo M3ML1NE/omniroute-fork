@@ -4,6 +4,7 @@ import path from "node:path";
 
 export async function createChatPipelineHarness(prefix) {
   const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), `omniroute-${prefix}-`));
+  (process.env as Record<string, string>).NODE_ENV = process.env.NODE_ENV || "test";
   process.env.DATA_DIR = testDataDir;
   process.env.REQUIRE_API_KEY = "false";
   // Disable dashboard auth so direct route handler calls don't get 401
@@ -23,15 +24,9 @@ export async function createChatPipelineHarness(prefix) {
   const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
   const modelComboMappingsDb = await import("../../src/lib/db/modelComboMappings.ts");
   const readCacheDb = await import("../../src/lib/db/readCache.ts");
+  const callLogsDb = await import("../../src/lib/usage/callLogs.ts");
   const memoryStore = await import("../../src/lib/memory/store.ts");
-  const memoryToolsModule = await import("../../open-sse/mcp-server/tools/memoryTools.ts");
   const { invalidateMemorySettingsCache } = await import("../../src/lib/memory/settings.ts");
-  const { skillRegistry } = await import("../../src/lib/skills/registry.ts");
-  const { skillExecutor } = await import("../../src/lib/skills/executor.ts");
-  const builtinsModule = await import("../../src/lib/skills/builtins.ts");
-  const sandboxModule = await import("../../src/lib/skills/sandbox.ts");
-  const skillsRouteModule = await import("../../src/app/api/skills/route.ts");
-  const skillByIdRouteModule = await import("../../src/app/api/skills/[id]/route.ts");
   const idempotencyLayerModule = await import("../../src/lib/idempotencyLayer.ts");
   const semanticCacheModule = await import("../../src/lib/semanticCache.ts");
   const { handleChat } = await import("../../src/sse/handlers/chat.ts");
@@ -39,15 +34,33 @@ export async function createChatPipelineHarness(prefix) {
   const { clearInflight } = await import("../../open-sse/services/requestDedup.ts");
   const { BaseExecutor } = await import("../../open-sse/executors/base.ts");
   const { resetAllCircuitBreakers } = await import("../../src/shared/utils/circuitBreaker.ts");
+  const pgModule = await import("../../src/lib/db/postgres.ts");
+
+  const MUTABLE_TEST_TABLES = [
+    "combos",
+    "provider_connections",
+    "provider_nodes",
+    "api_keys",
+    "call_logs",
+    "memories",
+    "memory",
+    "key_value",
+    "model_combo_mappings",
+    "semantic_cache",
+    "session_account_affinity",
+    "request_detail_logs",
+    "routing_decisions",
+  ];
+
+  async function purgePostgresTables() {
+    const schema = pgModule.getSchema();
+    const tables = MUTABLE_TEST_TABLES.map((table) => `${schema}.${table}`).join(", ");
+    await pgModule.query(`TRUNCATE ${tables} CASCADE`);
+  }
 
   const originalFetch = globalThis.fetch;
   const originalRetryDelayMs = BaseExecutor.RETRY_CONFIG.delayMs;
 
-  function clearSkillState() {
-    (skillRegistry as any).registeredSkills?.clear?.();
-    (skillRegistry as any).versionCache?.clear?.();
-    (skillExecutor as any).handlers?.clear?.();
-  }
 
   function toPlainHeaders(headers) {
     if (!headers) return {};
@@ -244,8 +257,8 @@ export async function createChatPipelineHarness(prefix) {
     apiKeysDb.resetApiKeyState();
     readCacheDb.invalidateDbCache();
     invalidateMemorySettingsCache();
-    clearSkillState();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await callLogsDb.drainCallLogWrites();
+    await purgePostgresTables();
     core.resetDbInstance();
     fs.rmSync(testDataDir, { recursive: true, force: true });
     fs.mkdirSync(testDataDir, { recursive: true });
@@ -258,7 +271,6 @@ export async function createChatPipelineHarness(prefix) {
     clearInflight();
     idempotencyLayerModule.clearIdempotency();
     semanticCacheModule.clearCache();
-    clearSkillState();
     resetAllCircuitBreakers();
     core.resetDbInstance();
     fs.rmSync(testDataDir, { recursive: true, force: true });
@@ -311,26 +323,19 @@ export async function createChatPipelineHarness(prefix) {
     buildOpenAIResponse,
     buildOpenAIToolCallResponse,
     buildRequest,
-    builtinsModule,
     cleanup,
     combosDb,
     core,
     handleChat,
     memoryStore,
-    memoryTools: memoryToolsModule.memoryTools,
     modelComboMappingsDb,
     originalRetryDelayMs,
     resetStorage,
-    sandboxModule,
     idempotencyLayerModule,
     semanticCacheModule,
     seedApiKey,
     seedConnection,
     settingsDb,
-    skillByIdRouteModule,
-    skillExecutor,
-    skillRegistry,
-    skillsRouteModule,
     toPlainHeaders,
     waitFor,
   };

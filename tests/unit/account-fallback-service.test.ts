@@ -111,13 +111,13 @@ test("checkFallbackError keeps API-key 429 exhausted-credit text on the resilien
   assert.equal(result.cooldownMs, 125);
 });
 
-test("checkFallbackError preserves OAuth 429 exhausted-credit semantics", () => {
+test("checkFallbackError preserves quota-signal 429 exhausted-credit semantics", () => {
   const result = checkFallbackError(
     429,
     "credit_balance_too_low",
     0,
     null,
-    "codex",
+    null,
     null,
     makeProfile()
   );
@@ -296,24 +296,16 @@ test("lockModelIfPerModelQuota only locks supported providers and real models", 
   assert.equal(isModelLocked(compatibleProvider, compatibleConnectionId, compatibleModel), true);
 });
 
-test("getProviderProfile differentiates oauth and api-key providers", () => {
-  const oauthProfile = getProviderProfile("claude");
-  assert.equal(oauthProfile.transientCooldown, PROVIDER_PROFILES.oauth.transientCooldown);
+test("getProviderProfile resolves registry and unknown providers to the api-key profile", () => {
+  const registryProfile = getProviderProfile("gigachat");
+  assert.equal(registryProfile.transientCooldown, PROVIDER_PROFILES.apikey.transientCooldown);
+  assert.equal(registryProfile.maxBackoffLevel, PROVIDER_PROFILES.apikey.maxBackoffLevel);
   assert.equal(
-    oauthProfile.rateLimitCooldown,
-    oauthProfile.useUpstreamRetryHints ? 0 : oauthProfile.baseCooldownMs
+    registryProfile.circuitBreakerThreshold,
+    PROVIDER_PROFILES.apikey.circuitBreakerThreshold
   );
-  assert.equal(oauthProfile.maxBackoffLevel, PROVIDER_PROFILES.oauth.maxBackoffLevel);
-  assert.equal(
-    oauthProfile.circuitBreakerThreshold,
-    PROVIDER_PROFILES.oauth.circuitBreakerThreshold
-  );
-  assert.equal(oauthProfile.circuitBreakerReset, PROVIDER_PROFILES.oauth.circuitBreakerReset);
-  assert.equal(oauthProfile.baseCooldownMs, PROVIDER_PROFILES.oauth.transientCooldown);
-  assert.equal(oauthProfile.failureThreshold, PROVIDER_PROFILES.oauth.circuitBreakerThreshold);
-  assert.equal(oauthProfile.resetTimeoutMs, PROVIDER_PROFILES.oauth.circuitBreakerReset);
 
-  const apiKeyProfile = getProviderProfile("openai");
+  const apiKeyProfile = getProviderProfile("openai-compatible-custom");
   assert.equal(apiKeyProfile.transientCooldown, PROVIDER_PROFILES.apikey.transientCooldown);
   assert.equal(
     apiKeyProfile.rateLimitCooldown,
@@ -331,38 +323,33 @@ test("getProviderProfile differentiates oauth and api-key providers", () => {
 });
 
 test("shouldMarkAccountExhaustedFrom429 skips connection poisoning for compatible providers", () => {
-  assert.equal(shouldMarkAccountExhaustedFrom429("gemini", "gemini-2.5-pro"), false);
   assert.equal(
     shouldMarkAccountExhaustedFrom429("openai-compatible-custom-node", "any-model"),
     false
   );
-  assert.equal(shouldMarkAccountExhaustedFrom429("openai", "gpt-4o-mini"), false);
-  assert.equal(shouldMarkAccountExhaustedFrom429("claude", "claude-sonnet-4-6"), true);
+  assert.equal(shouldMarkAccountExhaustedFrom429(null, "any-model"), true);
 });
 
 test("shouldMarkAccountExhaustedFrom429 does not poison quota cache for transient 429s", () => {
   assert.equal(
-    shouldMarkAccountExhaustedFrom429("kiro", "claude-opus-4.7", undefined, "rate_limit"),
+    shouldMarkAccountExhaustedFrom429(null, "any-model", undefined, "rate_limit"),
     false
   );
+  assert.equal(shouldMarkAccountExhaustedFrom429(null, "any-model", undefined, "transient"), false);
   assert.equal(
-    shouldMarkAccountExhaustedFrom429("kiro", "claude-opus-4.7", undefined, "transient"),
-    false
-  );
-  assert.equal(
-    shouldMarkAccountExhaustedFrom429("kiro", "claude-opus-4.7", undefined, "quota_exhausted"),
+    shouldMarkAccountExhaustedFrom429(null, "any-model", undefined, "quota_exhausted"),
     true
   );
 });
 
 test("hasPerModelQuota returns true for GitHub Copilot provider (#1624)", () => {
   assert.equal(hasPerModelQuota("github"), true);
-  assert.equal(hasPerModelQuota("github", "gpt-5.1-codex-max"), true);
+  assert.equal(hasPerModelQuota("github", "gpt-5.1-premium"), true);
   assert.equal(hasPerModelQuota("github", "gpt-5-mini"), true);
 });
 
 test("shouldMarkAccountExhaustedFrom429 skips connection-wide lockout for GitHub (#1624)", () => {
-  assert.equal(shouldMarkAccountExhaustedFrom429("github", "gpt-5.1-codex-max"), false);
+  assert.equal(shouldMarkAccountExhaustedFrom429("github", "gpt-5.1-premium"), false);
   assert.equal(shouldMarkAccountExhaustedFrom429("github", "gpt-5-mini"), false);
   assert.equal(shouldMarkAccountExhaustedFrom429("github", "claude-haiku-4.5"), false);
 });
@@ -375,13 +362,13 @@ test("lockModelIfPerModelQuota locks individual GitHub models without poisoning 
     lockModelIfPerModelQuota(
       "github",
       connectionId,
-      "gpt-5.1-codex-max",
+      "gpt-5.1-premium",
       RateLimitReason.RATE_LIMIT_EXCEEDED,
       30_000
     ),
     true
   );
-  assert.equal(isModelLocked("github", connectionId, "gpt-5.1-codex-max"), true);
+  assert.equal(isModelLocked("github", connectionId, "gpt-5.1-premium"), true);
 
   // Other models on the same connection should remain unlocked
   assert.equal(isModelLocked("github", connectionId, "gpt-5-mini"), false);
@@ -675,13 +662,13 @@ test("checkFallbackError routes API-key 429 'daily quota' text through resilienc
   assert.equal(result.cooldownMs, 125);
 });
 
-test("checkFallbackError preserves OAuth 429 daily quota semantics", () => {
+test("checkFallbackError preserves quota-signal 429 daily quota semantics", () => {
   const result = checkFallbackError(
     429,
     "You have exceeded your daily quota",
     0,
     null,
-    "codex",
+    null,
     null,
     makeProfile()
   );
@@ -802,26 +789,26 @@ test("recordModelLockoutFailure uses regular backoff for non-quota reasons", () 
 
 // Test for hour quota related error messages
 test("checkFallbackError classifies hour quota errors correctly", () => {
-  // For OAuth providers (e.g., codex), hour quota errors should be QUOTA_EXHAUSTED
+  // For OAuth providers, hour quota errors should be QUOTA_EXHAUSTED
   const result1 = checkFallbackError(
     429,
     "Coding Plan hour quota has been exceeded",
     0,
     null,
-    "codex"
+    null
   );
   assert.equal(result1.shouldFallback, true);
   assert.equal(result1.reason, RateLimitReason.QUOTA_EXHAUSTED);
 
-  const result2 = checkFallbackError(429, "hour quota exceeded", 0, null, "codex");
+  const result2 = checkFallbackError(429, "hour quota exceeded", 0, null, null);
   assert.equal(result2.shouldFallback, true);
   assert.equal(result2.reason, RateLimitReason.QUOTA_EXHAUSTED);
 
-  const result3 = checkFallbackError(429, "Your hour quota is exceeded", 0, null, "codex");
+  const result3 = checkFallbackError(429, "Your hour quota is exceeded", 0, null, null);
   assert.equal(result3.shouldFallback, true);
   assert.equal(result3.reason, RateLimitReason.QUOTA_EXHAUSTED);
 
-  const result4 = checkFallbackError(429, "hour quota depleted", 0, null, "codex");
+  const result4 = checkFallbackError(429, "hour quota depleted", 0, null, null);
   assert.equal(result4.shouldFallback, true);
   assert.equal(result4.reason, RateLimitReason.QUOTA_EXHAUSTED);
 

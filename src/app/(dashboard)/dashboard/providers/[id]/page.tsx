@@ -24,9 +24,6 @@ import {
   Input,
   Modal,
   CardSkeleton,
-  OAuthModal,
-  KiroOAuthWrapper,
-  CursorAuthModal,
   Toggle,
   Select,
   NoAuthProviderCard,
@@ -63,18 +60,6 @@ import { maskEmail, pickMaskedDisplayValue, pickDisplayValue } from "@/shared/ut
 import useEmailPrivacyStore from "@/store/emailPrivacyStore";
 import EmailPrivacyToggle from "@/shared/components/EmailPrivacyToggle";
 import ProviderIcon from "@/shared/components/ProviderIcon";
-import {
-  getCodexRequestDefaults as _getCodexRequestDefaults,
-  type CodexServiceTier,
-} from "@/lib/providers/requestDefaults";
-import {
-  CODEX_FAST_TIER_DEFAULT_SUPPORTED_MODELS,
-  getCodexEffectiveServiceTier,
-  getCodexGlobalServiceMode,
-  resolveCodexGlobalFastServiceTier,
-  type CodexGlobalServiceMode,
-} from "@/lib/providers/codexFastTier";
-import { isClaudeExtraUsageBlockEnabled } from "@/lib/providers/claudeExtraUsage";
 import { parseExtraApiKeys } from "@/shared/utils/parseApiKeys";
 import RiskNoticeModal from "../components/RiskNoticeModal";
 import { isRiskAcknowledged, useRiskAcknowledged } from "../hooks/useRiskAcknowledged";
@@ -649,7 +634,6 @@ interface CompatibleModelsSectionProps {
   onSetAlias: (modelId: string, alias: string, providerStorageAlias?: string) => Promise<void>;
   onDeleteAlias: (alias: string) => void;
   connections: { id?: string; isActive?: boolean }[];
-  isAnthropic?: boolean;
   onImportWithProgress: (connectionId: string) => Promise<void>;
   t: (key: string, values?: Record<string, unknown>) => string;
   effectiveModelNormalize: (alias: string) => boolean;
@@ -733,10 +717,6 @@ interface ConnectionRowConnection {
 interface ConnectionRowProps {
   connection: ConnectionRowConnection;
   isOAuth: boolean;
-  isClaude?: boolean;
-  isCodex?: boolean;
-  isGeminiCli?: boolean;
-  codexGlobalServiceMode?: CodexGlobalServiceMode;
   isFirst: boolean;
   isLast: boolean;
   isSelected?: boolean;
@@ -745,9 +725,6 @@ interface ConnectionRowProps {
   onMoveDown: () => void;
   onToggleActive: (isActive?: boolean) => void | Promise<void>;
   onToggleRateLimit: (enabled?: boolean) => void;
-  onToggleClaudeExtraUsage?: (enabled?: boolean) => void;
-  onToggleCodex5h?: (enabled?: boolean) => void;
-  onToggleCodexWeekly?: (enabled?: boolean) => void;
   cliproxyapiEnabled?: boolean;
   onToggleCliproxyapiMode?: (enabled?: boolean) => void;
   onRetest: () => void;
@@ -761,18 +738,6 @@ interface ConnectionRowProps {
   proxyHost?: string;
   onRefreshToken?: () => void;
   isRefreshing?: boolean;
-  onApplyCodexAuthLocal?: () => void;
-  isApplyingCodexAuthLocal?: boolean;
-  onExportCodexAuthFile?: () => void;
-  isExportingCodexAuthFile?: boolean;
-  onApplyClaudeAuthLocal?: () => void;
-  isApplyingClaudeAuthLocal?: boolean;
-  onExportClaudeAuthFile?: () => void;
-  isExportingClaudeAuthFile?: boolean;
-  onApplyGeminiAuthLocal?: () => void;
-  isApplyingGeminiAuthLocal?: boolean;
-  onExportGeminiAuthFile?: () => void;
-  isExportingGeminiAuthFile?: boolean;
 }
 
 interface AddApiKeyModalProps {
@@ -780,7 +745,6 @@ interface AddApiKeyModalProps {
   provider?: string;
   providerName?: string;
   isCompatible?: boolean;
-  isAnthropic?: boolean;
   isCommandCode?: boolean;
   commandCodeAuthState?: CommandCodeAuthFlowState;
   onStartCommandCodeAuth?: () => void;
@@ -862,59 +826,6 @@ interface EditCompatibleNodeModalProps {
   node: EditCompatibleNodeModalNode | null;
   onSave: (data: unknown) => Promise<void>;
   onClose: () => void;
-  isAnthropic?: boolean;
-}
-
-const CODEX_REASONING_STRENGTH_OPTIONS = [
-  { value: "none", label: "None" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "XHigh" },
-];
-
-const CODEX_ACCOUNT_SERVICE_TIER_VALUES: CodexServiceTier[] = ["default", "priority", "flex"];
-const CODEX_GLOBAL_SERVICE_MODE_VALUES: CodexGlobalServiceMode[] = [
-  "none",
-  ...CODEX_ACCOUNT_SERVICE_TIER_VALUES,
-];
-
-function getCodexServiceTierLabel(
-  t: ProviderMessageTranslator,
-  value: CodexGlobalServiceMode
-): string {
-  if (value === "none") {
-    return providerText(t, "codexServiceModeNone", "No global setting");
-  }
-  if (value === "default") return providerText(t, "codexServiceTierDefault", "Default");
-  if (value === "priority") return providerText(t, "codexServiceTierPriority", "Priority");
-  return providerText(t, "codexServiceTierFlex", "Flex");
-}
-
-function normalizeCodexLimitPolicy(policy: unknown): { use5h: boolean; useWeekly: boolean } {
-  const record =
-    policy && typeof policy === "object" && !Array.isArray(policy)
-      ? (policy as Record<string, unknown>)
-      : {};
-  return {
-    use5h: typeof record.use5h === "boolean" ? record.use5h : true,
-    useWeekly: typeof record.useWeekly === "boolean" ? record.useWeekly : true,
-  };
-}
-
-/**
- * UI adapter around the canonical getCodexRequestDefaults from requestDefaults.ts.
- * Adds the "medium" fallback for reasoningEffort required by the connection form.
- */
-function getCodexRequestDefaults(providerSpecificData: unknown): {
-  reasoningEffort: string;
-  serviceTier?: CodexServiceTier;
-} {
-  const defaults = _getCodexRequestDefaults(providerSpecificData);
-  return {
-    reasoningEffort: defaults.reasoningEffort ?? "medium",
-    ...(defaults.serviceTier ? { serviceTier: defaults.serviceTier } : {}),
-  };
 }
 
 function compatProtocolLabelKey(protocol: string): string {
@@ -1337,8 +1248,6 @@ export default function ProviderDetailPage() {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [providerNode, setProviderNode] = useState(null);
-  const [showOAuthModal, _setShowOAuthModal] = useState(false);
-  const [reauthConnection, setReauthConnection] = useState<ConnectionRowConnection | null>(null);
   const [showAddApiKeyModal, setShowAddApiKeyModal] = useState(false);
   const [showRiskNoticeModal, setShowRiskNoticeModal] = useState(false);
   const [commandCodeAuthState, setCommandCodeAuthState] = useState<CommandCodeAuthFlowState>({
@@ -1367,11 +1276,6 @@ export default function ProviderDetailPage() {
     Record<string, { proxy: any; level: string } | null>
   >({});
   const [importingModels, setImportingModels] = useState(false);
-  const [importingZed, setImportingZed] = useState(false);
-  const [showZedManual, setShowZedManual] = useState(false);
-  const [zedManualProvider, setZedManualProvider] = useState("openai");
-  const [zedManualToken, setZedManualToken] = useState("");
-  const [importingZedManual, setImportingZedManual] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importProgress, setImportProgress] = useState({
     current: 0,
@@ -1395,32 +1299,6 @@ export default function ProviderDetailPage() {
   const [bulkVisibilityAction, setBulkVisibilityAction] = useState<"select" | "deselect" | null>(
     null
   );
-  const [applyingCodexAuthId, setApplyingCodexAuthId] = useState<string | null>(null);
-  const [applyCodexModalConnectionId, setApplyCodexModalConnectionId] = useState<string | null>(
-    null
-  );
-  const [exportingCodexAuthId, setExportingCodexAuthId] = useState<string | null>(null);
-  const [importCodexModalOpen, setImportCodexModalOpen] = useState(false);
-  const [applyingClaudeAuthId, setApplyingClaudeAuthId] = useState<string | null>(null);
-  const [applyClaudeModalConnectionId, setApplyClaudeModalConnectionId] = useState<string | null>(
-    null
-  );
-  const [exportingClaudeAuthId, setExportingClaudeAuthId] = useState<string | null>(null);
-  const [importClaudeModalOpen, setImportClaudeModalOpen] = useState(false);
-  const [applyingGeminiAuthId, setApplyingGeminiAuthId] = useState<string | null>(null);
-  const [applyGeminiModalConnectionId, setApplyGeminiModalConnectionId] = useState<string | null>(
-    null
-  );
-  const [exportingGeminiAuthId, setExportingGeminiAuthId] = useState<string | null>(null);
-  const [importGeminiModalOpen, setImportGeminiModalOpen] = useState(false);
-  const [codexGlobalServiceMode, setCodexGlobalServiceMode] =
-    useState<CodexGlobalServiceMode>("none");
-  const [codexGlobalSupportedModels, setCodexGlobalSupportedModels] = useState<string[]>([
-    ...CODEX_FAST_TIER_DEFAULT_SUPPORTED_MODELS,
-  ]);
-  const [codexSettingsLoaded, setCodexSettingsLoaded] = useState(false);
-  const [codexSettingsLoadError, setCodexSettingsLoadError] = useState<string | null>(null);
-  const [savingCodexGlobalServiceMode, setSavingCodexGlobalServiceMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
   const commandCodeAuthWindowRef = useRef<Window | null>(null);
@@ -1428,29 +1306,13 @@ export default function ProviderDetailPage() {
   const pendingRiskActionRef = useRef<(() => void) | null>(null);
   const { acknowledged: riskAcknowledged, acknowledge: acknowledgeRisk } =
     useRiskAcknowledged(providerId);
-  const codexSettingsRequestSeqRef = useRef(0);
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
   const isCommandCode = providerId === "command-code";
   const isCompatible = isOpenAICompatible;
 
-  const setShowOAuthModal = (show: boolean, connectionRow?: ConnectionRowConnection) => {
-    _setShowOAuthModal(show);
-    setReauthConnection(show && connectionRow ? connectionRow : null);
-  };
-
-  const codexGlobalServiceModeOptions = useMemo(
-    () =>
-      CODEX_GLOBAL_SERVICE_MODE_VALUES.map((value) => ({
-        value,
-        label: getCodexServiceTierLabel(t, value),
-      })),
-    [t]
-  );
-
   const providerInfo = resolveDashboardProviderInfo(providerId, {
     providerNode,
     compatibleLabels: {
-      anthropicCompatibleName: t("anthropicCompatibleName"),
       openAiCompatibleName: t("openaiCompatibleName"),
     },
   });
@@ -1504,7 +1366,6 @@ export default function ProviderDetailPage() {
   const providerDisplayAlias = isCompatible ? providerNode?.prefix || providerId : providerAlias;
 
   const getApiLabel = () => {
-    if (isAnthropicProtocolCompatible) return t("messagesApi");
     const type = providerNode?.apiType;
     switch (type) {
       case "responses":
@@ -1523,7 +1384,6 @@ export default function ProviderDetailPage() {
   };
 
   const getApiDefaultPath = () => {
-    if (isAnthropicCompatible) return "/messages";
     const type = providerNode?.apiType;
     switch (type) {
       case "responses":
@@ -1658,102 +1518,6 @@ export default function ProviderDetailPage() {
       .then((c) => setProxyConfig(c))
       .catch(() => {});
   }, [fetchConnections, fetchAliases]);
-
-  const handleZedImport = useCallback(async () => {
-    if (importingZed) return;
-    setImportingZed(true);
-    try {
-      const res = await fetch("/api/providers/zed/import", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        if (data.zedDockerEnvironment) {
-          setShowZedManual(true);
-        }
-        notify.error(data.error || "Zed import failed");
-      } else if (!data.count) {
-        const found = data.credentials?.length ?? 0;
-        if (found === 0) {
-          notify.info("No Zed credentials found in keychain");
-        } else {
-          notify.info(
-            `Found ${found} keychain credential(s), but none matched supported providers`
-          );
-        }
-      } else {
-        notify.success(
-          `Imported ${data.count} credential(s) from Zed for ${data.providers?.length ?? 0} provider(s)`
-        );
-        await fetchConnections();
-      }
-    } catch (e: any) {
-      notify.error(e?.message || "Zed import failed");
-    } finally {
-      setImportingZed(false);
-    }
-  }, [importingZed, notify, fetchConnections]);
-
-  const handleZedManualImport = useCallback(async () => {
-    if (importingZedManual || !zedManualToken.trim()) return;
-    setImportingZedManual(true);
-    try {
-      const res = await fetch("/api/providers/zed/manual-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: zedManualProvider, token: zedManualToken.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        notify.error(data.error?.message ?? data.error ?? "Manual import failed");
-      } else {
-        notify.success(`Imported ${zedManualProvider} token from Zed`);
-        setZedManualToken("");
-        await fetchConnections();
-      }
-    } catch (e: any) {
-      notify.error(e?.message || "Manual import failed");
-    } finally {
-      setImportingZedManual(false);
-    }
-  }, [importingZedManual, zedManualProvider, zedManualToken, notify, fetchConnections]);
-
-  const loadCodexSettings = useCallback(async () => {
-    const requestSeq = codexSettingsRequestSeqRef.current + 1;
-    codexSettingsRequestSeqRef.current = requestSeq;
-    const isCurrentRequest = () => codexSettingsRequestSeqRef.current === requestSeq;
-
-    if (providerId !== "codex") {
-      setCodexSettingsLoaded(false);
-      setCodexSettingsLoadError(null);
-      return;
-    }
-
-    setCodexSettingsLoaded(false);
-    setCodexSettingsLoadError(null);
-
-    try {
-      const response = await fetch("/api/settings", { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`Settings request failed with HTTP ${response.status}`);
-      }
-      const data = await response.json();
-      if (!data || typeof data !== "object") {
-        throw new Error("Settings response was empty");
-      }
-      if (!isCurrentRequest()) return;
-      const resolvedCodexServiceTier = resolveCodexGlobalFastServiceTier(data);
-      setCodexGlobalServiceMode(getCodexGlobalServiceMode(data));
-      setCodexGlobalSupportedModels([...resolvedCodexServiceTier.supportedModels]);
-      setCodexSettingsLoaded(true);
-    } catch (error) {
-      if (!isCurrentRequest()) return;
-      setCodexSettingsLoaded(false);
-      setCodexSettingsLoadError(error instanceof Error ? error.message : "Failed to load settings");
-    }
-  }, [providerId]);
-
-  useEffect(() => {
-    void loadCodexSettings();
-  }, [loadCodexSettings]);
 
   const loadConnProxies = useCallback(async (conns: { id?: string }[]) => {
     if (!conns.length) return;
@@ -1917,18 +1681,9 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleOAuthSuccess = useCallback(() => {
-    fetchConnections();
-    setShowOAuthModal(false);
-  }, [fetchConnections]);
-
   const openPrimaryAddFlow = useCallback(() => {
-    if (isOAuth) {
-      setShowOAuthModal(true);
-      return;
-    }
     setShowAddApiKeyModal(true);
-  }, [isOAuth]);
+  }, []);
 
   const gateConnectionFlow = useCallback(
     (callback: () => void) => {
@@ -2349,68 +2104,6 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleToggleClaudeExtraUsage = async (connectionId, enabled) => {
-    try {
-      const target = connections.find((connection) => connection.id === connectionId);
-      if (!target) return;
-
-      const providerSpecificData =
-        target.providerSpecificData && typeof target.providerSpecificData === "object"
-          ? target.providerSpecificData
-          : {};
-
-      const res = await fetch(`/api/providers/${connectionId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          providerSpecificData: {
-            ...providerSpecificData,
-            blockExtraUsage: enabled,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        notify.error(data.error || "Failed to update Claude extra-usage policy");
-        return;
-      }
-
-      setConnections((prev) =>
-        prev.map((connection) =>
-          connection.id === connectionId
-            ? {
-                ...connection,
-                providerSpecificData: {
-                  ...(connection.providerSpecificData || {}),
-                  blockExtraUsage: enabled,
-                },
-                ...(!enabled && connection.lastErrorSource === "extra_usage"
-                  ? {
-                      testStatus: "active",
-                      lastError: null,
-                      lastErrorAt: null,
-                      lastErrorType: null,
-                      lastErrorSource: null,
-                      errorCode: null,
-                      rateLimitedUntil: null,
-                    }
-                  : {}),
-              }
-            : connection
-        )
-      );
-      notify.success(
-        enabled
-          ? "Claude extra-usage blocking enabled (extra usage will be blocked)"
-          : "Claude extra-usage blocking disabled (extra usage is allowed)"
-      );
-    } catch (error) {
-      console.error("Error toggling Claude extra-usage policy:", error);
-      notify.error("Failed to update Claude extra-usage policy");
-    }
-  };
-
   const [cpaProviderEnabled, setCpaProviderEnabled] = useState(false);
 
   // Load upstream proxy config for this provider on mount
@@ -2454,99 +2147,6 @@ export default function ProviderDetailPage() {
       );
     } catch {
       notify.error("Failed to update CLIProxyAPI routing");
-    }
-  };
-
-  const handleToggleCodexLimit = async (connectionId, field, enabled) => {
-    try {
-      const target = connections.find((connection) => connection.id === connectionId);
-      if (!target) return;
-
-      const providerSpecificData =
-        target.providerSpecificData && typeof target.providerSpecificData === "object"
-          ? target.providerSpecificData
-          : {};
-      const existingPolicy =
-        providerSpecificData.codexLimitPolicy &&
-        typeof providerSpecificData.codexLimitPolicy === "object"
-          ? providerSpecificData.codexLimitPolicy
-          : {};
-
-      const nextPolicy = {
-        ...normalizeCodexLimitPolicy(existingPolicy),
-        [field]: enabled,
-      };
-
-      const res = await fetch(`/api/providers/${connectionId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          providerSpecificData: {
-            ...providerSpecificData,
-            codexLimitPolicy: nextPolicy,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        notify.error(data.error || "Failed to update Codex limit policy");
-        return;
-      }
-
-      setConnections((prev) =>
-        prev.map((connection) =>
-          connection.id === connectionId
-            ? {
-                ...connection,
-                providerSpecificData: {
-                  ...(connection.providerSpecificData || {}),
-                  codexLimitPolicy: nextPolicy,
-                },
-              }
-            : connection
-        )
-      );
-      notify.success("Codex limit policy updated");
-    } catch (error) {
-      console.error("Error toggling Codex quota policy:", error);
-      notify.error("Failed to update Codex limit policy");
-    }
-  };
-
-  const handleChangeCodexGlobalServiceMode = async (mode: CodexGlobalServiceMode) => {
-    if (savingCodexGlobalServiceMode || !codexSettingsLoaded) return;
-    setSavingCodexGlobalServiceMode(true);
-    const previousMode = codexGlobalServiceMode;
-    setCodexGlobalServiceMode(mode);
-    try {
-      const tier = mode === "none" ? (previousMode !== "none" ? previousMode : undefined) : mode;
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          codexServiceTier: {
-            enabled: mode !== "none",
-            ...(tier ? { tier } : {}),
-            supportedModels: codexGlobalSupportedModels,
-          },
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setCodexGlobalServiceMode(previousMode);
-        notify.error(data.error || "Failed to update Codex service mode");
-        return;
-      }
-
-      notify.success("Codex service mode updated");
-    } catch (error) {
-      setCodexGlobalServiceMode(previousMode);
-      console.error("Error updating Codex service mode:", error);
-      notify.error("Failed to update Codex service mode");
-    } finally {
-      setSavingCodexGlobalServiceMode(false);
     }
   };
 
@@ -2615,7 +2215,6 @@ export default function ProviderDetailPage() {
   };
 
   // T12: Manual token refresh
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
   const parseApiErrorMessage = async (res: Response, fallback: string) => {
     const contentType = res.headers.get("content-type") || "";
@@ -2647,257 +2246,6 @@ export default function ProviderDetailPage() {
     }
 
     return fallback;
-  };
-
-  const handleRefreshToken = async (connectionId: string) => {
-    if (refreshingId) return;
-    setRefreshingId(connectionId);
-    try {
-      const res = await fetch(`/api/providers/${connectionId}/refresh`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success) {
-        notify.success(t("tokenRefreshed"));
-        await fetchConnections();
-      } else {
-        notify.error(data.error || t("tokenRefreshFailed"));
-      }
-    } catch (error) {
-      console.error("Error refreshing token:", error);
-      notify.error(t("tokenRefreshFailed"));
-    } finally {
-      setRefreshingId(null);
-    }
-  };
-
-  const handleApplyCodexAuthLocal = async (connectionId: string) => {
-    if (applyingCodexAuthId) return;
-    setApplyingCodexAuthId(connectionId);
-
-    const defaultSuccess =
-      typeof t.has === "function" && t.has("codexAuthAppliedLocal")
-        ? t("codexAuthAppliedLocal")
-        : "Codex auth.json applied locally";
-    const defaultError =
-      typeof t.has === "function" && t.has("codexAuthApplyFailed")
-        ? t("codexAuthApplyFailed")
-        : "Failed to apply Codex auth.json locally";
-
-    try {
-      const res = await fetch(`/api/providers/${connectionId}/codex-auth/apply-local`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        notify.error(await parseApiErrorMessage(res, defaultError));
-        return;
-      }
-
-      notify.success(defaultSuccess);
-      setApplyCodexModalConnectionId(null);
-    } catch (error) {
-      console.error("Error applying Codex auth locally:", error);
-      notify.error(defaultError);
-    } finally {
-      setApplyingCodexAuthId(null);
-    }
-  };
-
-  const handleExportCodexAuthFile = async (connectionId: string) => {
-    if (exportingCodexAuthId) return;
-    setExportingCodexAuthId(connectionId);
-
-    const defaultSuccess =
-      typeof t.has === "function" && t.has("codexAuthExported")
-        ? t("codexAuthExported")
-        : "Codex auth.json exported";
-    const defaultError =
-      typeof t.has === "function" && t.has("codexAuthExportFailed")
-        ? t("codexAuthExportFailed")
-        : "Failed to export Codex auth.json";
-
-    try {
-      const res = await fetch(`/api/providers/${connectionId}/codex-auth/export`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        notify.error(await parseApiErrorMessage(res, defaultError));
-        return;
-      }
-
-      const blob = await res.blob();
-      const filename = getAttachmentFilename(res, "codex-auth.json");
-      const objectUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = objectUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
-
-      notify.success(defaultSuccess);
-    } catch (error) {
-      console.error("Error exporting Codex auth file:", error);
-      notify.error(defaultError);
-    } finally {
-      setExportingCodexAuthId(null);
-    }
-  };
-
-  const handleApplyClaudeAuthLocal = async (connectionId: string) => {
-    if (applyingClaudeAuthId) return;
-    setApplyingClaudeAuthId(connectionId);
-
-    const defaultSuccess =
-      typeof t.has === "function" && t.has("claudeAuthAppliedLocal")
-        ? t("claudeAuthAppliedLocal")
-        : "Claude auth applied locally";
-    const defaultError =
-      typeof t.has === "function" && t.has("claudeAuthApplyFailed")
-        ? t("claudeAuthApplyFailed")
-        : "Failed to apply Claude auth locally";
-
-    try {
-      const res = await fetch(`/api/providers/${connectionId}/claude-auth/apply-local`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        notify.error(await parseApiErrorMessage(res, defaultError));
-        return;
-      }
-
-      notify.success(defaultSuccess);
-      setApplyClaudeModalConnectionId(null);
-    } catch (error) {
-      console.error("Error applying Claude auth locally:", error);
-      notify.error(defaultError);
-    } finally {
-      setApplyingClaudeAuthId(null);
-    }
-  };
-
-  const handleExportClaudeAuthFile = async (connectionId: string) => {
-    if (exportingClaudeAuthId) return;
-    setExportingClaudeAuthId(connectionId);
-
-    const defaultSuccess =
-      typeof t.has === "function" && t.has("claudeAuthExported")
-        ? t("claudeAuthExported")
-        : "Claude auth file exported";
-    const defaultError =
-      typeof t.has === "function" && t.has("claudeAuthExportFailed")
-        ? t("claudeAuthExportFailed")
-        : "Failed to export Claude auth file";
-
-    try {
-      const res = await fetch(`/api/providers/${connectionId}/claude-auth/export`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        notify.error(await parseApiErrorMessage(res, defaultError));
-        return;
-      }
-
-      const blob = await res.blob();
-      const filename = getAttachmentFilename(res, "claude-auth.json");
-      const objectUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = objectUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
-
-      notify.success(defaultSuccess);
-    } catch (error) {
-      console.error("Error exporting Claude auth file:", error);
-      notify.error(defaultError);
-    } finally {
-      setExportingClaudeAuthId(null);
-    }
-  };
-
-  const handleApplyGeminiAuthLocal = async (connectionId: string) => {
-    if (applyingGeminiAuthId) return;
-    setApplyingGeminiAuthId(connectionId);
-
-    const defaultSuccess =
-      typeof t.has === "function" && t.has("geminiAuthAppliedLocal")
-        ? t("geminiAuthAppliedLocal")
-        : "Gemini auth applied locally";
-    const defaultError =
-      typeof t.has === "function" && t.has("geminiAuthApplyFailed")
-        ? t("geminiAuthApplyFailed")
-        : "Failed to apply Gemini auth locally";
-
-    try {
-      const res = await fetch(`/api/providers/${connectionId}/gemini-cli-auth/apply-local`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        notify.error(await parseApiErrorMessage(res, defaultError));
-        return;
-      }
-
-      notify.success(defaultSuccess);
-      setApplyGeminiModalConnectionId(null);
-    } catch (error) {
-      console.error("Error applying Gemini auth locally:", error);
-      notify.error(defaultError);
-    } finally {
-      setApplyingGeminiAuthId(null);
-    }
-  };
-
-  const handleExportGeminiAuthFile = async (connectionId: string) => {
-    if (exportingGeminiAuthId) return;
-    setExportingGeminiAuthId(connectionId);
-
-    const defaultSuccess =
-      typeof t.has === "function" && t.has("geminiAuthExported")
-        ? t("geminiAuthExported")
-        : "Gemini auth file exported";
-    const defaultError =
-      typeof t.has === "function" && t.has("geminiAuthExportFailed")
-        ? t("geminiAuthExportFailed")
-        : "Failed to export Gemini auth file";
-
-    try {
-      const res = await fetch(`/api/providers/${connectionId}/gemini-cli-auth/export`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        notify.error(await parseApiErrorMessage(res, defaultError));
-        return;
-      }
-
-      const blob = await res.blob();
-      const filename = getAttachmentFilename(res, "gemini-auth.json");
-      const objectUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = objectUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
-
-      notify.success(defaultSuccess);
-    } catch (error) {
-      console.error("Error exporting Gemini auth file:", error);
-      notify.error(defaultError);
-    } finally {
-      setExportingGeminiAuthId(null);
-    }
   };
 
   const handleSwapPriority = async (conn1, conn2) => {
@@ -3444,15 +2792,13 @@ export default function ProviderDetailPage() {
         providerId === "openrouter"
           ? t("openRouterAnyModelHint")
           : t("compatibleModelsDescription", {
-              type: isAnthropicCompatible ? t("anthropic") : t("openai"),
+              type: t("openai"),
             });
       const inputLabel = providerId === "openrouter" ? t("modelIdFromOpenRouter") : t("modelId");
       const inputPlaceholder =
         providerId === "openrouter"
           ? t("openRouterModelPlaceholder")
-          : isAnthropicCompatible
-            ? t("anthropicCompatibleModelPlaceholder")
-            : t("openaiCompatibleModelPlaceholder");
+          : t("openaiCompatibleModelPlaceholder");
 
       return (
         <div>
@@ -3475,7 +2821,6 @@ export default function ProviderDetailPage() {
             onSetAlias={handleSetAlias}
             onDeleteAlias={handleDeleteAlias}
             connections={connections}
-            isAnthropic={isAnthropicProtocolCompatible}
             onImportWithProgress={handleCompatibleImportWithProgress}
             t={t}
             effectiveModelNormalize={effectiveModelNormalize}
@@ -3699,13 +3044,9 @@ export default function ProviderDetailPage() {
     );
   }
 
-  // OpenAI/Anthropic compatible providers use their specialized pseudo-provider icons.
   const getHeaderIconProviderId = () => {
     if (isOpenAICompatible && providerInfo.apiType) {
       return providerInfo.apiType === "responses" ? "oai-r" : "oai-cc";
-    }
-    if (isAnthropicProtocolCompatible) {
-      return "anthropic-m";
     }
     return providerInfo.id;
   };
@@ -3762,101 +3103,11 @@ export default function ProviderDetailPage() {
         </div>
       </div>
 
-      {providerId === "zed" && (
-        <>
-          <Card>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[20px]">download</span>
-                  Import from Zed Keychain
-                </h2>
-                <p className="text-sm text-text-muted mt-1">
-                  Discover AI provider credentials (OpenAI, Anthropic, Google, Mistral, xAI) that
-                  Zed IDE stored in the OS keychain and import them as connections. Requires Zed IDE
-                  installed on this machine.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={importingZed ? "sync" : "download"}
-                onClick={handleZedImport}
-                disabled={importingZed}
-              >
-                {importingZed ? "Importing…" : "Import from Zed"}
-              </Button>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex flex-col gap-3">
-              <button
-                className="flex items-center justify-between w-full text-left"
-                onClick={() => setShowZedManual((v) => !v)}
-              >
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[20px]">edit</span>
-                  Manual Token Import
-                </h2>
-                <span className="material-symbols-outlined text-[18px] text-text-muted">
-                  {showZedManual ? "expand_less" : "expand_more"}
-                </span>
-              </button>
-              {showZedManual && (
-                <div className="flex flex-col gap-3 mt-1">
-                  <p className="text-sm text-text-muted">
-                    Use this when OmniRoute runs in Docker or the keychain is unavailable. Paste the
-                    API key that Zed stored under{" "}
-                    <code className="font-mono text-xs">~/.config/zed/settings.json</code> or copy
-                    it from the Zed AI settings panel.
-                  </p>
-                  <div className="flex gap-2 flex-col sm:flex-row">
-                    <select
-                      className="input input-sm"
-                      value={zedManualProvider}
-                      onChange={(e) => setZedManualProvider(e.target.value)}
-                    >
-                      <option value="openai">OpenAI</option>
-                      <option value="anthropic">Anthropic</option>
-                      <option value="google">Google</option>
-                      <option value="mistral">Mistral</option>
-                      <option value="xai">xAI</option>
-                      <option value="openrouter">OpenRouter</option>
-                      <option value="deepseek">DeepSeek</option>
-                    </select>
-                    <input
-                      type="password"
-                      className="input input-sm flex-1"
-                      placeholder="Paste API key…"
-                      value={zedManualToken}
-                      onChange={(e) => setZedManualToken(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      icon={importingZedManual ? "sync" : "upload"}
-                      onClick={handleZedManualImport}
-                      disabled={importingZedManual || !zedManualToken.trim()}
-                    >
-                      {importingZedManual ? "Saving…" : "Import"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        </>
-      )}
-
       {isCompatible && providerNode && (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold">
-                {isAnthropicCompatible
-                  ? t("anthropicCompatibleDetails")
-                  : t("openaiCompatibleDetails")}
-              </h2>
+              <h2 className="text-lg font-semibold">{t("openaiCompatibleDetails")}</h2>
               <p className="text-sm text-text-muted">
                 {getApiLabel()} · {(providerNode.baseUrl || "").replace(/\/$/, "")}/{getApiPath()}
               </p>
@@ -3885,9 +3136,7 @@ export default function ProviderDetailPage() {
                   if (
                     !confirm(
                       t("deleteCompatibleNodeConfirm", {
-                        type: isAnthropicCompatible
-                          ? t("anthropic")
-                          : t("openai"),
+                        type: t("openai"),
                       })
                     )
                   )
@@ -3908,7 +3157,6 @@ export default function ProviderDetailPage() {
               </Button>
             </div>
           </div>
-
         </Card>
       )}
 
@@ -3919,47 +3167,6 @@ export default function ProviderDetailPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold">{t("connections")}</h2>
-              {providerId === "codex" && (
-                <div
-                  className="inline-flex items-center gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-2 py-1 text-xs font-medium text-text-muted"
-                  title={providerText(
-                    t,
-                    "providerDetailServiceModeTooltip",
-                    "Set a global Codex service mode, or leave accounts on their individual service-tier setting."
-                  )}
-                >
-                  <span>
-                    {providerText(t, "providerDetailServiceModeLabel", "Global service mode:")}
-                  </span>
-                  <select
-                    value={codexGlobalServiceMode}
-                    onChange={(event) =>
-                      handleChangeCodexGlobalServiceMode(
-                        event.target.value as CodexGlobalServiceMode
-                      )
-                    }
-                    disabled={savingCodexGlobalServiceMode || !codexSettingsLoaded}
-                    aria-label="Global Codex service mode"
-                    className="rounded-md border border-border bg-bg px-2 py-1 text-xs text-text-main outline-none transition-colors focus:border-primary disabled:opacity-60"
-                  >
-                    {codexGlobalServiceModeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {codexSettingsLoadError ? (
-                    <button
-                      type="button"
-                      onClick={() => void loadCodexSettings()}
-                      className="rounded border border-sky-500/30 px-2 py-0.5 text-[11px] font-medium text-sky-600 hover:bg-sky-500/10 dark:text-sky-300"
-                      title={codexSettingsLoadError}
-                    >
-                      {providerText(t, "retry", "Retry")}
-                    </button>
-                  ) : null}
-                </div>
-              )}
               {/* Provider-level proxy indicator/button */}
               <button
                 onClick={() =>
@@ -4041,39 +3248,6 @@ export default function ProviderDetailPage() {
                       >
                         {providerSupportsPat ? "Add PAT" : t("add")}
                       </Button>
-                      {providerId === "qoder" && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => gateConnectionFlow(() => setShowOAuthModal(true))}
-                        >
-                          Experimental OAuth
-                        </Button>
-                      )}
-                      {providerId === "claude" && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          icon="upload_file"
-                          onClick={() => gateConnectionFlow(() => setImportClaudeModalOpen(true))}
-                        >
-                          {typeof t.has === "function" && t.has("importClaudeAuth")
-                            ? t("importClaudeAuth")
-                            : "Import auth"}
-                        </Button>
-                      )}
-                      {providerId === "gemini-cli" && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          icon="upload_file"
-                          onClick={() => gateConnectionFlow(() => setImportGeminiModalOpen(true))}
-                        >
-                          {typeof t.has === "function" && t.has("importGeminiAuth")
-                            ? t("importGeminiAuth")
-                            : "Import auth"}
-                        </Button>
-                      )}
                     </>
                   )}
                 </>
@@ -4128,47 +3302,6 @@ export default function ProviderDetailPage() {
                       <Button icon="add" onClick={() => gateConnectionFlow(openPrimaryAddFlow)}>
                         {providerSupportsPat ? "Add PAT" : t("addConnection")}
                       </Button>
-                      {providerId === "qoder" && (
-                        <Button
-                          variant="secondary"
-                          onClick={() => gateConnectionFlow(() => setShowOAuthModal(true))}
-                        >
-                          Experimental OAuth
-                        </Button>
-                      )}
-                      {providerId === "codex" && (
-                        <Button
-                          variant="secondary"
-                          icon="upload_file"
-                          onClick={() => gateConnectionFlow(() => setImportCodexModalOpen(true))}
-                        >
-                          {typeof t.has === "function" && t.has("importCodexAuth")
-                            ? t("importCodexAuth")
-                            : "Import auth"}
-                        </Button>
-                      )}
-                      {providerId === "claude" && (
-                        <Button
-                          variant="secondary"
-                          icon="upload_file"
-                          onClick={() => gateConnectionFlow(() => setImportClaudeModalOpen(true))}
-                        >
-                          {typeof t.has === "function" && t.has("importClaudeAuth")
-                            ? t("importClaudeAuth")
-                            : "Import auth"}
-                        </Button>
-                      )}
-                      {providerId === "gemini-cli" && (
-                        <Button
-                          variant="secondary"
-                          icon="upload_file"
-                          onClick={() => gateConnectionFlow(() => setImportGeminiModalOpen(true))}
-                        >
-                          {typeof t.has === "function" && t.has("importGeminiAuth")
-                            ? t("importGeminiAuth")
-                            : "Import auth"}
-                        </Button>
-                      )}
                     </>
                   )}
                 </div>
@@ -4222,8 +3355,6 @@ export default function ProviderDetailPage() {
                           key={conn.id}
                           connection={conn}
                           isOAuth={conn.authType === "oauth"}
-                          isClaude={providerId === "claude"}
-                          codexGlobalServiceMode={codexGlobalServiceMode}
                           isFirst={index === 0}
                           isLast={index === sorted.length - 1}
                           isSelected={selectedIds.has(conn.id)}
@@ -4234,20 +3365,9 @@ export default function ProviderDetailPage() {
                             handleUpdateConnectionStatus(conn.id, isActive)
                           }
                           onToggleRateLimit={(enabled) => handleToggleRateLimit(conn.id, enabled)}
-                          onToggleClaudeExtraUsage={(enabled) =>
-                            handleToggleClaudeExtraUsage(conn.id, enabled)
-                          }
-                          isCodex={providerId === "codex"}
-                          isGeminiCli={providerId === "gemini-cli"}
                           cliproxyapiEnabled={cpaProviderEnabled}
                           onToggleCliproxyapiMode={(enabled) =>
                             handleToggleCliproxyapiMode(conn.id, enabled)
-                          }
-                          onToggleCodex5h={(enabled) =>
-                            handleToggleCodexLimit(conn.id, "use5h", enabled)
-                          }
-                          onToggleCodexWeekly={(enabled) =>
-                            handleToggleCodexLimit(conn.id, "useWeekly", enabled)
                           }
                           onRetest={() => handleRetestConnection(conn.id)}
                           isRetesting={retestingId === conn.id}
@@ -4256,53 +3376,7 @@ export default function ProviderDetailPage() {
                             setShowEditModal(true);
                           }}
                           onDelete={() => handleDelete(conn.id)}
-                          onReauth={
-                            conn.authType === "oauth"
-                              ? () => gateConnectionFlow(() => setShowOAuthModal(true, conn))
-                              : undefined
-                          }
-                          onRefreshToken={
-                            conn.authType === "oauth"
-                              ? () => handleRefreshToken(conn.id)
-                              : undefined
-                          }
-                          isRefreshing={refreshingId === conn.id}
-                          onApplyCodexAuthLocal={
-                            providerId === "codex"
-                              ? () => setApplyCodexModalConnectionId(conn.id)
-                              : undefined
-                          }
-                          isApplyingCodexAuthLocal={applyingCodexAuthId === conn.id}
-                          onExportCodexAuthFile={
-                            providerId === "codex"
-                              ? () => handleExportCodexAuthFile(conn.id)
-                              : undefined
-                          }
-                          isExportingCodexAuthFile={exportingCodexAuthId === conn.id}
-                          onApplyClaudeAuthLocal={
-                            providerId === "claude"
-                              ? () => setApplyClaudeModalConnectionId(conn.id)
-                              : undefined
-                          }
-                          isApplyingClaudeAuthLocal={applyingClaudeAuthId === conn.id}
-                          onExportClaudeAuthFile={
-                            providerId === "claude"
-                              ? () => handleExportClaudeAuthFile(conn.id)
-                              : undefined
-                          }
-                          isExportingClaudeAuthFile={exportingClaudeAuthId === conn.id}
-                          onApplyGeminiAuthLocal={
-                            providerId === "gemini-cli"
-                              ? () => setApplyGeminiModalConnectionId(conn.id)
-                              : undefined
-                          }
-                          isApplyingGeminiAuthLocal={applyingGeminiAuthId === conn.id}
-                          onExportGeminiAuthFile={
-                            providerId === "gemini-cli"
-                              ? () => handleExportGeminiAuthFile(conn.id)
-                              : undefined
-                          }
-                          isExportingGeminiAuthFile={exportingGeminiAuthId === conn.id}
+                          onReauth={undefined}
                           onProxy={() =>
                             setProxyTarget({
                               level: "key",
@@ -4403,8 +3477,6 @@ export default function ProviderDetailPage() {
                                 key={conn.id}
                                 connection={conn}
                                 isOAuth={conn.authType === "oauth"}
-                                isClaude={providerId === "claude"}
-                                codexGlobalServiceMode={codexGlobalServiceMode}
                                 isFirst={gi === 0 && index === 0}
                                 isLast={
                                   gi === groupKeys.length - 1 && index === groupConns.length - 1
@@ -4423,18 +3495,7 @@ export default function ProviderDetailPage() {
                                 onToggleRateLimit={(enabled) =>
                                   handleToggleRateLimit(conn.id, enabled)
                                 }
-                                onToggleClaudeExtraUsage={(enabled) =>
-                                  handleToggleClaudeExtraUsage(conn.id, enabled)
-                                }
-                                isCodex={providerId === "codex"}
-                                isGeminiCli={providerId === "gemini-cli"}
                                 cliproxyapiEnabled={cpaProviderEnabled}
-                                onToggleCodex5h={(enabled) =>
-                                  handleToggleCodexLimit(conn.id, "use5h", enabled)
-                                }
-                                onToggleCodexWeekly={(enabled) =>
-                                  handleToggleCodexLimit(conn.id, "useWeekly", enabled)
-                                }
                                 onRetest={() => handleRetestConnection(conn.id)}
                                 isRetesting={retestingId === conn.id}
                                 onEdit={() => {
@@ -4442,53 +3503,7 @@ export default function ProviderDetailPage() {
                                   setShowEditModal(true);
                                 }}
                                 onDelete={() => handleDelete(conn.id)}
-                                onReauth={
-                                  conn.authType === "oauth"
-                                    ? () => gateConnectionFlow(() => setShowOAuthModal(true, conn))
-                                    : undefined
-                                }
-                                onRefreshToken={
-                                  conn.authType === "oauth"
-                                    ? () => handleRefreshToken(conn.id)
-                                    : undefined
-                                }
-                                isRefreshing={refreshingId === conn.id}
-                                onApplyCodexAuthLocal={
-                                  providerId === "codex"
-                                    ? () => setApplyCodexModalConnectionId(conn.id)
-                                    : undefined
-                                }
-                                isApplyingCodexAuthLocal={applyingCodexAuthId === conn.id}
-                                onExportCodexAuthFile={
-                                  providerId === "codex"
-                                    ? () => handleExportCodexAuthFile(conn.id)
-                                    : undefined
-                                }
-                                isExportingCodexAuthFile={exportingCodexAuthId === conn.id}
-                                onApplyClaudeAuthLocal={
-                                  providerId === "claude"
-                                    ? () => setApplyClaudeModalConnectionId(conn.id)
-                                    : undefined
-                                }
-                                isApplyingClaudeAuthLocal={applyingClaudeAuthId === conn.id}
-                                onExportClaudeAuthFile={
-                                  providerId === "claude"
-                                    ? () => handleExportClaudeAuthFile(conn.id)
-                                    : undefined
-                                }
-                                isExportingClaudeAuthFile={exportingClaudeAuthId === conn.id}
-                                onApplyGeminiAuthLocal={
-                                  providerId === "gemini-cli"
-                                    ? () => setApplyGeminiModalConnectionId(conn.id)
-                                    : undefined
-                                }
-                                isApplyingGeminiAuthLocal={applyingGeminiAuthId === conn.id}
-                                onExportGeminiAuthFile={
-                                  providerId === "gemini-cli"
-                                    ? () => handleExportGeminiAuthFile(conn.id)
-                                    : undefined
-                                }
-                                isExportingGeminiAuthFile={exportingGeminiAuthId === conn.id}
+                                onReauth={undefined}
                                 onProxy={() =>
                                   setProxyTarget({
                                     level: "key",
@@ -4612,59 +3627,17 @@ export default function ProviderDetailPage() {
           onCancel={handleCancelRiskNotice}
         />
       )}
-      {!isUpstreamProxyProvider &&
-        (providerId === "kiro" || providerId === "amazon-q" ? (
-          <KiroOAuthWrapper
-            isOpen={showOAuthModal}
-            reauthConnection={reauthConnection}
-            providerInfo={{ ...providerInfo, id: providerId }}
-            onSuccess={handleOAuthSuccess}
-            onClose={() => {
-              setShowOAuthModal(false);
-            }}
-          />
-        ) : providerId === "cursor" ? (
-          <CursorAuthModal
-            isOpen={showOAuthModal}
-            reauthConnection={reauthConnection}
-            onSuccess={handleOAuthSuccess}
-            onClose={() => {
-              setShowOAuthModal(false);
-            }}
-          />
-        ) : (
-          <OAuthModal
-            isOpen={showOAuthModal}
-            reauthConnection={reauthConnection}
-            provider={providerId}
-            providerInfo={providerInfo}
-            onSuccess={handleOAuthSuccess}
-            onClose={() => {
-              setShowOAuthModal(false);
-            }}
-          />
-        ))}
       {!isUpstreamProxyProvider && (
         <AddApiKeyModal
           isOpen={showAddApiKeyModal}
           provider={providerId}
           providerName={providerInfo.name}
           isCompatible={isCompatible}
-          isAnthropic={isAnthropicProtocolCompatible}
           isCommandCode={isCommandCode}
           commandCodeAuthState={commandCodeAuthState}
           onStartCommandCodeAuth={handleStartCommandCodeAuth}
           onSave={handleSaveApiKey}
           onClose={handleCloseAddApiKeyModal}
-        />
-      )}
-      {providerId === "codex" && applyCodexModalConnectionId && (
-        <ApplyCodexAuthModal
-          key={applyCodexModalConnectionId}
-          connectionId={applyCodexModalConnectionId}
-          inProgress={!!applyingCodexAuthId}
-          onConfirm={handleApplyCodexAuthLocal}
-          onClose={() => setApplyCodexModalConnectionId(null)}
         />
       )}
       {!isUpstreamProxyProvider && (
@@ -4681,60 +3654,6 @@ export default function ProviderDetailPage() {
           node={providerNode}
           onSave={handleUpdateNode}
           onClose={() => setShowEditNodeModal(false)}
-          isAnthropic={isAnthropicProtocolCompatible}
-        />
-      )}
-      {/* Codex Import Auth Modal */}
-      {providerId === "codex" && importCodexModalOpen && (
-        <ImportCodexAuthModal
-          key="import-codex-modal"
-          onClose={() => setImportCodexModalOpen(false)}
-          onSuccess={() => {
-            setImportCodexModalOpen(false);
-            fetchData();
-          }}
-        />
-      )}
-      {/* Claude Apply Auth Modal */}
-      {providerId === "claude" && applyClaudeModalConnectionId && (
-        <ApplyClaudeAuthModal
-          key={applyClaudeModalConnectionId}
-          connectionId={applyClaudeModalConnectionId}
-          inProgress={!!applyingClaudeAuthId}
-          onConfirm={handleApplyClaudeAuthLocal}
-          onClose={() => setApplyClaudeModalConnectionId(null)}
-        />
-      )}
-      {/* Claude Import Auth Modal */}
-      {providerId === "claude" && importClaudeModalOpen && (
-        <ImportClaudeAuthModal
-          key="import-claude-modal"
-          onClose={() => setImportClaudeModalOpen(false)}
-          onSuccess={() => {
-            setImportClaudeModalOpen(false);
-            fetchData();
-          }}
-        />
-      )}
-      {/* Gemini Apply Auth Modal */}
-      {providerId === "gemini-cli" && applyGeminiModalConnectionId && (
-        <ApplyGeminiAuthModal
-          key={applyGeminiModalConnectionId}
-          connectionId={applyGeminiModalConnectionId}
-          inProgress={!!applyingGeminiAuthId}
-          onConfirm={handleApplyGeminiAuthLocal}
-          onClose={() => setApplyGeminiModalConnectionId(null)}
-        />
-      )}
-      {/* Gemini Import Auth Modal */}
-      {providerId === "gemini-cli" && importGeminiModalOpen && (
-        <ImportGeminiAuthModal
-          key="import-gemini-modal"
-          onClose={() => setImportGeminiModalOpen(false)}
-          onSuccess={() => {
-            setImportGeminiModalOpen(false);
-            fetchData();
-          }}
         />
       )}
       {/* Batch Test Results Modal */}
@@ -6128,7 +5047,6 @@ function CompatibleModelsSection({
   onSetAlias,
   onDeleteAlias,
   connections,
-  isAnthropic,
   onImportWithProgress,
   t,
   effectiveModelNormalize,
@@ -6424,7 +5342,7 @@ function CompatibleModelsSection({
                     : undefined
               }
               t={t}
-              showDeveloperToggle={!isAnthropic}
+              showDeveloperToggle={true}
               effectiveModelNormalize={effectiveModelNormalize}
               effectiveModelPreserveDeveloper={effectiveModelPreserveDeveloper}
               getUpstreamHeadersRecord={(p) => getUpstreamHeadersRecord(modelId, p)}
@@ -6671,10 +5589,6 @@ function getStatusPresentation(connection, effectiveStatus, isCooldown, t) {
 function ConnectionRow({
   connection,
   isOAuth,
-  isClaude,
-  isCodex,
-  isGeminiCli,
-  codexGlobalServiceMode,
   cliproxyapiEnabled,
   isFirst,
   isLast,
@@ -6684,9 +5598,6 @@ function ConnectionRow({
   onMoveDown,
   onToggleActive,
   onToggleRateLimit,
-  onToggleClaudeExtraUsage,
-  onToggleCodex5h,
-  onToggleCodexWeekly,
   onToggleCliproxyapiMode,
   onRetest,
   isRetesting,
@@ -6699,18 +5610,6 @@ function ConnectionRow({
   proxyHost,
   onRefreshToken,
   isRefreshing,
-  onApplyCodexAuthLocal,
-  isApplyingCodexAuthLocal,
-  onExportCodexAuthFile,
-  isExportingCodexAuthFile,
-  onApplyClaudeAuthLocal,
-  isApplyingClaudeAuthLocal,
-  onExportClaudeAuthFile,
-  isExportingClaudeAuthFile,
-  onApplyGeminiAuthLocal,
-  isApplyingGeminiAuthLocal,
-  onExportGeminiAuthFile,
-  isExportingGeminiAuthFile,
 }: ConnectionRowProps) {
   const t = useTranslations("providers");
   const emailsVisible = useEmailPrivacyStore((s) => s.emailsVisible);
@@ -6721,30 +5620,6 @@ function ConnectionRow({
         t("oauthAccount")
       )
     : connection.name;
-  const applyCodexAuthLabel =
-    typeof t.has === "function" && t.has("applyCodexAuthLocal")
-      ? t("applyCodexAuthLocal")
-      : "Apply auth";
-  const exportCodexAuthLabel =
-    typeof t.has === "function" && t.has("exportCodexAuthFile")
-      ? t("exportCodexAuthFile")
-      : "Export auth";
-  const applyClaudeAuthLabel =
-    typeof t.has === "function" && t.has("applyClaudeAuthLocal")
-      ? t("applyClaudeAuthLocal")
-      : "Apply auth";
-  const exportClaudeAuthLabel =
-    typeof t.has === "function" && t.has("exportClaudeAuthFile")
-      ? t("exportClaudeAuthFile")
-      : "Export auth";
-  const applyGeminiAuthLabel =
-    typeof t.has === "function" && t.has("applyGeminiAuthLocal")
-      ? t("applyGeminiAuthLocal")
-      : "Apply auth";
-  const exportGeminiAuthLabel =
-    typeof t.has === "function" && t.has("exportGeminiAuthFile")
-      ? t("exportGeminiAuthFile")
-      : "Export auth";
 
   // Use useState + useEffect for impure Date.now() to avoid calling during render
   const [isCooldown, setIsCooldown] = useState(false);
@@ -6793,64 +5668,7 @@ function ConnectionRow({
 
   const statusPresentation = getStatusPresentation(connection, effectiveStatus, isCooldown, t);
   const rateLimitEnabled = !!connection.rateLimitProtection;
-  const codexPolicy =
-    connection.providerSpecificData &&
-    typeof connection.providerSpecificData === "object" &&
-    connection.providerSpecificData.codexLimitPolicy &&
-    typeof connection.providerSpecificData.codexLimitPolicy === "object"
-      ? connection.providerSpecificData.codexLimitPolicy
-      : {};
-  const normalizedCodexPolicy = normalizeCodexLimitPolicy(codexPolicy);
-  const codex5hEnabled = normalizedCodexPolicy.use5h;
-  const codexWeeklyEnabled = normalizedCodexPolicy.useWeekly;
-  const codexServiceTier = isCodex
-    ? getCodexEffectiveServiceTier(
-        connection.providerSpecificData,
-        codexGlobalServiceMode ?? "none"
-      )
-    : "default";
-  const codexServiceTierIsGlobal =
-    isCodex && codexGlobalServiceMode !== undefined && codexGlobalServiceMode !== "none";
-  const codexServiceTierBadge =
-    codexServiceTier === "priority"
-      ? {
-          label: providerText(t, "codexTierFastLabel", "Fast"),
-          icon: "bolt",
-          className: "bg-sky-500/15 text-sky-500",
-          title: codexServiceTierIsGlobal
-            ? providerText(
-                t,
-                "providerDetailGlobalPriorityActive",
-                "Global Codex priority service tier is active"
-              )
-            : providerText(
-                t,
-                "providerDetailConnectionPriorityActive",
-                "Codex priority service tier is active for this connection"
-              ),
-        }
-      : codexServiceTier === "flex"
-        ? {
-            label: providerText(t, "codexTierFlexLabel", "Flex"),
-            icon: "speed",
-            className: "bg-cyan-500/15 text-cyan-500",
-            title: codexServiceTierIsGlobal
-              ? providerText(
-                  t,
-                  "providerDetailGlobalFlexActive",
-                  "Global Codex flex service tier is active"
-                )
-              : providerText(
-                  t,
-                  "providerDetailConnectionFlexActive",
-                  "Codex flex service tier is active for this connection"
-                ),
-          }
-        : null;
-  const claudeBlockExtraUsageEnabled = isClaude
-    ? isClaudeExtraUsageBlockEnabled("claude", connection.providerSpecificData)
-    : false;
-  
+
   return (
     <div
       className={`group flex items-center justify-between p-3 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}
@@ -6956,64 +5774,6 @@ function ConnectionRow({
               <span className="material-symbols-outlined text-[13px]">shield</span>
               {rateLimitEnabled ? t("rateLimitProtected") : t("rateLimitUnprotected")}
             </button>
-            {isClaude && (
-              <>
-                <span className="text-text-muted/30 select-none">|</span>
-                <button
-                  onClick={() => onToggleClaudeExtraUsage?.(!claudeBlockExtraUsageEnabled)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
-                    !claudeBlockExtraUsageEnabled
-                      ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
-                  }`}
-                  title={t("claudeExtraUsageToggleTitle")}
-                >
-                  <span className="material-symbols-outlined text-[13px]">payments</span>
-                  {t("claudeExtraUsageShort")}{" "}
-                  {!claudeBlockExtraUsageEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
-              </>
-            )}
-            {isCodex && (
-              <>
-                <span className="text-text-muted/30 select-none">|</span>
-                {codexServiceTierBadge && (
-                  <span
-                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${codexServiceTierBadge.className}`}
-                    title={codexServiceTierBadge.title}
-                  >
-                    <span className="material-symbols-outlined text-[13px]">
-                      {codexServiceTierBadge.icon}
-                    </span>
-                    {codexServiceTierBadge.label}
-                  </span>
-                )}
-                <button
-                  onClick={() => onToggleCodex5h?.(!codex5hEnabled)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
-                    codex5hEnabled
-                      ? "bg-blue-500/15 text-blue-500 hover:bg-blue-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
-                  }`}
-                  title={t("codex5hToggleTitle")}
-                >
-                  <span className="material-symbols-outlined text-[13px]">timer</span>
-                  5h {codex5hEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
-                <button
-                  onClick={() => onToggleCodexWeekly?.(!codexWeeklyEnabled)}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
-                    codexWeeklyEnabled
-                      ? "bg-violet-500/15 text-violet-500 hover:bg-violet-500/25"
-                      : "bg-black/[0.03] dark:bg-white/[0.03] text-text-muted/50 hover:text-text-muted hover:bg-black/[0.06] dark:hover:bg-white/[0.06]"
-                  }`}
-                  title={t("codexWeeklyToggleTitle")}
-                >
-                  <span className="material-symbols-outlined text-[13px]">date_range</span>
-                  {t("weeklyShort")} {codexWeeklyEnabled ? t("toggleOnShort") : t("toggleOffShort")}
-                </button>
-              </>
-            )}
             {hasProxy &&
               (() => {
                 const colorClass =
@@ -7075,90 +5835,6 @@ function ConnectionRow({
             {t("tokenShort")}
           </Button>
         )}
-        {isCodex && onApplyCodexAuthLocal && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="download_done"
-            loading={isApplyingCodexAuthLocal}
-            disabled={isApplyingCodexAuthLocal}
-            onClick={onApplyCodexAuthLocal}
-            className="!h-7 !px-2 text-xs text-emerald-500 hover:text-emerald-400"
-            title={applyCodexAuthLabel}
-          >
-            {applyCodexAuthLabel}
-          </Button>
-        )}
-        {isCodex && onExportCodexAuthFile && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="download"
-            loading={isExportingCodexAuthFile}
-            disabled={isExportingCodexAuthFile}
-            onClick={onExportCodexAuthFile}
-            className="!h-7 !px-2 text-xs text-sky-500 hover:text-sky-400"
-            title={exportCodexAuthLabel}
-          >
-            {exportCodexAuthLabel}
-          </Button>
-        )}
-        {isClaude && onApplyClaudeAuthLocal && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="install_desktop"
-            loading={isApplyingClaudeAuthLocal}
-            disabled={isApplyingClaudeAuthLocal}
-            onClick={onApplyClaudeAuthLocal}
-            className="!h-7 !px-2 text-xs text-emerald-500 hover:text-emerald-400"
-            title={applyClaudeAuthLabel}
-          >
-            {applyClaudeAuthLabel}
-          </Button>
-        )}
-        {isClaude && onExportClaudeAuthFile && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="download"
-            loading={isExportingClaudeAuthFile}
-            disabled={isExportingClaudeAuthFile}
-            onClick={onExportClaudeAuthFile}
-            className="!h-7 !px-2 text-xs text-sky-500 hover:text-sky-400"
-            title={exportClaudeAuthLabel}
-          >
-            {exportClaudeAuthLabel}
-          </Button>
-        )}
-        {isGeminiCli && onApplyGeminiAuthLocal && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="install_desktop"
-            loading={isApplyingGeminiAuthLocal}
-            disabled={isApplyingGeminiAuthLocal}
-            onClick={onApplyGeminiAuthLocal}
-            className="!h-7 !px-2 text-xs text-emerald-500 hover:text-emerald-400"
-            title={applyGeminiAuthLabel}
-          >
-            {applyGeminiAuthLabel}
-          </Button>
-        )}
-        {isGeminiCli && onExportGeminiAuthFile && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="download"
-            loading={isExportingGeminiAuthFile}
-            disabled={isExportingGeminiAuthFile}
-            onClick={onExportGeminiAuthFile}
-            className="!h-7 !px-2 text-xs text-sky-500 hover:text-sky-400"
-            title={exportGeminiAuthLabel}
-          >
-            {exportGeminiAuthLabel}
-          </Button>
-        )}
         <Toggle
           size="sm"
           checked={connection.isActive ?? true}
@@ -7205,7 +5881,6 @@ function ConnectionRow({
 const CONFIGURABLE_BASE_URL_PROVIDERS = new Set([
   "azure-openai",
   "azure-ai",
-  "bailian-coding-plan",
   "xiaomi-mimo",
   "heroku",
   "databricks",
@@ -7217,7 +5892,6 @@ const CONFIGURABLE_BASE_URL_PROVIDERS = new Set([
 const DEFAULT_PROVIDER_BASE_URLS: Record<string, string> = {
   "azure-openai": "https://example-resource.openai.azure.com",
   "azure-ai": "https://example-resource.services.ai.azure.com/openai/v1",
-  "bailian-coding-plan": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1",
   "xiaomi-mimo": "https://token-plan-sgp.xiaomimimo.com/v1",
   "searxng-search": "http://localhost:8888/search",
   petals: "https://chat.petals.dev/api/v1/generate",
@@ -7257,8 +5931,6 @@ function getProviderBaseUrlHint(
   switch (providerId) {
     case "azure-openai":
       return t ? t("azureOpenAiBaseUrlHint") : undefined;
-    case "bailian-coding-plan":
-      return t ? t("bailianBaseUrlHint") : undefined;
     case "xiaomi-mimo":
       return t ? t("xiaomiMimoBaseUrlHint") : undefined;
     case "heroku":
@@ -7281,7 +5953,6 @@ function getProviderBaseUrlPlaceholder(providerId?: string | null) {
   switch (providerId) {
     case "azure-openai":
       return "https://my-resource.openai.azure.com";
-    case "bailian-coding-plan":
     case "xiaomi-mimo":
       return getProviderBaseUrlDefault(providerId);
     case "heroku":
@@ -7392,7 +6063,6 @@ function AddApiKeyModal({
   provider,
   providerName,
   isCompatible,
-  isAnthropic,
   isCommandCode,
   commandCodeAuthState,
   onStartCommandCodeAuth,
@@ -7407,7 +6077,6 @@ function AddApiKeyModal({
   const showsRegion = isVertex || isBedrock;
   const defaultRegion = isBedrock ? "eu-west-2" : "us-central1";
   const isGlm = isGlmProvider(provider);
-  const isQoder = provider === "qoder";
   const isCloudflare = provider === "cloudflare-ai";
   const localProviderMetadata = getLocalProviderMetadata(provider);
   const isLocalSelfHostedProvider = !!localProviderMetadata;
@@ -7445,7 +6114,6 @@ function AddApiKeyModal({
     excludedModels: "",
     customUserAgent: "",
     accountId: "",
-    consoleApiKey: "",
     passthroughModels: false,
   });
   const [validating, setValidating] = useState(false);
@@ -7466,33 +6134,27 @@ function AddApiKeyModal({
     errors: Array<{ index: number; name: string; message: string }>;
   } | null>(null);
   const [bulkWarnings, setBulkWarnings] = useState<string[]>([]);
-  const apiCredentialLabel = isQoder
-    ? t("personalAccessTokenLabel")
-    : webSessionCredential
-      ? getWebSessionCredentialLabel(t, webSessionCredential, apiKeyOptional)
-      : apiKeyOptional
-        ? `${t("apiKeyLabel")} (${t("optional").toLowerCase()})`
-        : t("apiKeyLabel");
+  const apiCredentialLabel = webSessionCredential
+    ? getWebSessionCredentialLabel(t, webSessionCredential, apiKeyOptional)
+    : apiKeyOptional
+      ? `${t("apiKeyLabel")} (${t("optional").toLowerCase()})`
+      : t("apiKeyLabel");
   const apiCredentialPlaceholder = isVertex
     ? t("vertexServiceAccountPlaceholder")
     : isWebSessionCredential
       ? webSessionCredential.placeholder
-      : isQoder
-        ? t("qoderPatPlaceholder")
-        : apiKeyOptional
-          ? t("optional")
-          : undefined;
-  const apiCredentialHint = isQoder
-    ? t("qoderPatHint")
-    : isWebSessionCredential
-      ? getWebSessionCredentialHint(t, webSessionCredential, providerDisplayName, false)
-      : isLocalSelfHostedProvider
-        ? t("localProviderApiKeyOptionalHint", {
-            provider: localProviderMetadata?.name || providerName || provider || "",
-          })
-        : apiKeyOptional
-          ? t("apiKeyOptionalHint")
-          : undefined;
+      : apiKeyOptional
+        ? t("optional")
+        : undefined;
+  const apiCredentialHint = isWebSessionCredential
+    ? getWebSessionCredentialHint(t, webSessionCredential, providerDisplayName, false)
+    : isLocalSelfHostedProvider
+      ? t("localProviderApiKeyOptionalHint", {
+          provider: localProviderMetadata?.name || providerName || provider || "",
+        })
+      : apiKeyOptional
+        ? t("apiKeyOptionalHint")
+        : undefined;
   const credentialValidationFailedMessage = isWebSessionCredential
     ? providerText(
         t,
@@ -7620,9 +6282,6 @@ function AddApiKeyModal({
       if (formData.passthroughModels) {
         providerSpecificData.passthroughModels = true;
       }
-      if (provider === "bailian-coding-plan" && formData.consoleApiKey.trim()) {
-        providerSpecificData.consoleApiKey = formData.consoleApiKey.trim();
-      }
       if (isGooglePse && formData.cx.trim()) {
         providerSpecificData.cx = formData.cx.trim();
       }
@@ -7636,15 +6295,15 @@ function AddApiKeyModal({
         providerSpecificData.accountId = formData.accountId.trim();
       }
 
-    const payload = {
-      name: formData.name,
-      apiKey: credentialInput.trim() || undefined,
-      keystoreEntryId: formData.keystoreEntryId.trim() || undefined,
-      priority: formData.priority,
-      testStatus: "active",
-      providerSpecificData:
-        Object.keys(providerSpecificData).length > 0 ? providerSpecificData : undefined,
-    };
+      const payload = {
+        name: formData.name,
+        apiKey: credentialInput.trim() || undefined,
+        keystoreEntryId: formData.keystoreEntryId.trim() || undefined,
+        priority: formData.priority,
+        testStatus: "active",
+        providerSpecificData:
+          Object.keys(providerSpecificData).length > 0 ? providerSpecificData : undefined,
+      };
 
       const error = await onSave(payload);
       if (error) {
@@ -7911,7 +6570,7 @@ function AddApiKeyModal({
               label={t("nameLabel")}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder={isQoder ? t("personalAccessTokenLabel") : t("productionKey")}
+              placeholder={t("productionKey")}
             />
             {webSessionCredential && (
               <WebSessionCredentialGuide
@@ -7954,15 +6613,15 @@ function AddApiKeyModal({
                 </div>
               </div>
             )}
-        <Input
-          label="Keystore Entry ID"
-          value={formData.keystoreEntryId}
-          onChange={(e) => setFormData({ ...formData, keystoreEntryId: e.target.value })}
-          placeholder="e.g. my-cert-entry"
-          hint="Optional: reference a keystore entry for mTLS credential lookup"
-          autoComplete="off"
-          spellCheck={false}
-        />
+            <Input
+              label="Keystore Entry ID"
+              value={formData.keystoreEntryId}
+              onChange={(e) => setFormData({ ...formData, keystoreEntryId: e.target.value })}
+              placeholder="e.g. my-cert-entry"
+              hint="Optional: reference a keystore entry for mTLS credential lookup"
+              autoComplete="off"
+              spellCheck={false}
+            />
             {isGooglePse && (
               <Input
                 label={t("searchEngineIdLabel")}
@@ -7984,13 +6643,9 @@ function AddApiKeyModal({
             )}
             {isCompatible && (
               <p className="text-xs text-text-muted">
-                {isAnthropic
-                  ? t("validationChecksAnthropicCompatible", {
-                      provider: providerName || t("anthropicCompatibleName"),
-                    })
-                  : t("validationChecksOpenAiCompatible", {
-                      provider: providerName || t("openaiCompatibleName"),
-                    })}
+                {t("validationChecksOpenAiCompatible", {
+                  provider: providerName || t("openaiCompatibleName"),
+                })}
               </p>
             )}
             <button
@@ -8041,16 +6696,6 @@ function AddApiKeyModal({
                   label={t("perModelQuotaLabel")}
                   description={t("perModelQuotaDescription")}
                 />
-                {provider === "bailian-coding-plan" && (
-                  <Input
-                    label={t("consoleApiKeyOracleLabel")}
-                    value={formData.consoleApiKey}
-                    onChange={(e) => setFormData({ ...formData, consoleApiKey: e.target.value })}
-                    placeholder={t("consoleApiKeyOraclePlaceholder")}
-                    hint={t("consoleApiKeyOracleHint")}
-                    type="password"
-                  />
-                )}
               </div>
             )}
             <Input
@@ -8136,1473 +6781,6 @@ function AddApiKeyModal({
   );
 }
 
-// ──── ImportCodexAuthModal ────────────────────────────────────────────────────
-
-interface ImportCodexAuthModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-type ImportTopTab = "single" | "bulk";
-type BulkSubMode = "upload" | "paste" | "zip";
-
-interface BulkEntry {
-  name: string;
-  json: unknown;
-  parseError: string | null;
-  email: string | null;
-}
-
-function extractEmailFromJwtLocal(idToken: string): string | null {
-  try {
-    const parts = idToken.split(".");
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    return typeof payload.email === "string" ? payload.email : null;
-  } catch {
-    return null;
-  }
-}
-
-function previewCodexJson(json: unknown): { valid: boolean; email: string | null } {
-  try {
-    const doc = json && typeof json === "object" ? (json as Record<string, unknown>) : null;
-    // Codex CLI no longer writes auth_mode — accept both with and without it.
-    // Only reject when auth_mode is explicitly set to something other than "chatgpt".
-    if (
-      !doc ||
-      (doc.auth_mode !== undefined && doc.auth_mode !== null && doc.auth_mode !== "chatgpt")
-    )
-      return { valid: false, email: null };
-    const tokens =
-      doc.tokens && typeof doc.tokens === "object" ? (doc.tokens as Record<string, unknown>) : null;
-    if (!tokens?.id_token || typeof tokens.id_token !== "string")
-      return { valid: false, email: null };
-    return { valid: true, email: extractEmailFromJwtLocal(tokens.id_token as string) };
-  } catch {
-    return { valid: false, email: null };
-  }
-}
-
-function parseBulkPasteText(text: string): BulkEntry[] {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-
-  const tryParse = (s: string): BulkEntry => {
-    try {
-      const json = JSON.parse(s);
-      const { email } = previewCodexJson(json);
-      return { name: email || "unknown", json, parseError: null, email };
-    } catch {
-      return { name: "parse error", json: null, parseError: "Invalid JSON", email: null };
-    }
-  };
-
-  try {
-    const arr = JSON.parse(trimmed);
-    if (Array.isArray(arr))
-      return arr.map((item) => {
-        const { email } = previewCodexJson(item);
-        return { name: email || "unknown", json: item, parseError: null, email };
-      });
-    const { email } = previewCodexJson(arr);
-    return [{ name: email || "unknown", json: arr, parseError: null, email }];
-  } catch {
-    return trimmed
-      .split(/^---$/m)
-      .map((s) => tryParse(s.trim()))
-      .filter((e) => e.json !== null || e.parseError !== null);
-  }
-}
-
-function ImportCodexAuthModal({ onClose, onSuccess }: ImportCodexAuthModalProps) {
-  const t = useTranslations("providers");
-  const notify = useNotificationStore();
-
-  // Top-level tab: Single / Bulk
-  const [topTab, setTopTab] = useState<ImportTopTab>("single");
-
-  // ── Single mode state ──
-  const [singleTab, setSingleTab] = useState<"upload" | "paste">("upload");
-  const [singleParsedJson, setSingleParsedJson] = useState<unknown>(null);
-  const [singleParseError, setSingleParseError] = useState<string | null>(null);
-  const [singleDetectedEmail, setSingleDetectedEmail] = useState<string | null>(null);
-  const [singlePasteText, setSinglePasteText] = useState("");
-  const [singleName, setSingleName] = useState("");
-  const [singleEmail, setSingleEmail] = useState("");
-  const [singleOverwrite, setSingleOverwrite] = useState(false);
-  const [singleLoading, setSingleLoading] = useState(false);
-  const [singleError, setSingleError] = useState<string | null>(null);
-
-  // ── Bulk mode state ──
-  const [bulkMode, setBulkMode] = useState<BulkSubMode>("upload");
-  const [bulkEntries, setBulkEntries] = useState<BulkEntry[]>([]);
-  const [bulkPasteText, setBulkPasteText] = useState("");
-  const [bulkZipExtracting, setBulkZipExtracting] = useState(false);
-  const [bulkZipError, setBulkZipError] = useState<string | null>(null);
-  const [bulkOverwrite, setBulkOverwrite] = useState(false);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState<{
-    success: number;
-    failed: number;
-    errors: { index: number; name: string; message: string }[];
-  } | null>(null);
-
-  // ── Single helpers ──
-
-  function handleSinglePreview(json: unknown) {
-    setSingleParseError(null);
-    setSingleDetectedEmail(null);
-    setSingleParsedJson(null);
-    const { valid, email } = previewCodexJson(json);
-    if (!valid) {
-      setSingleParseError(t("codexImportInvalidShape") || "Not a valid Codex auth.json");
-      return;
-    }
-    setSingleDetectedEmail(email);
-    if (email && !singleEmail) setSingleEmail(email);
-    setSingleParsedJson(json);
-  }
-
-  function handleSingleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        handleSinglePreview(JSON.parse(ev.target?.result as string));
-      } catch {
-        setSingleParseError(t("codexImportInvalidJson") || "Could not parse JSON");
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  function handleSinglePasteChange(text: string) {
-    setSinglePasteText(text);
-    if (!text.trim()) {
-      setSingleParsedJson(null);
-      setSingleParseError(null);
-      setSingleDetectedEmail(null);
-      return;
-    }
-    try {
-      handleSinglePreview(JSON.parse(text));
-    } catch {
-      setSingleParseError(t("codexImportInvalidJson") || "Could not parse JSON");
-      setSingleParsedJson(null);
-    }
-  }
-
-  async function handleSingleSubmit() {
-    if (!singleParsedJson) return;
-    setSingleLoading(true);
-    setSingleError(null);
-    try {
-      const res = await fetch("/api/providers/codex-auth/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source: { kind: "json", json: singleParsedJson },
-          name: singleName.trim() || undefined,
-          email: singleEmail.trim() || undefined,
-          overwriteExisting: singleOverwrite,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSingleError(
-          data.code === "duplicate_account"
-            ? t("codexImportDuplicate") ||
-                "Account already exists — enable Replace existing to overwrite"
-            : data.error || t("codexImportFailed") || "Failed to import"
-        );
-        return;
-      }
-      notify.success(t("codexImportSuccess") || "Codex connection imported successfully");
-      onSuccess();
-    } catch {
-      setSingleError(t("codexImportFailed") || "Failed to import Codex auth");
-    } finally {
-      setSingleLoading(false);
-    }
-  }
-
-  // ── Bulk helpers ──
-
-  function handleBulkFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []);
-    const entries: BulkEntry[] = [];
-    let pending = files.length;
-    if (pending === 0) return;
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const json = JSON.parse(ev.target?.result as string);
-          const { email } = previewCodexJson(json);
-          entries.push({
-            name: email || file.name.replace(".json", ""),
-            json,
-            parseError: null,
-            email,
-          });
-        } catch {
-          entries.push({ name: file.name, json: null, parseError: "Invalid JSON", email: null });
-        }
-        if (--pending === 0) setBulkEntries([...entries]);
-      };
-      reader.readAsText(file);
-    });
-  }
-
-  function handleBulkPasteChange(text: string) {
-    setBulkPasteText(text);
-    if (!text.trim()) {
-      setBulkEntries([]);
-      return;
-    }
-    setBulkEntries(parseBulkPasteText(text));
-  }
-
-  async function handleZipUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBulkZipExtracting(true);
-    setBulkZipError(null);
-    setBulkEntries([]);
-    try {
-      const res = await fetch("/api/providers/codex-auth/zip-extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: file,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setBulkZipError(data.error || t("codexImportBulkZipError") || "Failed to extract ZIP");
-        return;
-      }
-      const extracted: BulkEntry[] = (data.entries || []).map(
-        (entry: { name: string; json: unknown; parseError: string | null }) => {
-          if (entry.parseError)
-            return { name: entry.name, json: null, parseError: entry.parseError, email: null };
-          const { email } = previewCodexJson(entry.json);
-          return {
-            name: email || entry.name.replace(".json", ""),
-            json: entry.json,
-            parseError: null,
-            email,
-          };
-        }
-      );
-      setBulkEntries(extracted);
-    } catch {
-      setBulkZipError(t("codexImportBulkZipError") || "Failed to extract ZIP");
-    } finally {
-      setBulkZipExtracting(false);
-    }
-  }
-
-  async function handleBulkSubmit() {
-    const validEntries = bulkEntries.filter((e) => !e.parseError && e.json !== null);
-    if (validEntries.length === 0) return;
-    setBulkLoading(true);
-    setBulkResult(null);
-    try {
-      const res = await fetch("/api/providers/codex-auth/import-bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entries: validEntries.map((e) => ({
-            json: e.json,
-            name: e.name || undefined,
-            email: e.email || undefined,
-          })),
-          overwriteExisting: bulkOverwrite,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        notify.error(data.error || t("codexImportFailed") || "Failed to import");
-        return;
-      }
-      setBulkResult({ success: data.success, failed: data.failed, errors: data.errors || [] });
-      if (data.success > 0) onSuccess();
-    } catch {
-      notify.error(t("codexImportFailed") || "Failed to import Codex auth");
-    } finally {
-      setBulkLoading(false);
-    }
-  }
-
-  const singleCanSubmit = !!singleParsedJson && !singleParseError && !singleLoading;
-  const validBulkCount = bulkEntries.filter((e) => !e.parseError && e.json !== null).length;
-  const bulkCanSubmit = validBulkCount > 0 && !bulkLoading && !bulkZipExtracting;
-
-  const TOP_TABS: { id: ImportTopTab; label: string }[] = [
-    { id: "single", label: t("codexImportTabSingle") || "Single" },
-    { id: "bulk", label: t("codexImportTabBulk") || "Bulk" },
-  ];
-
-  const BULK_MODES: { id: BulkSubMode; label: string }[] = [
-    { id: "upload", label: t("codexImportBulkModeUpload") || "Upload files" },
-    { id: "paste", label: t("codexImportBulkModePaste") || "Paste list" },
-    { id: "zip", label: t("codexImportBulkModeZip") || "ZIP archive" },
-  ];
-
-  return (
-    <Modal
-      isOpen
-      onClose={onClose}
-      title={t("codexImportModalTitle") || "Import Codex Auth"}
-      maxWidth="max-w-lg"
-    >
-      <div className="flex flex-col gap-4">
-        {/* Top-level Single / Bulk tabs */}
-        <div className="flex border-b border-border">
-          {TOP_TABS.map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => {
-                setTopTab(id);
-                setBulkResult(null);
-                setSingleError(null);
-              }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                topTab === id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-text-muted hover:text-text-main"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Single tab ── */}
-        {topTab === "single" && (
-          <>
-            {/* Source sub-tabs */}
-            <div className="flex border-b border-border">
-              {(["upload", "paste"] as const).map((id) => (
-                <button
-                  key={id}
-                  onClick={() => {
-                    setSingleTab(id);
-                    setSingleParsedJson(null);
-                    setSingleParseError(null);
-                    setSingleDetectedEmail(null);
-                  }}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    singleTab === id
-                      ? "border-primary text-primary"
-                      : "border-transparent text-text-muted hover:text-text-main"
-                  }`}
-                >
-                  {id === "upload"
-                    ? t("codexImportTabUpload") || "Upload file"
-                    : t("codexImportTabPaste") || "Paste JSON"}
-                </button>
-              ))}
-            </div>
-
-            {singleTab === "upload" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-text-main">
-                  {t("codexImportFileLabel") || "Choose auth.json"}
-                </label>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleSingleFileChange}
-                  className="text-sm text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-border file:text-xs file:bg-bg-subtle file:text-text-main hover:file:bg-bg-hover cursor-pointer"
-                />
-                <p className="text-xs text-text-muted">
-                  {t("codexImportFileHint") ||
-                    "Select the auth.json file exported from Codex or OmniRoute."}
-                </p>
-              </div>
-            )}
-
-            {singleTab === "paste" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-text-main">
-                  {t("codexImportPasteLabel") || "Paste the JSON content"}
-                </label>
-                <textarea
-                  value={singlePasteText}
-                  onChange={(e) => handleSinglePasteChange(e.target.value)}
-                  rows={7}
-                  placeholder='{ "auth_mode": "chatgpt", ... }'
-                  className="w-full rounded-lg border border-border bg-bg-subtle px-3 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                />
-              </div>
-            )}
-
-            {singleParseError && <p className="text-sm text-red-500">{singleParseError}</p>}
-            {singleDetectedEmail && !singleParseError && (
-              <p className="text-xs text-text-muted">
-                {t("codexImportDetectedEmail", { email: singleDetectedEmail }) ||
-                  `Detected: ${singleDetectedEmail}`}
-              </p>
-            )}
-
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-text-main">
-                  {t("codexImportEmailLabel") || "Account email"}
-                </label>
-                <input
-                  type="email"
-                  value={singleEmail}
-                  onChange={(e) => setSingleEmail(e.target.value)}
-                  placeholder="user@example.com"
-                  className="rounded-lg border border-border bg-bg-subtle px-3 py-2 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-                <p className="text-xs text-text-muted">
-                  {t("codexImportEmailHint") || "Auto-detected from the file; edit if needed."}
-                </p>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-text-main">
-                  {t("codexImportNameLabel") || "Connection name (optional)"}
-                </label>
-                <input
-                  type="text"
-                  value={singleName}
-                  onChange={(e) => setSingleName(e.target.value)}
-                  placeholder={singleEmail || "Codex (imported)"}
-                  className="rounded-lg border border-border bg-bg-subtle px-3 py-2 text-sm text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={singleOverwrite}
-                  onChange={(e) => setSingleOverwrite(e.target.checked)}
-                  className="rounded border-border"
-                />
-                <span className="text-sm text-text-main">
-                  {t("codexImportOverwriteLabel") ||
-                    "Replace existing connection if account already exists"}
-                </span>
-              </label>
-            </div>
-
-            {singleError && (
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
-                {singleError}
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <Button
-                onClick={handleSingleSubmit}
-                disabled={!singleCanSubmit}
-                loading={singleLoading}
-                fullWidth
-              >
-                {t("codexImportSubmit") || "Import"}
-              </Button>
-              <Button onClick={onClose} variant="ghost" fullWidth>
-                {t("cancel")}
-              </Button>
-            </div>
-          </>
-        )}
-
-        {/* ── Bulk tab ── */}
-        {topTab === "bulk" && (
-          <>
-            {/* Sub-mode selector */}
-            <div className="flex gap-1 p-1 bg-bg-subtle rounded-lg">
-              {BULK_MODES.map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => {
-                    setBulkMode(id);
-                    setBulkEntries([]);
-                    setBulkZipError(null);
-                    setBulkPasteText("");
-                    setBulkResult(null);
-                  }}
-                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    bulkMode === id
-                      ? "bg-bg-primary text-text-main shadow-sm"
-                      : "text-text-muted hover:text-text-main"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Upload mode */}
-            {bulkMode === "upload" && (
-              <div className="flex flex-col gap-2">
-                <input
-                  type="file"
-                  accept=".json"
-                  multiple
-                  onChange={handleBulkFilesChange}
-                  className="text-sm text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-border file:text-xs file:bg-bg-subtle file:text-text-main hover:file:bg-bg-hover cursor-pointer"
-                />
-                <p className="text-xs text-text-muted">
-                  {t("codexImportBulkUploadHint") || "Select multiple .json files"}
-                </p>
-              </div>
-            )}
-
-            {/* Paste mode */}
-            {bulkMode === "paste" && (
-              <div className="flex flex-col gap-2">
-                <textarea
-                  value={bulkPasteText}
-                  onChange={(e) => handleBulkPasteChange(e.target.value)}
-                  rows={7}
-                  placeholder={'[{ "auth_mode": "chatgpt", ... }, ...]'}
-                  className="w-full rounded-lg border border-border bg-bg-subtle px-3 py-2 text-xs font-mono text-text-main placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                />
-                <p className="text-xs text-text-muted">
-                  {t("codexImportBulkPasteHint") || "JSON array or multiple JSONs separated by ---"}
-                </p>
-              </div>
-            )}
-
-            {/* ZIP mode */}
-            {bulkMode === "zip" && (
-              <div className="flex flex-col gap-2">
-                <input
-                  type="file"
-                  accept=".zip"
-                  onChange={handleZipUpload}
-                  disabled={bulkZipExtracting}
-                  className="text-sm text-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-border file:text-xs file:bg-bg-subtle file:text-text-main hover:file:bg-bg-hover cursor-pointer disabled:opacity-50"
-                />
-                {bulkZipExtracting && (
-                  <p className="text-xs text-text-muted animate-pulse">
-                    {t("codexImportBulkZipExtracting") || "Extracting ZIP…"}
-                  </p>
-                )}
-                {bulkZipError && <p className="text-sm text-red-500">{bulkZipError}</p>}
-                <p className="text-xs text-text-muted">
-                  {t("codexImportBulkZipHint") ||
-                    "Upload a .zip containing auth.json files (max 50 files, 10 MB)"}
-                </p>
-              </div>
-            )}
-
-            {/* Entry preview list */}
-            {bulkEntries.length > 0 && !bulkResult && (
-              <div className="flex flex-col gap-1 max-h-40 overflow-y-auto rounded-lg border border-border bg-bg-subtle p-2">
-                <p className="text-xs font-medium text-text-muted px-1">
-                  {validBulkCount} / {bulkEntries.length} valid
-                </p>
-                {bulkEntries.map((entry, i) => (
-                  <div key={i} className="flex items-center gap-2 px-2 py-1 rounded">
-                    <span
-                      className={`material-symbols-outlined text-[14px] ${entry.parseError ? "text-red-500" : "text-emerald-500"}`}
-                    >
-                      {entry.parseError ? "error" : "check_circle"}
-                    </span>
-                    <span className="text-xs text-text-main flex-1 truncate">{entry.name}</span>
-                    {entry.parseError && (
-                      <span className="text-xs text-red-400">{entry.parseError}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Overwrite checkbox */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={bulkOverwrite}
-                onChange={(e) => setBulkOverwrite(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span className="text-sm text-text-main">
-                {t("codexImportOverwriteLabel") ||
-                  "Replace existing connections if accounts already exist"}
-              </span>
-            </label>
-
-            {/* Result panel */}
-            {bulkResult && (
-              <div
-                className={`rounded-lg border px-4 py-3 text-sm ${
-                  bulkResult.failed === 0
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                    : "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                }`}
-              >
-                <p className="font-medium">
-                  {bulkResult.success}{" "}
-                  {t("codexImportBulkSuccess", { count: bulkResult.success }) || "imported"} ·{" "}
-                  {bulkResult.failed}{" "}
-                  {t("codexImportBulkFailed", { count: bulkResult.failed }) || "failed"}
-                </p>
-                {bulkResult.errors.length > 0 && (
-                  <ul className="mt-2 space-y-0.5 text-xs">
-                    {bulkResult.errors.map((e, i) => (
-                      <li key={i}>
-                        <span className="font-medium">{e.name}:</span> {e.message}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <Button
-                onClick={handleBulkSubmit}
-                disabled={!bulkCanSubmit}
-                loading={bulkLoading}
-                fullWidth
-              >
-                {bulkLoading
-                  ? t("saving") || "Importing…"
-                  : typeof t.has === "function" && t.has("codexImportBulkSubmit")
-                    ? t("codexImportBulkSubmit", { count: validBulkCount })
-                    : `Import ${validBulkCount} accounts`}
-              </Button>
-              <Button onClick={onClose} variant="ghost" fullWidth>
-                {t("cancel")}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-function ApplyCodexAuthModal({
-  connectionId,
-  inProgress,
-  onConfirm,
-  onClose,
-}: {
-  connectionId: string | null;
-  inProgress: boolean;
-  onConfirm: (id: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const t = useTranslations("providers");
-  // `key`-reset pattern: caller re-mounts the modal each open (different
-  // connectionId triggers a new instance), so local confirmation state is
-  // naturally fresh without any post-render bookkeeping.
-  const [confirmed, setConfirmed] = useState(false);
-  const isOpen = !!connectionId;
-
-  if (!connectionId) return null;
-
-  const title =
-    typeof t.has === "function" && t.has("codexApplyModalTitle")
-      ? t("codexApplyModalTitle")
-      : "Apply to Local Codex";
-  const targetLabel =
-    typeof t.has === "function" && t.has("codexApplyTargetLabel")
-      ? t("codexApplyTargetLabel")
-      : "Target path";
-  const backupLabel =
-    typeof t.has === "function" && t.has("codexApplyBackupLabel")
-      ? t("codexApplyBackupLabel")
-      : "Backups";
-  const warning =
-    typeof t.has === "function" && t.has("codexApplyWarning")
-      ? t("codexApplyWarning")
-      : "This will replace the existing auth.json. Continue?";
-  const confirmText =
-    typeof t.has === "function" && t.has("codexApplyConfirmCheckbox")
-      ? t("codexApplyConfirmCheckbox")
-      : "I confirm I want to replace the existing auth.json";
-  const applyText = typeof t.has === "function" && t.has("codexApply") ? t("codexApply") : "Apply";
-
-  return (
-    <Modal isOpen={isOpen} title={title} onClose={onClose}>
-      <div className="flex flex-col gap-4">
-        <div>
-          <div className="text-xs uppercase text-text-muted mb-1">{targetLabel}</div>
-          <code className="block rounded bg-sidebar px-2 py-1.5 text-xs font-mono text-text-main">
-            ~/.codex/auth.json
-          </code>
-          <p className="mt-1 text-xs text-text-muted">{t("providerDetailPathAutoDetectedAllOs")}</p>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-text-muted mb-1">{backupLabel}</div>
-          <ul className="text-xs text-text-muted space-y-0.5 list-disc pl-4">
-            <li>
-              <code className="text-text-main">~/.codex/auth-&lt;timestamp&gt;.bak</code> — quick
-              local rollback
-            </li>
-            <li>Centralized backup history (audit trail)</li>
-          </ul>
-        </div>
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-          <div className="flex items-start gap-2">
-            <span className="material-symbols-outlined mt-0.5 text-[18px] text-amber-500">
-              warning
-            </span>
-            <span>{warning}</span>
-          </div>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-text-muted cursor-pointer">
-          <input
-            type="checkbox"
-            checked={confirmed}
-            onChange={(e) => setConfirmed(e.target.checked)}
-            className="rounded border-border"
-          />
-          {confirmText}
-        </label>
-        <div className="flex gap-2">
-          <Button
-            onClick={() => void onConfirm(connectionId)}
-            fullWidth
-            disabled={!confirmed || inProgress}
-          >
-            {inProgress ? t("saving") : applyText}
-          </Button>
-          <Button onClick={onClose} variant="ghost" fullWidth disabled={inProgress}>
-            {t("cancel")}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// ──── ImportClaudeAuthModal ────────────────────────────────────────────────────
-
-interface ImportClaudeAuthModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-type ClaudeImportTopTab = "single" | "bulk";
-type ClaudeBulkSubMode = "upload" | "paste" | "zip";
-
-interface ClaudeBulkEntry {
-  name: string;
-  json: unknown;
-  parseError: string | null;
-  email: string | null;
-}
-
-function extractEmailFromClaudeJson(json: unknown): string | null {
-  try {
-    const doc = json && typeof json === "object" ? (json as Record<string, unknown>) : null;
-    if (!doc) return null;
-    const oauth =
-      doc.claudeAiOauth && typeof doc.claudeAiOauth === "object"
-        ? (doc.claudeAiOauth as Record<string, unknown>)
-        : null;
-    if (!oauth) return null;
-    return null; // email comes from bootstrap, not the file
-  } catch {
-    return null;
-  }
-}
-
-function previewClaudeJson(json: unknown): { valid: boolean; email: string | null } {
-  try {
-    const doc = json && typeof json === "object" ? (json as Record<string, unknown>) : null;
-    if (!doc) return { valid: false, email: null };
-    const oauth =
-      doc.claudeAiOauth && typeof doc.claudeAiOauth === "object"
-        ? (doc.claudeAiOauth as Record<string, unknown>)
-        : null;
-    if (!oauth || !oauth.accessToken || !oauth.refreshToken) return { valid: false, email: null };
-    return { valid: true, email: null };
-  } catch {
-    return { valid: false, email: null };
-  }
-}
-
-function ImportClaudeAuthModal({ onClose, onSuccess }: ImportClaudeAuthModalProps) {
-  const t = useTranslations("providers");
-  const notify = useNotificationStore();
-
-  const [topTab, setTopTab] = useState<ClaudeImportTopTab>("single");
-  const [singleSubTab, setSingleSubTab] = useState<"upload" | "paste">("upload");
-  const [bulkSubMode, setBulkSubMode] = useState<ClaudeBulkSubMode>("upload");
-
-  // Single
-  const [singleJson, setSingleJson] = useState<unknown>(null);
-  const [singlePasteText, setSinglePasteText] = useState("");
-  const [singleName, setSingleName] = useState("");
-  const [singleEmail, setSingleEmail] = useState("");
-  const [overwriteExisting, setOverwriteExisting] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Bulk
-  const [bulkEntries, setBulkEntries] = useState<ClaudeBulkEntry[]>([]);
-  const [bulkPasteText, setBulkPasteText] = useState("");
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [bulkErrors, setBulkErrors] = useState<{ index: number; name: string; message: string }[]>(
-    []
-  );
-  const [bulkResult, setBulkResult] = useState<{
-    success: number;
-    failed: number;
-    total: number;
-  } | null>(null);
-  const [zipExtracting, setZipExtracting] = useState(false);
-
-  const handleSingleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const json = JSON.parse(ev.target?.result as string);
-        setSingleJson(json);
-      } catch {
-        notify.error(
-          typeof t.has === "function" && t.has("claudeImportInvalidJson")
-            ? t("claudeImportInvalidJson")
-            : "Could not parse the file as JSON"
-        );
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleSingleSubmit = async () => {
-    if (submitting) return;
-    setSubmitting(true);
-    try {
-      let rawJson: unknown;
-      if (singleSubTab === "upload") {
-        rawJson = singleJson;
-      } else {
-        try {
-          rawJson = JSON.parse(singlePasteText);
-        } catch {
-          notify.error(
-            typeof t.has === "function" && t.has("claudeImportInvalidJson")
-              ? t("claudeImportInvalidJson")
-              : "Could not parse the pasted content as JSON"
-          );
-          return;
-        }
-      }
-
-      const body =
-        singleSubTab === "paste"
-          ? {
-              source: { kind: "text", text: singlePasteText },
-              name: singleName || undefined,
-              email: singleEmail || undefined,
-              overwriteExisting,
-            }
-          : {
-              source: { kind: "json", json: rawJson },
-              name: singleName || undefined,
-              email: singleEmail || undefined,
-              overwriteExisting,
-            };
-
-      const res = await fetch("/api/providers/claude-auth/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        if (data.code === "duplicate_account") {
-          notify.error(
-            typeof t.has === "function" && t.has("claudeImportDuplicate")
-              ? t("claudeImportDuplicate")
-              : 'Account already exists — enable "Replace existing" to overwrite'
-          );
-        } else if (data.code === "identity_unverified") {
-          notify.error(
-            typeof t.has === "function" && t.has("claudeImportIdentityUnverified")
-              ? t("claudeImportIdentityUnverified")
-              : 'Bootstrap could not verify the account. Enable "Replace existing" or provide an email.'
-          );
-        } else {
-          notify.error(
-            data.error ||
-              (typeof t.has === "function" && t.has("claudeImportFailed")
-                ? t("claudeImportFailed")
-                : "Failed to import Claude auth")
-          );
-        }
-        return;
-      }
-
-      notify.success(
-        typeof t.has === "function" && t.has("claudeImportSuccess")
-          ? t("claudeImportSuccess")
-          : "Claude connection imported successfully"
-      );
-      onSuccess();
-    } catch {
-      notify.error(
-        typeof t.has === "function" && t.has("claudeImportFailed")
-          ? t("claudeImportFailed")
-          : "Failed to import Claude auth"
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleBulkFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const newEntries: ClaudeBulkEntry[] = [];
-    let pending = files.length;
-    if (!pending) return;
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const json = JSON.parse(ev.target?.result as string);
-          const email = extractEmailFromClaudeJson(json);
-          newEntries.push({
-            name: file.name.replace(/\.json$/, ""),
-            json,
-            parseError: null,
-            email,
-          });
-        } catch {
-          newEntries.push({
-            name: file.name,
-            json: null,
-            parseError: "Not valid JSON",
-            email: null,
-          });
-        }
-        pending--;
-        if (pending === 0) setBulkEntries((prev) => [...prev, ...newEntries]);
-      };
-      reader.readAsText(file);
-    });
-  };
-
-  const handleBulkPasteChange = (text: string) => {
-    setBulkPasteText(text);
-    const trimmed = text.trim();
-    if (!trimmed) {
-      setBulkEntries([]);
-      return;
-    }
-    try {
-      const arr = JSON.parse(trimmed);
-      if (Array.isArray(arr)) {
-        setBulkEntries(
-          arr.map((item, i) => ({
-            name: `entry ${i + 1}`,
-            json: item,
-            parseError: null,
-            email: null,
-          }))
-        );
-      } else {
-        setBulkEntries([{ name: "entry 1", json: arr, parseError: null, email: null }]);
-      }
-    } catch {
-      setBulkEntries([
-        { name: "parse error", json: null, parseError: "Invalid JSON", email: null },
-      ]);
-    }
-  };
-
-  const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setZipExtracting(true);
-    try {
-      const res = await fetch("/api/providers/claude-auth/zip-extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/zip" },
-        body: file,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        notify.error(
-          data.error ||
-            (typeof t.has === "function" && t.has("claudeImportBulkZipError")
-              ? t("claudeImportBulkZipError")
-              : "Failed to extract ZIP")
-        );
-        return;
-      }
-      const entries: ClaudeBulkEntry[] = (data.entries || []).map(
-        (e: { name: string; json: unknown; parseError: string | null }) => ({
-          name: e.name,
-          json: e.json,
-          parseError: e.parseError,
-          email: null,
-        })
-      );
-      setBulkEntries(entries);
-    } catch {
-      notify.error(
-        typeof t.has === "function" && t.has("claudeImportBulkZipError")
-          ? t("claudeImportBulkZipError")
-          : "Failed to extract ZIP"
-      );
-    } finally {
-      setZipExtracting(false);
-    }
-  };
-
-  const handleBulkSubmit = async () => {
-    if (bulkSubmitting) return;
-    setBulkSubmitting(true);
-    setBulkErrors([]);
-    setBulkResult(null);
-    try {
-      const validEntries = bulkEntries.filter((e) => e.json !== null);
-      if (validEntries.length === 0) {
-        notify.error("No valid entries to import");
-        return;
-      }
-      const res = await fetch("/api/providers/claude-auth/import-bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entries: validEntries.map((e) => ({
-            json: e.json,
-            name: e.name,
-            email: e.email || undefined,
-          })),
-          overwriteExisting,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        notify.error(
-          data.error ||
-            (typeof t.has === "function" && t.has("claudeImportBulkFailed")
-              ? t("claudeImportBulkFailed")
-              : "Some entries failed to import")
-        );
-        return;
-      }
-      setBulkResult({ success: data.success, failed: data.failed, total: data.total });
-      if (data.errors?.length > 0) setBulkErrors(data.errors);
-      if (data.success > 0) {
-        notify.success(
-          typeof t.has === "function" && t.has("claudeImportBulkSuccess")
-            ? t("claudeImportBulkSuccess", { count: data.success })
-            : `Imported ${data.success} Claude connections`
-        );
-        if (data.failed === 0) onSuccess();
-      }
-    } catch {
-      notify.error(
-        typeof t.has === "function" && t.has("claudeImportBulkFailed")
-          ? t("claudeImportBulkFailed")
-          : "Some entries failed to import"
-      );
-    } finally {
-      setBulkSubmitting(false);
-    }
-  };
-
-  const tabLabels: Record<ClaudeImportTopTab, string> = {
-    single:
-      typeof t.has === "function" && t.has("claudeImportTabSingle")
-        ? t("claudeImportTabSingle")
-        : "Single",
-    bulk:
-      typeof t.has === "function" && t.has("claudeImportTabBulk")
-        ? t("claudeImportTabBulk")
-        : "Bulk",
-  };
-
-  const modalTitle =
-    typeof t.has === "function" && t.has("claudeImportModalTitle")
-      ? t("claudeImportModalTitle")
-      : "Import Claude Auth";
-
-  return (
-    <Modal isOpen onClose={onClose} title={modalTitle}>
-      <div className="flex flex-col gap-4">
-        {/* Top tabs */}
-        <div className="flex gap-1 border-b border-border pb-0">
-          {(["single", "bulk"] as ClaudeImportTopTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setTopTab(tab)}
-              className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
-                topTab === tab
-                  ? "bg-primary/10 text-primary border-b-2 border-primary"
-                  : "text-text-muted hover:text-text-primary"
-              }`}
-            >
-              {tabLabels[tab]}
-            </button>
-          ))}
-        </div>
-
-        {topTab === "single" && (
-          <div className="flex flex-col gap-3">
-            {/* Sub-tabs */}
-            <div className="flex gap-1">
-              {(["upload", "paste"] as const).map((sub) => (
-                <button
-                  key={sub}
-                  onClick={() => setSingleSubTab(sub)}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    singleSubTab === sub
-                      ? "bg-bg-subtle text-text-primary"
-                      : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  {sub === "upload"
-                    ? typeof t.has === "function" && t.has("claudeImportTabUpload")
-                      ? t("claudeImportTabUpload")
-                      : "Upload file"
-                    : typeof t.has === "function" && t.has("claudeImportTabPaste")
-                      ? t("claudeImportTabPaste")
-                      : "Paste JSON"}
-                </button>
-              ))}
-            </div>
-            {singleSubTab === "upload" ? (
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("claudeImportFileLabel")
-                    ? t("claudeImportFileLabel")
-                    : "Choose .credentials.json"}
-                </label>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleSingleFileChange}
-                  className="block w-full text-sm"
-                />
-                {singleJson && previewClaudeJson(singleJson).valid && (
-                  <p className="mt-1 text-xs text-emerald-500">
-                    {t("providerDetailValidClaudeCredentialsFile")}
-                  </p>
-                )}
-                {singleJson && !previewClaudeJson(singleJson).valid && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {typeof t.has === "function" && t.has("claudeImportInvalidShape")
-                      ? t("claudeImportInvalidShape")
-                      : "The file is not a valid .credentials.json"}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("claudeImportPasteLabel")
-                    ? t("claudeImportPasteLabel")
-                    : "Paste the JSON content"}
-                </label>
-                <textarea
-                  value={singlePasteText}
-                  onChange={(e) => setSinglePasteText(e.target.value)}
-                  rows={6}
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs font-mono text-text-main"
-                  placeholder='{ "claudeAiOauth": { ... } }'
-                />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("claudeImportEmailLabel")
-                    ? t("claudeImportEmailLabel")
-                    : "Account email"}
-                </label>
-                <input
-                  type="email"
-                  value={singleEmail}
-                  onChange={(e) => setSingleEmail(e.target.value)}
-                  placeholder="auto-detected"
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs text-text-main"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("claudeImportNameLabel")
-                    ? t("claudeImportNameLabel")
-                    : "Connection name (optional)"}
-                </label>
-                <input
-                  type="text"
-                  value={singleName}
-                  onChange={(e) => setSingleName(e.target.value)}
-                  placeholder="My Claude account"
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs text-text-main"
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-text-muted">
-              <input
-                type="checkbox"
-                checked={overwriteExisting}
-                onChange={(e) => setOverwriteExisting(e.target.checked)}
-              />
-              {typeof t.has === "function" && t.has("claudeImportOverwriteLabel")
-                ? t("claudeImportOverwriteLabel")
-                : "Replace existing connection if account already exists"}
-            </label>
-            <Button
-              loading={submitting}
-              onClick={handleSingleSubmit}
-              disabled={singleSubTab === "upload" ? !singleJson : !singlePasteText.trim()}
-            >
-              {typeof t.has === "function" && t.has("claudeImportSubmit")
-                ? t("claudeImportSubmit")
-                : "Import"}
-            </Button>
-          </div>
-        )}
-
-        {topTab === "bulk" && (
-          <div className="flex flex-col gap-3">
-            {/* Sub-mode tabs */}
-            <div className="flex gap-1">
-              {(["upload", "paste", "zip"] as ClaudeBulkSubMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    setBulkSubMode(mode);
-                    setBulkEntries([]);
-                  }}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    bulkSubMode === mode
-                      ? "bg-bg-subtle text-text-primary"
-                      : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  {mode === "upload"
-                    ? typeof t.has === "function" && t.has("claudeImportBulkModeUpload")
-                      ? t("claudeImportBulkModeUpload")
-                      : "Upload files"
-                    : mode === "paste"
-                      ? typeof t.has === "function" && t.has("claudeImportBulkModePaste")
-                        ? t("claudeImportBulkModePaste")
-                        : "Paste JSON array"
-                      : typeof t.has === "function" && t.has("claudeImportBulkModeZip")
-                        ? t("claudeImportBulkModeZip")
-                        : "Upload ZIP"}
-                </button>
-              ))}
-            </div>
-
-            {bulkSubMode === "upload" && (
-              <div>
-                <p className="text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("claudeImportBulkUploadHint")
-                    ? t("claudeImportBulkUploadHint")
-                    : "Drop or pick up to 50 .credentials.json files (256KB each, 10MB total)."}
-                </p>
-                <input
-                  type="file"
-                  accept=".json"
-                  multiple
-                  onChange={handleBulkFilesChange}
-                  className="block w-full text-sm"
-                />
-              </div>
-            )}
-            {bulkSubMode === "paste" && (
-              <div>
-                <p className="text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("claudeImportBulkPasteHint")
-                    ? t("claudeImportBulkPasteHint")
-                    : "Paste an array of objects: [{ json, name?, email? }, ...]"}
-                </p>
-                <textarea
-                  value={bulkPasteText}
-                  onChange={(e) => handleBulkPasteChange(e.target.value)}
-                  rows={6}
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs font-mono text-text-main"
-                  placeholder="[{ ... }, { ... }]"
-                />
-              </div>
-            )}
-            {bulkSubMode === "zip" && (
-              <div>
-                <p className="text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("claudeImportBulkZipHint")
-                    ? t("claudeImportBulkZipHint")
-                    : "ZIP containing .json entries. Max 50 entries, 10MB unpacked."}
-                </p>
-                {zipExtracting ? (
-                  <p className="text-xs text-primary animate-pulse">
-                    {typeof t.has === "function" && t.has("claudeImportBulkZipExtracting")
-                      ? t("claudeImportBulkZipExtracting")
-                      : "Extracting ZIP…"}
-                  </p>
-                ) : (
-                  <input
-                    type="file"
-                    accept=".zip"
-                    onChange={handleZipUpload}
-                    className="block w-full text-sm"
-                  />
-                )}
-              </div>
-            )}
-
-            {bulkEntries.length > 0 && (
-              <div className="rounded border border-border bg-bg-subtle px-2 py-1.5 max-h-36 overflow-y-auto">
-                {bulkEntries.map((e, i) => (
-                  <div
-                    key={i}
-                    className={`text-xs py-0.5 flex items-center gap-1 ${e.parseError ? "text-red-500" : "text-text-main"}`}
-                  >
-                    <span className="material-symbols-outlined text-[12px]">
-                      {e.parseError ? "error" : "check_circle"}
-                    </span>
-                    {e.name}
-                    {e.email ? ` (${e.email})` : ""}
-                    {e.parseError ? ` — ${e.parseError}` : ""}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <label className="flex items-center gap-2 text-xs text-text-muted">
-              <input
-                type="checkbox"
-                checked={overwriteExisting}
-                onChange={(e) => setOverwriteExisting(e.target.checked)}
-              />
-              {typeof t.has === "function" && t.has("claudeImportOverwriteLabel")
-                ? t("claudeImportOverwriteLabel")
-                : "Replace existing connection if account already exists"}
-            </label>
-
-            {bulkResult && (
-              <div className="rounded bg-bg-subtle px-2 py-1.5 text-xs">
-                {bulkResult.success}/{bulkResult.total} imported
-                {bulkResult.failed > 0 ? `, ${bulkResult.failed} failed` : ""}
-              </div>
-            )}
-            {bulkErrors.length > 0 && (
-              <div className="rounded border border-red-500/30 bg-red-500/5 px-2 py-1.5 max-h-28 overflow-y-auto">
-                {bulkErrors.map((e) => (
-                  <div key={e.index} className="text-xs text-red-500 py-0.5">
-                    {e.name}: {e.message}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <Button
-              loading={bulkSubmitting}
-              onClick={handleBulkSubmit}
-              disabled={bulkEntries.filter((e) => e.json !== null).length === 0}
-            >
-              {typeof t.has === "function" && t.has("claudeImportBulkSubmit")
-                ? t("claudeImportBulkSubmit")
-                : "Import all"}
-            </Button>
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-// ──── ApplyClaudeAuthModal ────────────────────────────────────────────────────
-
-function ApplyClaudeAuthModal({
-  connectionId,
-  inProgress,
-  onConfirm,
-  onClose,
-}: {
-  connectionId: string | null;
-  inProgress: boolean;
-  onConfirm: (id: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const t = useTranslations("providers");
-  const [confirmed, setConfirmed] = useState(false);
-  const isOpen = !!connectionId;
-
-  if (!connectionId) return null;
-
-  const title =
-    typeof t.has === "function" && t.has("claudeApplyModalTitle")
-      ? t("claudeApplyModalTitle")
-      : "Apply to Local Claude Code";
-  const targetLabel =
-    typeof t.has === "function" && t.has("claudeApplyTargetLabel")
-      ? t("claudeApplyTargetLabel")
-      : "Target path";
-  const backupLabel =
-    typeof t.has === "function" && t.has("claudeApplyBackupLabel")
-      ? t("claudeApplyBackupLabel")
-      : "Backups";
-  const warning =
-    typeof t.has === "function" && t.has("claudeApplyWarning")
-      ? t("claudeApplyWarning")
-      : "This will replace the existing claudeAiOauth section. Continue?";
-  const confirmText =
-    typeof t.has === "function" && t.has("claudeApplyConfirmCheckbox")
-      ? t("claudeApplyConfirmCheckbox")
-      : "I confirm I want to replace the existing claudeAiOauth section";
-  const applyText =
-    typeof t.has === "function" && t.has("claudeApply") ? t("claudeApply") : "Apply";
-  const mcpHint =
-    typeof t.has === "function" && t.has("claudeApplyMcpHint")
-      ? t("claudeApplyMcpHint")
-      : "Existing MCP OAuth state will be preserved.";
-
-  return (
-    <Modal isOpen={isOpen} title={title} onClose={onClose}>
-      <div className="flex flex-col gap-4">
-        <div>
-          <div className="text-xs uppercase text-text-muted mb-1">{targetLabel}</div>
-          <code className="block rounded bg-sidebar px-2 py-1.5 text-xs font-mono text-text-main">
-            ~/.claude/.credentials.json
-          </code>
-          <p className="mt-1 text-xs text-text-muted">Path is auto-detected per OS (Linux/Mac).</p>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-text-muted mb-1">{backupLabel}</div>
-          <code className="block rounded bg-sidebar px-2 py-1.5 text-xs font-mono text-text-main">
-            {"~/.claude/credentials-{timestamp}.bak"}
-          </code>
-        </div>
-        <div className="rounded bg-sky-500/10 border border-sky-500/20 px-3 py-2 text-xs text-sky-400">
-          {mcpHint}
-        </div>
-        <p className="text-sm text-text-muted">{warning}</p>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={confirmed}
-            onChange={(e) => setConfirmed(e.target.checked)}
-          />
-          {confirmText}
-        </label>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={inProgress}>
-            Cancel
-          </Button>
-          <Button
-            loading={inProgress}
-            disabled={!confirmed || inProgress}
-            onClick={() => void onConfirm(connectionId)}
-          >
-            {applyText}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function normalizeAndValidateHttpBaseUrl(rawValue, fallbackUrl) {
   const value = (typeof rawValue === "string" ? rawValue.trim() : "") || fallbackUrl;
   try {
@@ -9635,15 +6813,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
     excludedModels: "",
     customUserAgent: "",
     accountId: "",
-    codexReasoningEffort: "medium",
-    codexServiceTier: "default" as CodexServiceTier,
-    codexOpenaiStoreEnabled: false,
-    consoleApiKey: "",
-    cloudCodeProjectId: "",
-    blockExtraUsage:
-      connection?.provider === "claude"
-        ? isClaudeExtraUsageBlockEnabled(connection?.provider, connection?.providerSpecificData)
-        : false,
     passthroughModels: connection?.providerSpecificData?.passthroughModels === true,
   });
   const [testing, setTesting] = useState(false);
@@ -9677,12 +6846,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
   const showsRegion = isVertex || isBedrock;
   const isGlm = isGlmProvider(connection?.provider);
   const isCloudflare = connection?.provider === "cloudflare-ai";
-  const isCodex = connection?.provider === "codex";
-  const isClaude = connection?.provider === "claude";
-  const isGeminiCli = connection?.provider === "gemini-cli";
-  // antigravity provider removed in the GigaChat fork — always false.
-  const isAntigravity = false;
-  const supportsGoogleProjectId = isGeminiCli;
   const localProviderMetadata = getLocalProviderMetadata(connection?.provider);
   const isLocalSelfHostedProvider = !!localProviderMetadata;
   const isGooglePse = connection?.provider === "google-pse-search";
@@ -9715,15 +6878,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
       : apiKeyOptional
         ? t("apiKeyOptionalHint")
         : t("leaveBlankKeepCurrentApiKey");
-  const codexAccountServiceTierOptions = useMemo(
-    () =>
-      CODEX_ACCOUNT_SERVICE_TIER_VALUES.map((value) => ({
-        value,
-        label: getCodexServiceTierLabel(t, value),
-      })),
-    [t]
-  );
-
   useEffect(() => {
     if (isOpen && connection) {
       const rawBaseUrl = connection.providerSpecificData?.baseUrl;
@@ -9737,9 +6891,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
       const existingCx = typeof rawCx === "string" ? rawCx : "";
       const rawAccountId = connection.providerSpecificData?.accountId;
       const existingAccountId = typeof rawAccountId === "string" ? rawAccountId : "";
-      const codexRequestDefaults = getCodexRequestDefaults(connection.providerSpecificData);
-      const rawConsoleApiKey = connection.providerSpecificData?.consoleApiKey;
-      const existingConsoleApiKey = typeof rawConsoleApiKey === "string" ? rawConsoleApiKey : "";
       setFormData({
         name: connection.name || "",
         priority: connection.priority || 1,
@@ -9762,16 +6913,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
         ),
         customUserAgent: existingCustomUserAgent,
         accountId: existingAccountId,
-        codexReasoningEffort: codexRequestDefaults.reasoningEffort,
-        codexServiceTier: codexRequestDefaults.serviceTier ?? "default",
-        codexOpenaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
-        consoleApiKey: existingConsoleApiKey,
-        cloudCodeProjectId:
-          (connection.providerSpecificData?.projectId as string) || connection.projectId || "",
-        blockExtraUsage: isClaudeExtraUsageBlockEnabled(
-          connection.provider,
-          connection.providerSpecificData
-        ),
         passthroughModels: connection?.providerSpecificData?.passthroughModels === true,
       });
       // Load existing extra keys from providerSpecificData
@@ -9878,7 +7019,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
     setSaveError(null);
     try {
       const trimmedMaxConcurrent = formData.maxConcurrent.trim();
-      const trimmedCloudCodeProjectId = formData.cloudCodeProjectId.trim();
       let parsedMaxConcurrent: number | null = null;
       if (trimmedMaxConcurrent) {
         const numericMaxConcurrent = Number(trimmedMaxConcurrent);
@@ -9895,10 +7035,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
         maxConcurrent: parsedMaxConcurrent,
         healthCheckInterval: formData.healthCheckInterval,
       };
-
-      if (supportsGoogleProjectId) {
-        updates.projectId = trimmedCloudCodeProjectId || null;
-      }
 
       if (isGooglePse && !formData.cx.trim()) {
         setSaveError(t("searchEngineIdRequired"));
@@ -9966,13 +7102,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
           // Only write when explicitly enabled; omit to let registry default take effect
           ...(formData.passthroughModels ? { passthroughModels: true } : {}),
         };
-        if (connection.provider === "bailian-coding-plan") {
-          if (formData.consoleApiKey.trim()) {
-            updates.providerSpecificData.consoleApiKey = formData.consoleApiKey.trim();
-          } else {
-            updates.providerSpecificData.consoleApiKey = undefined;
-          }
-        }
         if (formData.validationModelId) {
           updates.providerSpecificData.validationModelId = formData.validationModelId;
         }
@@ -9988,9 +7117,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
         } else if (isCloudflare && formData.accountId.trim()) {
           updates.providerSpecificData.accountId = formData.accountId.trim();
         }
-        if (supportsGoogleProjectId) {
-          updates.providerSpecificData.projectId = trimmedCloudCodeProjectId || null;
-        }
       } else {
         // Also persist tag for OAuth accounts
         updates.providerSpecificData = {
@@ -9999,22 +7125,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
           tags: parseRoutingTagsInput(formData.routingTags),
           excludedModels: parseExcludedModelsInput(formData.excludedModels),
         };
-        if (isClaude) {
-          updates.providerSpecificData.blockExtraUsage = formData.blockExtraUsage;
-        }
-        if (isCodex) {
-          updates.providerSpecificData.requestDefaults = {
-            reasoningEffort: formData.codexReasoningEffort,
-            ...(formData.codexServiceTier !== "default"
-              ? { serviceTier: formData.codexServiceTier }
-              : {}),
-          };
-          updates.providerSpecificData.openaiStoreEnabled =
-            formData.codexOpenaiStoreEnabled === true;
-        }
-        if (supportsGoogleProjectId) {
-          updates.providerSpecificData.projectId = trimmedCloudCodeProjectId || null;
-        }
       }
       const error = (await onSave(updates)) as void | unknown;
       if (error) {
@@ -10028,8 +7138,7 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
   if (!connection) return null;
 
   const isOAuth = connection.authType === "oauth";
-  const isCompatible =
-    isOpenAICompatibleProvider(connection.provider);
+  const isCompatible = isOpenAICompatibleProvider(connection.provider);
   const testErrorMeta =
     !testResult?.valid && testResult?.diagnosis?.type
       ? ERROR_TYPE_LABELS[testResult.diagnosis.type] || null
@@ -10065,61 +7174,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
           placeholder={t("excludedModelsPlaceholder")}
           hint={t("excludedModelsHint")}
         />
-        {isCodex && (
-          <div className="flex flex-col gap-4 rounded-lg border border-border/50 bg-surface/20 p-4">
-            <Select
-              label={t("defaultThinkingStrengthLabel")}
-              value={formData.codexReasoningEffort}
-              options={CODEX_REASONING_STRENGTH_OPTIONS}
-              onChange={(e) => setFormData({ ...formData, codexReasoningEffort: e.target.value })}
-              hint={t("defaultThinkingStrengthHint")}
-            />
-            <Select
-              label={providerText(t, "codexServiceTierLabel", "Codex service tier")}
-              value={formData.codexServiceTier}
-              options={codexAccountServiceTierOptions}
-              onChange={(event) =>
-                setFormData({
-                  ...formData,
-                  codexServiceTier: event.target.value as CodexServiceTier,
-                })
-              }
-              hint={providerText(
-                t,
-                "codexServiceTierDescription",
-                "Default uses the normal Codex tier. Priority shows as Fast; Flex uses the flex service tier when available."
-              )}
-            />
-            <Toggle
-              checked={formData.codexOpenaiStoreEnabled}
-              onChange={(checked) => setFormData({ ...formData, codexOpenaiStoreEnabled: checked })}
-              label={t("openaiResponsesStoreLabel")}
-              description={t("openaiResponsesStoreDescription")}
-            />
-          </div>
-        )}
-        {isClaude && (
-          <div className="flex flex-col gap-4 rounded-lg border border-border/50 bg-surface/20 p-4">
-            <Toggle
-              checked={formData.blockExtraUsage}
-              onChange={(checked) => setFormData({ ...formData, blockExtraUsage: checked })}
-              label={t("blockClaudeExtraUsageLabel")}
-              description={t("blockClaudeExtraUsageDescription")}
-            />
-          </div>
-        )}
-        {supportsGoogleProjectId && (
-          <div className="flex flex-col gap-4 rounded-lg border border-border/50 bg-surface/20 p-4">
-            <Input
-              label={t("geminiCliProjectIdLabel")}
-              value={formData.cloudCodeProjectId}
-              onChange={(e) => setFormData({ ...formData, cloudCodeProjectId: e.target.value })}
-              placeholder={t("geminiCliProjectIdPlaceholder")}
-              hint={t("geminiCliProjectIdHint")}
-              className="font-mono text-xs"
-            />
-          </div>
-        )}
         {isOAuth && connection.email && (
           <div className="bg-sidebar/50 p-3 rounded-lg">
             <p className="text-sm text-text-muted mb-1">{t("email")}</p>
@@ -10277,16 +7331,6 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
                   label={t("perModelQuotaLabel")}
                   description={t("perModelQuotaDescription")}
                 />
-                {connection.provider === "bailian-coding-plan" && (
-                  <Input
-                    label={t("consoleApiKeyOracleLabel")}
-                    value={formData.consoleApiKey}
-                    onChange={(e) => setFormData({ ...formData, consoleApiKey: e.target.value })}
-                    placeholder={t("consoleApiKeyOraclePlaceholder")}
-                    hint={t("consoleApiKeyOracleHint")}
-                    type="password"
-                  />
-                )}
               </div>
             )}
             <Input
@@ -10557,13 +7601,7 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
   );
 }
 
-function EditCompatibleNodeModal({
-  isOpen,
-  node,
-  onSave,
-  onClose,
-  isAnthropic,
-}: EditCompatibleNodeModalProps) {
+function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatibleNodeModalProps) {
   const t = useTranslations("providers");
   const [formData, setFormData] = useState({
     name: "",
@@ -10585,19 +7623,13 @@ function EditCompatibleNodeModal({
         name: node.name || "",
         prefix: node.prefix || "",
         apiType: node.apiType || "chat",
-        baseUrl:
-          node.baseUrl ||
-          (isAnthropic
-            ? "https://api.anthropic.com/v1"
-            : "https://api.openai.com/v1"),
+        baseUrl: node.baseUrl || "https://api.openai.com/v1",
         chatPath: node.chatPath || "",
         modelsPath: node.modelsPath || "",
       });
-      setShowAdvanced(
-        !!(node.chatPath || node.modelsPath)
-      );
+      setShowAdvanced(!!(node.chatPath || node.modelsPath));
     }
-  }, [node, isAnthropic]);
+  }, [node]);
 
   const apiTypeOptions = [
     { value: "chat", label: t("chatCompletions") },
@@ -10618,10 +7650,8 @@ function EditCompatibleNodeModal({
         baseUrl: formData.baseUrl,
         chatPath: formData.chatPath || "",
         modelsPath: formData.modelsPath,
+        apiType: formData.apiType,
       };
-      if (!isAnthropic) {
-        payload.apiType = formData.apiType;
-      }
       await onSave(payload);
     } finally {
       setSaving(false);
@@ -10637,7 +7667,7 @@ function EditCompatibleNodeModal({
         body: JSON.stringify({
           baseUrl: formData.baseUrl,
           apiKey: checkKey,
-          type: isAnthropic ? "anthropic-compatible" : "openai-compatible",
+          type: "openai-compatible",
           chatPath: formData.chatPath || "",
           modelsPath: formData.modelsPath,
         }),
@@ -10656,7 +7686,7 @@ function EditCompatibleNodeModal({
   return (
     <Modal
       isOpen={isOpen}
-      title={t("editCompatibleTitle", { type: isAnthropic ? t("anthropic") : t("openai") })}
+      title={t("editCompatibleTitle", { type: t("openai") })}
       onClose={onClose}
     >
       <div className="flex flex-col gap-4">
@@ -10665,7 +7695,7 @@ function EditCompatibleNodeModal({
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder={t("compatibleProdPlaceholder", {
-            type: isAnthropic ? t("anthropic") : t("openai"),
+            type: t("openai"),
           })}
           hint={t("nameHint")}
         />
@@ -10673,32 +7703,22 @@ function EditCompatibleNodeModal({
           label={t("prefixLabel")}
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
-          placeholder={
-            isAnthropic
-              ? t("anthropicPrefixPlaceholder")
-              : t("openaiPrefixPlaceholder")
-          }
+          placeholder={t("openaiPrefixPlaceholder")}
           hint={t("prefixHint")}
         />
-        {!isAnthropic && (
-          <Select
-            label={t("apiTypeLabel")}
-            options={apiTypeOptions}
-            value={formData.apiType}
-            onChange={(e) => setFormData({ ...formData, apiType: e.target.value })}
-          />
-        )}
+        <Select
+          label={t("apiTypeLabel")}
+          options={apiTypeOptions}
+          value={formData.apiType}
+          onChange={(e) => setFormData({ ...formData, apiType: e.target.value })}
+        />
         <Input
           label={t("baseUrlLabel")}
           value={formData.baseUrl}
           onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
-          placeholder={
-            isAnthropic
-              ? t("anthropicBaseUrlPlaceholder")
-              : t("openaiBaseUrlPlaceholder")
-          }
+          placeholder={t("openaiBaseUrlPlaceholder")}
           hint={t("compatibleBaseUrlHint", {
-            type: isAnthropic ? t("anthropic") : t("openai"),
+            type: t("openai"),
           })}
         />
         <button
@@ -10722,11 +7742,7 @@ function EditCompatibleNodeModal({
               label={t("chatPathLabel")}
               value={formData.chatPath}
               onChange={(e) => setFormData({ ...formData, chatPath: e.target.value })}
-              placeholder={
-                isAnthropic
-                  ? "/messages"
-                  : t("chatPathPlaceholder")
-              }
+              placeholder={t("chatPathPlaceholder")}
               hint={t("chatPathHint")}
             />
             <Input
@@ -10773,710 +7789,6 @@ function EditCompatibleNodeModal({
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>
             {t("cancel")}
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// ──── ImportGeminiAuthModal ────────────────────────────────────────────────────
-
-interface ImportGeminiAuthModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-type GeminiImportTopTab = "single" | "bulk";
-type GeminiBulkSubMode = "upload" | "paste" | "zip";
-
-interface GeminiBulkEntry {
-  name: string;
-  json: unknown;
-  parseError: string | null;
-  email: string | null;
-}
-
-function extractEmailFromGeminiJwt(idToken: string): string | null {
-  try {
-    const parts = idToken.split(".");
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    return typeof payload.email === "string" ? payload.email : null;
-  } catch {
-    return null;
-  }
-}
-
-function previewGeminiJson(json: unknown): { valid: boolean; email: string | null } {
-  try {
-    const doc = json && typeof json === "object" ? (json as Record<string, unknown>) : null;
-    if (!doc) return { valid: false, email: null };
-    if (!doc.access_token || !doc.refresh_token || !doc.id_token)
-      return { valid: false, email: null };
-    const email = typeof doc.id_token === "string" ? extractEmailFromGeminiJwt(doc.id_token) : null;
-    return { valid: true, email };
-  } catch {
-    return { valid: false, email: null };
-  }
-}
-
-function ImportGeminiAuthModal({ onClose, onSuccess }: ImportGeminiAuthModalProps) {
-  const t = useTranslations("providers");
-  const notify = useNotificationStore();
-
-  const [topTab, setTopTab] = useState<GeminiImportTopTab>("single");
-  const [singleSubTab, setSingleSubTab] = useState<"upload" | "paste">("upload");
-  const [bulkSubMode, setBulkSubMode] = useState<GeminiBulkSubMode>("upload");
-
-  // Single
-  const [singleJson, setSingleJson] = useState<unknown>(null);
-  const [singlePasteText, setSinglePasteText] = useState("");
-  const [singleName, setSingleName] = useState("");
-  const [singleEmail, setSingleEmail] = useState("");
-  const [overwriteExisting, setOverwriteExisting] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Bulk
-  const [bulkEntries, setBulkEntries] = useState<GeminiBulkEntry[]>([]);
-  const [bulkPasteText, setBulkPasteText] = useState("");
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [bulkErrors, setBulkErrors] = useState<{ index: number; name: string; message: string }[]>(
-    []
-  );
-  const [bulkResult, setBulkResult] = useState<{
-    success: number;
-    failed: number;
-    total: number;
-  } | null>(null);
-  const [zipExtracting, setZipExtracting] = useState(false);
-
-  const handleSingleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const json = JSON.parse(ev.target?.result as string);
-        setSingleJson(json);
-      } catch {
-        notify.error(
-          typeof t.has === "function" && t.has("geminiImportInvalidJson")
-            ? t("geminiImportInvalidJson")
-            : "Could not parse the file as JSON"
-        );
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleSingleSubmit = async () => {
-    if (submitting) return;
-    setSubmitting(true);
-    try {
-      const body =
-        singleSubTab === "paste"
-          ? {
-              source: { kind: "text", text: singlePasteText },
-              name: singleName || undefined,
-              email: singleEmail || undefined,
-              overwriteExisting,
-            }
-          : {
-              source: { kind: "json", json: singleJson },
-              name: singleName || undefined,
-              email: singleEmail || undefined,
-              overwriteExisting,
-            };
-
-      const res = await fetch("/api/providers/gemini-cli-auth/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        if (data.code === "duplicate_account") {
-          notify.error(
-            typeof t.has === "function" && t.has("geminiImportDuplicate")
-              ? t("geminiImportDuplicate")
-              : 'Account already exists — enable "Replace existing" to overwrite'
-          );
-        } else if (data.code === "identity_unverified") {
-          notify.error(
-            typeof t.has === "function" && t.has("geminiImportIdentityUnverified")
-              ? t("geminiImportIdentityUnverified")
-              : 'Could not verify identity from id_token. Enable "Replace existing" or provide an email.'
-          );
-        } else {
-          notify.error(
-            data.error ||
-              (typeof t.has === "function" && t.has("geminiImportFailed")
-                ? t("geminiImportFailed")
-                : "Failed to import Gemini auth")
-          );
-        }
-        return;
-      }
-
-      const preview = previewGeminiJson(singleJson);
-      notify.success(
-        typeof t.has === "function" && t.has("geminiImportSuccess")
-          ? t("geminiImportSuccess")
-          : `Gemini connection imported successfully${preview.email ? ` (${preview.email})` : ""}`
-      );
-      onSuccess();
-    } catch {
-      notify.error(
-        typeof t.has === "function" && t.has("geminiImportFailed")
-          ? t("geminiImportFailed")
-          : "Failed to import Gemini auth"
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleBulkFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const newEntries: GeminiBulkEntry[] = [];
-    let pending = files.length;
-    if (!pending) return;
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const json = JSON.parse(ev.target?.result as string);
-          const { email } = previewGeminiJson(json);
-          newEntries.push({
-            name: file.name.replace(/\.json$/, ""),
-            json,
-            parseError: null,
-            email,
-          });
-        } catch {
-          newEntries.push({
-            name: file.name,
-            json: null,
-            parseError: "Not valid JSON",
-            email: null,
-          });
-        }
-        pending--;
-        if (pending === 0) setBulkEntries((prev) => [...prev, ...newEntries]);
-      };
-      reader.readAsText(file);
-    });
-  };
-
-  const handleBulkPasteChange = (text: string) => {
-    setBulkPasteText(text);
-    const trimmed = text.trim();
-    if (!trimmed) {
-      setBulkEntries([]);
-      return;
-    }
-    try {
-      const arr = JSON.parse(trimmed);
-      if (Array.isArray(arr)) {
-        setBulkEntries(
-          arr.map((item, i) => {
-            const { email } = previewGeminiJson(item);
-            return { name: email || `entry ${i + 1}`, json: item, parseError: null, email };
-          })
-        );
-      } else {
-        const { email } = previewGeminiJson(arr);
-        setBulkEntries([{ name: email || "entry 1", json: arr, parseError: null, email }]);
-      }
-    } catch {
-      setBulkEntries([
-        { name: "parse error", json: null, parseError: "Invalid JSON", email: null },
-      ]);
-    }
-  };
-
-  const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setZipExtracting(true);
-    try {
-      const res = await fetch("/api/providers/gemini-cli-auth/zip-extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/zip" },
-        body: file,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        notify.error(
-          data.error ||
-            (typeof t.has === "function" && t.has("geminiImportBulkZipError")
-              ? t("geminiImportBulkZipError")
-              : "Failed to extract ZIP")
-        );
-        return;
-      }
-      const entries: GeminiBulkEntry[] = (data.entries || []).map(
-        (e: { name: string; json: unknown; parseError: string | null }) => {
-          const { email } = previewGeminiJson(e.json);
-          return { name: e.name, json: e.json, parseError: e.parseError, email };
-        }
-      );
-      setBulkEntries(entries);
-    } catch {
-      notify.error(
-        typeof t.has === "function" && t.has("geminiImportBulkZipError")
-          ? t("geminiImportBulkZipError")
-          : "Failed to extract ZIP"
-      );
-    } finally {
-      setZipExtracting(false);
-    }
-  };
-
-  const handleBulkSubmit = async () => {
-    if (bulkSubmitting) return;
-    setBulkSubmitting(true);
-    setBulkErrors([]);
-    setBulkResult(null);
-    try {
-      const validEntries = bulkEntries.filter((e) => e.json !== null);
-      if (validEntries.length === 0) {
-        notify.error("No valid entries to import");
-        return;
-      }
-      const res = await fetch("/api/providers/gemini-cli-auth/import-bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entries: validEntries.map((e) => ({
-            json: e.json,
-            name: e.name,
-            email: e.email || undefined,
-          })),
-          overwriteExisting,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        notify.error(
-          data.error ||
-            (typeof t.has === "function" && t.has("geminiImportBulkFailed")
-              ? t("geminiImportBulkFailed")
-              : "Some entries failed to import")
-        );
-        return;
-      }
-      setBulkResult({ success: data.success, failed: data.failed, total: data.total });
-      if (data.errors?.length > 0) setBulkErrors(data.errors);
-      if (data.success > 0) {
-        notify.success(
-          typeof t.has === "function" && t.has("geminiImportBulkSuccess")
-            ? t("geminiImportBulkSuccess", { count: data.success })
-            : `Imported ${data.success} Gemini connections`
-        );
-        if (data.failed === 0) onSuccess();
-      }
-    } catch {
-      notify.error(
-        typeof t.has === "function" && t.has("geminiImportBulkFailed")
-          ? t("geminiImportBulkFailed")
-          : "Some entries failed to import"
-      );
-    } finally {
-      setBulkSubmitting(false);
-    }
-  };
-
-  const tabLabels: Record<GeminiImportTopTab, string> = {
-    single:
-      typeof t.has === "function" && t.has("geminiImportTabSingle")
-        ? t("geminiImportTabSingle")
-        : "Single",
-    bulk:
-      typeof t.has === "function" && t.has("geminiImportTabBulk")
-        ? t("geminiImportTabBulk")
-        : "Bulk",
-  };
-
-  const modalTitle =
-    typeof t.has === "function" && t.has("geminiImportModalTitle")
-      ? t("geminiImportModalTitle")
-      : "Import Gemini Auth";
-
-  return (
-    <Modal isOpen onClose={onClose} title={modalTitle}>
-      <div className="flex flex-col gap-4">
-        <div className="flex gap-1 border-b border-border pb-0">
-          {(["single", "bulk"] as GeminiImportTopTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setTopTab(tab)}
-              className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
-                topTab === tab
-                  ? "bg-primary/10 text-primary border-b-2 border-primary"
-                  : "text-text-muted hover:text-text-primary"
-              }`}
-            >
-              {tabLabels[tab]}
-            </button>
-          ))}
-        </div>
-
-        {topTab === "single" && (
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-1">
-              {(["upload", "paste"] as const).map((sub) => (
-                <button
-                  key={sub}
-                  onClick={() => setSingleSubTab(sub)}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    singleSubTab === sub
-                      ? "bg-bg-subtle text-text-primary"
-                      : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  {sub === "upload"
-                    ? typeof t.has === "function" && t.has("geminiImportTabUpload")
-                      ? t("geminiImportTabUpload")
-                      : "Upload file"
-                    : typeof t.has === "function" && t.has("geminiImportTabPaste")
-                      ? t("geminiImportTabPaste")
-                      : "Paste JSON"}
-                </button>
-              ))}
-            </div>
-            {singleSubTab === "upload" ? (
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("geminiImportFileLabel")
-                    ? t("geminiImportFileLabel")
-                    : "Choose oauth_creds.json"}
-                </label>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleSingleFileChange}
-                  className="block w-full text-sm"
-                />
-                {singleJson && previewGeminiJson(singleJson).valid && (
-                  <p className="mt-1 text-xs text-emerald-500">
-                    Valid Gemini OAuth credentials
-                    {previewGeminiJson(singleJson).email
-                      ? ` (${previewGeminiJson(singleJson).email})`
-                      : ""}
-                  </p>
-                )}
-                {singleJson && !previewGeminiJson(singleJson).valid && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {typeof t.has === "function" && t.has("geminiImportInvalidShape")
-                      ? t("geminiImportInvalidShape")
-                      : "The file is not a valid oauth_creds.json"}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("geminiImportPasteLabel")
-                    ? t("geminiImportPasteLabel")
-                    : "Paste the JSON content"}
-                </label>
-                <textarea
-                  value={singlePasteText}
-                  onChange={(e) => setSinglePasteText(e.target.value)}
-                  rows={6}
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs font-mono text-text-main"
-                  placeholder='{ "access_token": "...", "refresh_token": "...", "id_token": "..." }'
-                />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("geminiImportEmailLabel")
-                    ? t("geminiImportEmailLabel")
-                    : "Account email"}
-                </label>
-                <input
-                  type="email"
-                  value={singleEmail}
-                  onChange={(e) => setSingleEmail(e.target.value)}
-                  placeholder="auto-detected from id_token"
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs text-text-main"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("geminiImportNameLabel")
-                    ? t("geminiImportNameLabel")
-                    : "Connection name (optional)"}
-                </label>
-                <input
-                  type="text"
-                  value={singleName}
-                  onChange={(e) => setSingleName(e.target.value)}
-                  placeholder="My Gemini account"
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs text-text-main"
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-text-muted">
-              <input
-                type="checkbox"
-                checked={overwriteExisting}
-                onChange={(e) => setOverwriteExisting(e.target.checked)}
-              />
-              {typeof t.has === "function" && t.has("geminiImportOverwriteLabel")
-                ? t("geminiImportOverwriteLabel")
-                : "Replace existing connection if account already exists"}
-            </label>
-            <Button
-              loading={submitting}
-              onClick={handleSingleSubmit}
-              disabled={singleSubTab === "upload" ? !singleJson : !singlePasteText.trim()}
-            >
-              {typeof t.has === "function" && t.has("geminiImportSubmit")
-                ? t("geminiImportSubmit")
-                : "Import"}
-            </Button>
-          </div>
-        )}
-
-        {topTab === "bulk" && (
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-1">
-              {(["upload", "paste", "zip"] as GeminiBulkSubMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    setBulkSubMode(mode);
-                    setBulkEntries([]);
-                  }}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    bulkSubMode === mode
-                      ? "bg-bg-subtle text-text-primary"
-                      : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  {mode === "upload"
-                    ? typeof t.has === "function" && t.has("geminiImportBulkModeUpload")
-                      ? t("geminiImportBulkModeUpload")
-                      : "Upload files"
-                    : mode === "paste"
-                      ? typeof t.has === "function" && t.has("geminiImportBulkModePaste")
-                        ? t("geminiImportBulkModePaste")
-                        : "Paste JSON array"
-                      : typeof t.has === "function" && t.has("geminiImportBulkModeZip")
-                        ? t("geminiImportBulkModeZip")
-                        : "Upload ZIP"}
-                </button>
-              ))}
-            </div>
-
-            {bulkSubMode === "upload" && (
-              <div>
-                <p className="text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("geminiImportBulkUploadHint")
-                    ? t("geminiImportBulkUploadHint")
-                    : "Drop or pick up to 50 oauth_creds.json files (256KB each, 10MB total)."}
-                </p>
-                <input
-                  type="file"
-                  accept=".json"
-                  multiple
-                  onChange={handleBulkFilesChange}
-                  className="block w-full text-sm"
-                />
-              </div>
-            )}
-            {bulkSubMode === "paste" && (
-              <div>
-                <p className="text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("geminiImportBulkPasteHint")
-                    ? t("geminiImportBulkPasteHint")
-                    : "Paste an array of objects: [{ json, name?, email? }, ...]"}
-                </p>
-                <textarea
-                  value={bulkPasteText}
-                  onChange={(e) => handleBulkPasteChange(e.target.value)}
-                  rows={6}
-                  className="w-full rounded border border-border bg-bg-subtle px-2 py-1.5 text-xs font-mono text-text-main"
-                  placeholder="[{ ... }, { ... }]"
-                />
-              </div>
-            )}
-            {bulkSubMode === "zip" && (
-              <div>
-                <p className="text-xs text-text-muted mb-1">
-                  {typeof t.has === "function" && t.has("geminiImportBulkZipHint")
-                    ? t("geminiImportBulkZipHint")
-                    : "ZIP containing oauth_creds.json entries. Max 50 entries, 10MB unpacked."}
-                </p>
-                {zipExtracting ? (
-                  <p className="text-xs text-primary animate-pulse">
-                    {typeof t.has === "function" && t.has("geminiImportBulkZipExtracting")
-                      ? t("geminiImportBulkZipExtracting")
-                      : "Extracting ZIP…"}
-                  </p>
-                ) : (
-                  <input
-                    type="file"
-                    accept=".zip"
-                    onChange={handleZipUpload}
-                    className="block w-full text-sm"
-                  />
-                )}
-              </div>
-            )}
-
-            {bulkEntries.length > 0 && (
-              <div className="rounded border border-border bg-bg-subtle px-2 py-1.5 max-h-36 overflow-y-auto">
-                {bulkEntries.map((e, i) => (
-                  <div
-                    key={i}
-                    className={`text-xs py-0.5 flex items-center gap-1 ${e.parseError ? "text-red-500" : "text-text-main"}`}
-                  >
-                    <span className="material-symbols-outlined text-[12px]">
-                      {e.parseError ? "error" : "check_circle"}
-                    </span>
-                    {e.name}
-                    {e.email ? ` (${e.email})` : ""}
-                    {e.parseError ? ` — ${e.parseError}` : ""}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <label className="flex items-center gap-2 text-xs text-text-muted">
-              <input
-                type="checkbox"
-                checked={overwriteExisting}
-                onChange={(e) => setOverwriteExisting(e.target.checked)}
-              />
-              {typeof t.has === "function" && t.has("geminiImportOverwriteLabel")
-                ? t("geminiImportOverwriteLabel")
-                : "Replace existing connection if account already exists"}
-            </label>
-
-            {bulkResult && (
-              <div className="rounded bg-bg-subtle px-2 py-1.5 text-xs">
-                {bulkResult.success}/{bulkResult.total} imported
-                {bulkResult.failed > 0 ? `, ${bulkResult.failed} failed` : ""}
-              </div>
-            )}
-            {bulkErrors.length > 0 && (
-              <div className="rounded border border-red-500/30 bg-red-500/5 px-2 py-1.5 max-h-28 overflow-y-auto">
-                {bulkErrors.map((e) => (
-                  <div key={e.index} className="text-xs text-red-500 py-0.5">
-                    {e.name}: {e.message}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <Button
-              loading={bulkSubmitting}
-              onClick={handleBulkSubmit}
-              disabled={bulkEntries.filter((e) => e.json !== null).length === 0}
-            >
-              {typeof t.has === "function" && t.has("geminiImportBulkSubmit")
-                ? t("geminiImportBulkSubmit")
-                : "Import all"}
-            </Button>
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-// ──── ApplyGeminiAuthModal ────────────────────────────────────────────────────
-
-function ApplyGeminiAuthModal({
-  connectionId,
-  inProgress,
-  onConfirm,
-  onClose,
-}: {
-  connectionId: string | null;
-  inProgress: boolean;
-  onConfirm: (id: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const t = useTranslations("providers");
-  const [confirmed, setConfirmed] = useState(false);
-  const isOpen = !!connectionId;
-
-  if (!connectionId) return null;
-
-  const title =
-    typeof t.has === "function" && t.has("geminiApplyModalTitle")
-      ? t("geminiApplyModalTitle")
-      : "Apply to Local Gemini CLI";
-  const targetLabel =
-    typeof t.has === "function" && t.has("geminiApplyTargetLabel")
-      ? t("geminiApplyTargetLabel")
-      : "Target path";
-  const backupLabel =
-    typeof t.has === "function" && t.has("geminiApplyBackupLabel")
-      ? t("geminiApplyBackupLabel")
-      : "Backups";
-  const warning =
-    typeof t.has === "function" && t.has("geminiApplyWarning")
-      ? t("geminiApplyWarning")
-      : "This will replace the existing oauth_creds.json and update google_accounts.json. Continue?";
-  const confirmText =
-    typeof t.has === "function" && t.has("geminiApplyConfirmCheckbox")
-      ? t("geminiApplyConfirmCheckbox")
-      : "I confirm I want to replace the existing oauth_creds.json";
-  const applyText =
-    typeof t.has === "function" && t.has("geminiApply") ? t("geminiApply") : "Apply";
-  const accountsHint =
-    typeof t.has === "function" && t.has("geminiApplyAccountsHint")
-      ? t("geminiApplyAccountsHint")
-      : "The google_accounts.json active account will be updated to match this connection.";
-
-  return (
-    <Modal isOpen={isOpen} title={title} onClose={onClose}>
-      <div className="flex flex-col gap-4">
-        <div>
-          <div className="text-xs uppercase text-text-muted mb-1">{targetLabel}</div>
-          <code className="block rounded bg-sidebar px-2 py-1.5 text-xs font-mono text-text-main">
-            ~/.gemini/oauth_creds.json
-          </code>
-          <p className="mt-1 text-xs text-text-muted">Path is auto-detected per OS (Linux/Mac).</p>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-text-muted mb-1">{backupLabel}</div>
-          <code className="block rounded bg-sidebar px-2 py-1.5 text-xs font-mono text-text-main">
-            ~/.gemini/oauth_creds-&#123;timestamp&#125;.bak
-          </code>
-        </div>
-        <div className="rounded bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-400">
-          {accountsHint}
-        </div>
-        <p className="text-sm text-text-muted">{warning}</p>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={confirmed}
-            onChange={(e) => setConfirmed(e.target.checked)}
-          />
-          {confirmText}
-        </label>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={inProgress}>
-            Cancel
-          </Button>
-          <Button
-            loading={inProgress}
-            disabled={!confirmed || inProgress}
-            onClick={() => void onConfirm(connectionId)}
-          >
-            {applyText}
           </Button>
         </div>
       </div>

@@ -20,8 +20,8 @@ export async function GET(request: Request) {
         const connections = await getProviderConnections();
         const active = connections.filter((c: any) => c.isActive !== false);
         // Include both provider IDs and their aliases in the active set.
-        // PROVIDER_MODELS keys are aliases (e.g. 'cc' for 'claude', 'gh' for 'github').
-        // DB connections are stored under provider IDs ('claude', 'github').
+        // PROVIDER_MODELS keys are aliases (e.g. 'gh' for 'github').
+        // DB connections are stored under provider IDs ('github').
         // Without this, models for aliased providers always appear unconfigured.
         activeProviders = new Set<string>();
         for (const c of active) {

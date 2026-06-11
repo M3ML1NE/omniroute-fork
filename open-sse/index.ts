@@ -4,10 +4,8 @@ import "./utils/proxyFetch.ts";
 // Config
 export {
   PROVIDERS,
-  OAUTH_ENDPOINTS,
   CACHE_TTL,
   DEFAULT_MAX_TOKENS,
-  CLAUDE_SYSTEM_PROMPT,
   COOLDOWN_MS,
   BACKOFF_CONFIG,
 } from "./config/constants.ts";

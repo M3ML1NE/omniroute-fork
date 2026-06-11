@@ -99,7 +99,6 @@ export default function ComboDefaultsTab() {
     resetAwareQuotaCacheMaxStaleMs: 0,
     zeroLatencyOptimizationsEnabled: false,
   });
-  const [codexSessionAffinityTtlMs, setCodexSessionAffinityTtlMs] = useState(0);
   const [providerOverrides, setProviderOverrides] = useState<any>({});
   const [newOverrideProvider, setNewOverrideProvider] = useState("");
   const [saving, setSaving] = useState(false);
@@ -143,11 +142,6 @@ export default function ComboDefaultsTab() {
         if (comboData.providerOverrides) {
           setProviderOverrides(sanitizeProviderOverrides(comboData.providerOverrides));
         }
-        setCodexSessionAffinityTtlMs(
-          Number.isFinite(Number(settingsData.codexSessionAffinityTtlMs))
-            ? Number(settingsData.codexSessionAffinityTtlMs)
-            : 0
-        );
       })
       .catch((err) => console.error("Failed to fetch combo defaults:", err));
   }, []);
@@ -177,7 +171,6 @@ export default function ComboDefaultsTab() {
       const { stickyRoundRobinLimit, ...comboDefaultsPayload } = comboDefaults;
       const settingsPatch = {
         ...toGlobalRoutingPatch(comboDefaults.strategy, stickyRoundRobinLimit),
-        codexSessionAffinityTtlMs,
       };
 
       const comboDefaultsRes = await fetch("/api/settings/combo-defaults", {
@@ -377,31 +370,6 @@ export default function ComboDefaultsTab() {
           )}
         </p>
 
-        <div className="grid grid-cols-1 gap-3 pt-3 border-t border-border/50">
-          <div>
-            <p className="font-medium text-sm">
-              {translateOrFallback(t, "codexSessionAffinityTitle", "Codex session affinity")}
-            </p>
-            <p className="text-xs text-text-muted">
-              {translateOrFallback(
-                t,
-                "codexSessionAffinityDesc",
-                "Keeps one Codex conversation on the same account for this many seconds. 0 disables it."
-              )}
-            </p>
-          </div>
-          <Input
-            label={translateOrFallback(t, "codexSessionAffinityTtl", "Affinity TTL (seconds)")}
-            type="number"
-            min={0}
-            max={86400}
-            step={60}
-            value={msToSeconds(codexSessionAffinityTtlMs)}
-            onChange={(e) => setCodexSessionAffinityTtlMs(secondsInputToMs(e.target.value, 86400))}
-            className="text-sm"
-          />
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-border/50">
           <div className="md:col-span-2">
             <p className="font-medium text-sm">
@@ -521,7 +489,7 @@ export default function ComboDefaultsTab() {
               label={translateOrFallback(t, "contextRelaySummaryModel", "Summary Model")}
               type="text"
               value={comboDefaults.handoffModel ?? ""}
-              placeholder="codex/gpt-5.4"
+              placeholder="gigachat/GigaChat-2-Max"
               onChange={(e) =>
                 setComboDefaults((prev) => ({
                   ...prev,
@@ -530,15 +498,6 @@ export default function ComboDefaultsTab() {
               }
               className="text-sm"
             />
-            <div className="md:col-span-3 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                {translateOrFallback(
-                  t,
-                  "contextRelayProviderNote",
-                  "Context Relay currently generates handoffs for Codex accounts and uses these values as global defaults for new or unconfigured combos."
-                )}
-              </p>
-            </div>
           </div>
         )}
 

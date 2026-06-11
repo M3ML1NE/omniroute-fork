@@ -182,9 +182,6 @@ test("dashboard i18n keys used by OrFallback helpers exist in en.json", () => {
   const required: Array<[string, string]> = [
     ["combos", "emailVisibilityHint"],
     ["combos", "configOnlyStatus"],
-    ["settings", "codexFastTierTierLabel"],
-    ["providers", "antigravityClientProfileLabel"],
-    ["providers", "codexFastTierActiveChip"],
     ["cache", "loadingCacheAria"],
     ["costs", "legacyFreeLabel"],
     ["contextCaveman", "inputCompressionTitle"],

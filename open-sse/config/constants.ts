@@ -47,43 +47,13 @@ export const PROVIDERS = generateLegacyProviders();
 loadProviderCredentials(PROVIDERS);
 
 // Claude system prompt
-export const CLAUDE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
 
 // Antigravity default system prompt (required for API to work)
-export const ANTIGRAVITY_DEFAULT_SYSTEM =
-  "You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.\n" +
   "You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.\n" +
   "**Absolute paths only**\n" +
   "**Proactiveness**";
 
 // OAuth endpoints
-export const OAUTH_ENDPOINTS = {
-  google: {
-    token: "https://oauth2.googleapis.com/token",
-    auth: "https://accounts.google.com/o/oauth2/auth",
-  },
-  openai: {
-    token: "https://auth.openai.com/oauth/token",
-    auth: "https://auth.openai.com/oauth/authorize",
-  },
-  anthropic: {
-    token: "https://console.anthropic.com/v1/oauth/token",
-    auth: "https://console.anthropic.com/v1/oauth/authorize",
-  },
-  qwen: {
-    token: "https://chat.qwen.ai/api/v1/oauth2/token", // From CLIProxyAPI
-    auth: "https://chat.qwen.ai/api/v1/oauth2/device/code", // From CLIProxyAPI
-  },
-  qoder: {
-    token: process.env.QODER_OAUTH_TOKEN_URL || "",
-    auth: process.env.QODER_OAUTH_AUTHORIZE_URL || "",
-  },
-  github: {
-    token: "https://github.com/login/oauth/access_token",
-    auth: "https://github.com/login/oauth/authorize",
-    deviceCode: "https://github.com/login/device/code",
-  },
-};
 
 // Cache TTLs (seconds)
 export const CACHE_TTL = {

@@ -33,7 +33,7 @@ const PAGE_SIZE = 300;
  */
 function getProviderDisplayLabel(provider: string, providerNodes?: any[]): string {
   if (!provider) return "-";
-  if (provider.startsWith("openai-compatible-") || provider.startsWith("anthropic-compatible-")) {
+  if (provider.startsWith("openai-compatible-")) {
     // Try to find user-defined name from provider nodes
     if (providerNodes?.length) {
       const matchedNode = providerNodes.find(
@@ -42,18 +42,10 @@ function getProviderDisplayLabel(provider: string, providerNodes?: any[]): strin
       if (matchedNode?.name) return matchedNode.name;
     }
     // Fallback to generic labels
-    if (provider.startsWith("openai-compatible-")) {
-      const suffix = provider.replace("openai-compatible-", "");
-      const parts = suffix.split("-");
-      if (parts.length > 1 && parts[1]?.length >= 8) return `OAI-COMPAT`;
-      return `OAI: ${suffix.slice(0, 16).toUpperCase()}`;
-    }
-    if (provider.startsWith("anthropic-compatible-")) {
-      const suffix = provider.replace("anthropic-compatible-", "");
-      const parts = suffix.split("-");
-      if (parts.length > 1 && parts[1]?.length >= 8) return `ANT-COMPAT`;
-      return `ANT: ${suffix.slice(0, 16).toUpperCase()}`;
-    }
+    const suffix = provider.replace("openai-compatible-", "");
+    const parts = suffix.split("-");
+    if (parts.length > 1 && parts[1]?.length >= 8) return `OAI-COMPAT`;
+    return `OAI: ${suffix.slice(0, 16).toUpperCase()}`;
   }
   return null; // Not a compatible provider, use default PROVIDER_COLORS
 }

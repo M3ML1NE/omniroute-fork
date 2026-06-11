@@ -12,6 +12,7 @@ import {
 } from "@/lib/localDb";
 import {
   isAccountUnavailable,
+  parseTimestampMs,
   getUnavailableUntil,
   getEarliestRateLimitedUntil,
   formatRetryAfter,
@@ -30,8 +31,6 @@ import {
   classifyProviderError,
   PROVIDER_ERROR_TYPES,
 } from "@omniroute/open-sse/services/errorClassifier.ts";
-// Stripdown: codex executor removed; stub model-scope helper.
-const getCodexModelScope = (_model: string): string => "default";
 import {
   getProviderAlias,
   resolveProviderId,
@@ -43,10 +42,36 @@ import { fisherYatesShuffle, getNextFromDeckSync } from "@/shared/utils/shuffleD
 
 // ── Quota subsystem removed (Wave 1 cleanup) — stubs return neutral values ──
 const DEFAULT_QUOTA_THRESHOLD_PERCENT = 50;
-function getQuotaCache(_connectionId: string): QuotaCacheView | null { return null; }
-function getQuotaWindowStatus(_connectionId: string, _windowName: string, _thresholdPercent: number): { blocked: boolean; remainingPercent: number | null; reachedThreshold: boolean; usedPercentage: number; resetAt: string | null; remainingPercentage: number } { return { blocked: false, remainingPercent: null, reachedThreshold: false, usedPercentage: 0, resetAt: null, remainingPercentage: 100 }; }
-function isAccountQuotaExhausted(_connectionId: string): boolean { return false; }
-function looksLikeQuotaExhausted(_errorText: string): boolean { return false; }
+function getQuotaCache(_connectionId: string): QuotaCacheView | null {
+  return null;
+}
+function getQuotaWindowStatus(
+  _connectionId: string,
+  _windowName: string,
+  _thresholdPercent: number
+): {
+  blocked: boolean;
+  remainingPercent: number | null;
+  reachedThreshold: boolean;
+  usedPercentage: number;
+  resetAt: string | null;
+  remainingPercentage: number;
+} {
+  return {
+    blocked: false,
+    remainingPercent: null,
+    reachedThreshold: false,
+    usedPercentage: 0,
+    resetAt: null,
+    remainingPercentage: 100,
+  };
+}
+function isAccountQuotaExhausted(_connectionId: string): boolean {
+  return false;
+}
+function looksLikeQuotaExhausted(_errorText: string): boolean {
+  return false;
+}
 type JsonRecord = Record<string, unknown>;
 
 interface ProviderConnectionView {
@@ -95,13 +120,11 @@ interface CredentialSelectionOptions {
   forcedConnectionId?: string | null;
   excludeConnectionIds?: string[] | null;
   sessionKey?: string | null;
-  sessionAffinityTtlMs?: number | null;
 }
 
 interface CooldownInspectionState {
   connection: ProviderConnectionView;
   connectionCooldownMs: number | null;
-  codexScopeCooldownMs: number | null;
   retryableModelCooldownMs: number | null;
 }
 
@@ -240,9 +263,7 @@ export function extractSessionAffinityKey(
   headers?: Headers | { get?: (name: string) => string | null } | null
 ): string | null {
   const headerKey = normalizeSessionKey(
-    readHeaderValue(headers, "x-codex-session-id") ??
-      readHeaderValue(headers, "x-session-id") ??
-      readHeaderValue(headers, "x-omniroute-session"),
+    readHeaderValue(headers, "x-session-id") ?? readHeaderValue(headers, "x-omniroute-session"),
     "header"
   );
   if (headerKey) return headerKey;
@@ -264,17 +285,6 @@ export function extractSessionAffinityKey(
 
 function formatSessionKeyForLog(sessionKey: string): string {
   return `${sessionKey.slice(0, 18)}...`;
-}
-
-function getCodexLimitPolicy(providerSpecificData: JsonRecord): {
-  use5h: boolean;
-  useWeekly: boolean;
-} {
-  const policy = asRecord(providerSpecificData.codexLimitPolicy);
-  return {
-    use5h: toBooleanOrDefault(policy.use5h, true),
-    useWeekly: toBooleanOrDefault(policy.useWeekly, true),
-  };
 }
 
 interface QuotaLimitPolicy {
@@ -310,77 +320,6 @@ function normalizeWindowName(windowName: unknown): string | null {
 
 function uniqueWindows(windows: string[]): string[] {
   return [...new Set(windows)];
-}
-
-function normalizeCodexWindowName(windowName: unknown): string | null {
-  if (typeof windowName !== "string") return null;
-  const normalized = windowName.trim().toLowerCase();
-  if (normalized === "session (5h)" || normalized === "5h" || normalized === "five_hour") {
-    return "session";
-  }
-  if (normalized === "weekly (7d)" || normalized === "7d" || normalized === "seven_day") {
-    return "weekly";
-  }
-  return normalized;
-}
-
-function applyCodexWindowPolicy(rawWindows: string[], providerSpecificData: JsonRecord): string[] {
-  const codexPolicy = getCodexLimitPolicy(providerSpecificData);
-  const normalizedRaw = rawWindows.map(normalizeCodexWindowName).filter(Boolean) as string[];
-
-  // Preserve explicitly configured custom windows, but enforce canonical Codex windows
-  // from toggles so weekly exhaustion is never skipped when useWeekly=true.
-  let windows = [...normalizedRaw];
-  windows = windows.filter((windowName) => {
-    if (windowName === "session") return codexPolicy.use5h;
-    if (windowName === "weekly") return codexPolicy.useWeekly;
-    return true;
-  });
-  if (codexPolicy.use5h) windows.push("session");
-  if (codexPolicy.useWeekly) windows.push("weekly");
-
-  return uniqueWindows(windows);
-}
-
-function getCodexScopeRateLimitedUntil(
-  providerSpecificData: JsonRecord,
-  model: string | null
-): string | null {
-  if (!model) return null;
-  const scope = getCodexModelScope(model);
-  const scopeMap = asRecord(providerSpecificData.codexScopeRateLimitedUntil);
-  const value = scopeMap[scope];
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-function isCodexScopeUnavailable(
-  connection: ProviderConnectionView,
-  model: string | null
-): boolean {
-  const until = getCodexScopeRateLimitedUntil(connection.providerSpecificData, model);
-  if (!until) return false;
-  return new Date(until).getTime() > Date.now();
-}
-
-function getEarliestCodexScopeRateLimitedUntil(
-  connections: ProviderConnectionView[],
-  model: string | null
-): string | null {
-  let earliest: string | null = null;
-  let earliestMs = Infinity;
-
-  for (const conn of connections) {
-    const until = getCodexScopeRateLimitedUntil(conn.providerSpecificData, model);
-    if (!until) continue;
-    const ms = new Date(until).getTime();
-    if (!Number.isFinite(ms) || ms <= Date.now()) continue;
-    if (ms < earliestMs) {
-      earliest = until;
-      earliestMs = ms;
-    }
-  }
-
-  return earliest;
 }
 
 function normalizeStatus(value: string | null): string {
@@ -425,17 +364,6 @@ export function resolveQuotaLimitPolicy(
   const rawWindows = Array.isArray(rawPolicy.windows) ? rawPolicy.windows : [];
   const windows = rawWindows.map(normalizeWindowName).filter(Boolean) as string[];
 
-  if (provider === "codex") {
-    const defaultWindows = applyCodexWindowPolicy(windows, providerSpecificData);
-    const enabled = toBooleanOrDefault(rawPolicy.enabled, defaultWindows.length > 0);
-
-    return {
-      enabled,
-      thresholdPercent: normalizeQuotaThreshold(rawPolicy.thresholdPercent),
-      windows: defaultWindows,
-    };
-  }
-
   return {
     enabled: toBooleanOrDefault(rawPolicy.enabled, false),
     thresholdPercent: normalizeQuotaThreshold(rawPolicy.thresholdPercent),
@@ -470,9 +398,8 @@ export function evaluateQuotaLimitPolicy(
 }
 
 function parseFutureDateMs(value: string | null): number | null {
-  if (!value) return null;
-  const ms = new Date(value).getTime();
-  if (!Number.isFinite(ms) || ms <= Date.now()) return null;
+  const ms = parseTimestampMs(value);
+  if (ms === null || ms <= Date.now()) return null;
   return ms;
 }
 
@@ -799,7 +726,6 @@ export async function getProviderCredentials(
         refreshToken: null,
         expiresAt: null,
         projectId: null,
-        copilotToken: null,
         providerSpecificData: {},
         connectionId: "noauth",
         testStatus: "active",
@@ -944,7 +870,6 @@ export async function getProviderCredentials(
       if (!allowSuppressedConnections) {
         if (!allowRateLimitedConnections && isAccountUnavailable(c.rateLimitedUntil)) return false;
         if (isTerminalConnectionStatus(c)) return false;
-        if (provider === "codex" && isCodexScopeUnavailable(c, requestedModel)) return false;
         // Per-model lockout: if this specific model is locked on this connection, skip it
         if (requestedModel && isModelLocked(provider, c.id, requestedModel)) return false;
       }
@@ -959,7 +884,6 @@ export async function getProviderCredentials(
       const excluded = excludedConnectionIds.has(c.id);
       const rateLimited = isAccountUnavailable(c.rateLimitedUntil);
       const terminalStatus = isTerminalConnectionStatus(c);
-      const codexScopeLimited = provider === "codex" && isCodexScopeUnavailable(c, requestedModel);
       const modelLocked =
         Boolean(requestedModel) && isModelLocked(provider, c.id, requestedModel as string);
       const modelExcluded =
@@ -982,14 +906,6 @@ export async function getProviderCredentials(
             ? `  → ${c.id?.slice(0, 8)} | retained terminal status=${c.testStatus} for combo live test`
             : `  → ${c.id?.slice(0, 8)} | skipped terminal status=${c.testStatus}`
         );
-      } else if (codexScopeLimited) {
-        const scopeUntil = getCodexScopeRateLimitedUntil(c.providerSpecificData, requestedModel);
-        log.debug(
-          "AUTH",
-          allowSuppressedConnections
-            ? `  → ${c.id?.slice(0, 8)} | retained codex scope-limited account until ${scopeUntil} for combo live test`
-            : `  → ${c.id?.slice(0, 8)} | codex scope-limited until ${scopeUntil}`
-        );
       } else if (modelLocked) {
         const lockout = getModelLockoutInfo(provider, c.id, requestedModel);
         log.debug(
@@ -1004,12 +920,6 @@ export async function getProviderCredentials(
     if (availableConnections.length === 0) {
       const cooldownStates: CooldownInspectionState[] = connections.map((connection) => {
         const connectionCooldownMs = parseFutureDateMs(connection.rateLimitedUntil);
-        const codexScopeCooldownMs =
-          provider === "codex"
-            ? parseFutureDateMs(
-                getCodexScopeRateLimitedUntil(connection.providerSpecificData, requestedModel)
-              )
-            : null;
         const modelLockout = requestedModel
           ? getModelLockoutInfo(provider, connection.id, requestedModel)
           : null;
@@ -1023,7 +933,6 @@ export async function getProviderCredentials(
         return {
           connection,
           connectionCooldownMs,
-          codexScopeCooldownMs,
           retryableModelCooldownMs,
         };
       });
@@ -1033,9 +942,6 @@ export async function getProviderCredentials(
           const candidates: Array<{ ms: number; connection: ProviderConnectionView }> = [];
           if (state.connectionCooldownMs !== null) {
             candidates.push({ ms: state.connectionCooldownMs, connection: state.connection });
-          }
-          if (state.codexScopeCooldownMs !== null) {
-            candidates.push({ ms: state.codexScopeCooldownMs, connection: state.connection });
           }
           if (state.retryableModelCooldownMs !== null) {
             candidates.push({ ms: state.retryableModelCooldownMs, connection: state.connection });
@@ -1048,8 +954,7 @@ export async function getProviderCredentials(
         Boolean(requestedModel) &&
         cooldownStates.length > 0 &&
         cooldownStates.every((state) => {
-          const hasModelSpecificCooldown =
-            state.codexScopeCooldownMs !== null || state.retryableModelCooldownMs !== null;
+          const hasModelSpecificCooldown = state.retryableModelCooldownMs !== null;
           return hasModelSpecificCooldown && state.connectionCooldownMs === null;
         });
 
@@ -1167,23 +1072,12 @@ export async function getProviderCredentials(
 
     const settings = await getSettings();
     const strategy = settings.fallbackStrategy || "fill-first";
-    const sessionAffinityTtlMs =
-      provider === "codex"
-        ? Number.isFinite(Number(options.sessionAffinityTtlMs)) &&
-          Number(options.sessionAffinityTtlMs) > 0
-          ? Number(options.sessionAffinityTtlMs)
-          : Number.isFinite(Number(settings.codexSessionAffinityTtlMs)) &&
-              Number(settings.codexSessionAffinityTtlMs) > 0
-            ? Number(settings.codexSessionAffinityTtlMs)
-            : 0
-        : 0;
 
     let connection;
     const affinityConnection = await selectSessionAffinityConnection(
       provider,
       options.sessionKey,
-      orderedConnections,
-      sessionAffinityTtlMs
+      orderedConnections
     );
     if (affinityConnection) {
       connection = affinityConnection;
@@ -1340,10 +1234,6 @@ export async function getProviderCredentials(
       refreshToken: connection.refreshToken,
       expiresAt: connection.tokenExpiresAt || connection.expiresAt || null,
       projectId: connection.projectId,
-      copilotToken:
-        typeof connection.providerSpecificData.copilotToken === "string"
-          ? connection.providerSpecificData.copilotToken
-          : null,
       providerSpecificData: connection.providerSpecificData,
       // Fields the generic quota fetcher (open-sse/services/genericQuotaFetcher.ts)
       // needs to delegate to getUsageForProvider for any provider — kept aliased
@@ -1440,33 +1330,16 @@ export async function markAccountUnavailable(
     // If this connection was ALREADY marked unavailable by a prior concurrent
     // request (within the mutex window), skip re-marking to avoid resetting
     // the cooldown timer or double-incrementing the backoff level.
-    if (conn?.rateLimitedUntil && new Date(conn.rateLimitedUntil).getTime() > Date.now()) {
+    const connRateLimitMs = parseTimestampMs(conn?.rateLimitedUntil);
+    if (connRateLimitMs !== null && connRateLimitMs > Date.now()) {
       log.info(
         "AUTH",
-        `${connectionId.slice(0, 8)} already marked unavailable (until ${conn.rateLimitedUntil}), skipping duplicate mark`
+        `${connectionId.slice(0, 8)} already marked unavailable (until ${conn?.rateLimitedUntil}), skipping duplicate mark`
       );
       return {
         shouldFallback: true,
-        cooldownMs: new Date(conn.rateLimitedUntil).getTime() - Date.now(),
+        cooldownMs: connRateLimitMs - Date.now(),
       };
-    }
-
-    // T09: Codex scope-aware lockout guard (codex vs spark independent pools).
-    if (provider === "codex" && model) {
-      const scopeRateLimitedUntil = getCodexScopeRateLimitedUntil(
-        conn?.providerSpecificData || {},
-        model
-      );
-      if (scopeRateLimitedUntil && new Date(scopeRateLimitedUntil).getTime() > Date.now()) {
-        log.info(
-          "AUTH",
-          `${connectionId.slice(0, 8)} already scope-limited for ${getCodexModelScope(model)} (until ${scopeRateLimitedUntil}), skipping duplicate mark`
-        );
-        return {
-          shouldFallback: true,
-          cooldownMs: new Date(scopeRateLimitedUntil).getTime() - Date.now(),
-        };
-      }
     }
 
     const effectiveProviderProfile =
@@ -1600,40 +1473,6 @@ export async function markAccountUnavailable(
 
     const errorMsg = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
 
-    // T09: Codex per-scope lockout (do not block the whole account globally).
-    if (provider === "codex" && status === 429 && model && conn) {
-      const scope = getCodexModelScope(model);
-      const existingScopeMap = asRecord(conn.providerSpecificData.codexScopeRateLimitedUntil);
-      const persistedScopeUntil = getCodexScopeRateLimitedUntil(conn.providerSpecificData, model);
-      const scopeRateLimitedUntil = persistedScopeUntil || getUnavailableUntil(cooldownMs);
-      const scopeCooldownMs = Math.max(new Date(scopeRateLimitedUntil).getTime() - Date.now(), 0);
-
-      await updateProviderConnection(connectionId, {
-        testStatus: "unavailable",
-        lastError: errorMsg,
-        errorCode: status,
-        lastErrorAt: new Date().toISOString(),
-        backoffLevel: newBackoffLevel ?? backoffLevel,
-        providerSpecificData: {
-          ...conn.providerSpecificData,
-          codexScopeRateLimitedUntil: {
-            ...existingScopeMap,
-            [scope]: scopeRateLimitedUntil,
-          },
-        },
-      });
-
-      if (scopeCooldownMs > 0) {
-        lockModel(provider, connectionId, model, reason || "unknown", scopeCooldownMs);
-      }
-
-      if (status && errorMsg) {
-        console.error(`❌ ${provider} [${status}] (${scope}): ${errorMsg}`);
-      }
-
-      return { shouldFallback: true, cooldownMs: scopeCooldownMs };
-    }
-
     const baseUpdate = {
       lastError: errorMsg,
       lastErrorType: providerErrorType,
@@ -1738,7 +1577,7 @@ export async function clearRecoveredProviderState(
  * Extract API key from request headers.
  *
  * Honors both:
- * - `Authorization: Bearer <key>` (OpenAI / OmniRoute / Codex CLI / Bearer clients)
+ * - `Authorization: Bearer <key>` (OpenAI / OmniRoute / Bearer clients)
  * - `x-api-key: <key>` (Anthropic Messages API contract — Claude Code,
  *   `@anthropic-ai/sdk`, any SDK that sets `anthropic-version`)
  *

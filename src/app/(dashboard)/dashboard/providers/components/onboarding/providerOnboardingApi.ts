@@ -25,7 +25,7 @@ export type OnboardingTestResult = {
   [key: string]: unknown;
 };
 
-export type CompatibleNodeMode = "openai" | "anthropic";
+export type CompatibleNodeMode = "openai";
 
 export type CompatibleProviderNode = {
   id: string;
@@ -36,7 +36,6 @@ export type CompatibleProviderNode = {
 
 export type OnboardingProviderNodes = {
   openaiCompatibleProviderEnabled?: boolean;
-  anthropicCompatibleProviderEnabled?: boolean;
 };
 
 export type CreateCompatibleProviderNodeInput = {
@@ -60,7 +59,7 @@ export type CreateOnboardingConnectionInput = {
 };
 
 const compatibleProviderNodeInputSchema = z.object({
-  mode: z.enum(["openai", "anthropic"]),
+  mode: z.enum(["openai"]),
   name: z.string().trim().min(1, "Name is required"),
   prefix: z.string().trim().min(1, "Prefix is required"),
   baseUrl: z.string().trim().min(1, "Base URL is required"),
@@ -81,7 +80,6 @@ const compatibleProviderNodeInputSchema = z.object({
 const providerNodesResponseSchema = z
   .object({
     openaiCompatibleProviderEnabled: z.boolean().optional(),
-    anthropicCompatibleProviderEnabled: z.boolean().optional(),
   })
   .catchall(z.unknown());
 
@@ -149,7 +147,6 @@ export async function fetchOnboardingProviderNodes(): Promise<OnboardingProvider
   const parsed = parseOrThrow(providerNodesResponseSchema, data, "Invalid provider node response");
   return {
     openaiCompatibleProviderEnabled: parsed.openaiCompatibleProviderEnabled === true,
-    anthropicCompatibleProviderEnabled: parsed.anthropicCompatibleProviderEnabled === true,
   };
 }
 
@@ -228,13 +225,6 @@ export function buildCompatibleNodeRequest(input: CreateCompatibleProviderNodeIn
       hasModelsPath: true,
       chatPath: "",
     },
-    anthropic: {
-      type: "anthropic-compatible",
-      hasApiType: false,
-      hasModelsPath: true,
-      chatPath: "",
-    },
-
   } as const;
   const defaults = modeDefaults[sanitizedInput.mode];
   const body: Record<string, unknown> = {

@@ -46,61 +46,12 @@ const PREFERRED_BY_FAMILY: Record<string, string> = {
   mimo: "moonshot",
 };
 
-const CODEX_NATIVE_RESPONSES_MODELS = new Set(["gpt-5.5"]);
-
 type TrafficType = "production" | "shadow";
 
 type ExecuteChatWithBreakerOptions = {
   trafficType?: TrafficType;
   [key: string]: any;
 };
-
-function getHeaderValue(headers: Record<string, unknown> | null | undefined, name: string) {
-  if (!headers || typeof headers !== "object") return "";
-  const lowerName = name.toLowerCase();
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() !== lowerName) continue;
-    return Array.isArray(value) ? value.join(",") : String(value ?? "");
-  }
-  return "";
-}
-
-function isCodexNativeResponsesRequest(
-  body: any,
-  endpointPath: string,
-  headers: Record<string, unknown> | null | undefined
-) {
-  const normalizedEndpoint = String(endpointPath || "").replace(/\/+$/, "");
-  if (!/(^|\/)responses(?=\/|$)/i.test(normalizedEndpoint)) return false;
-  if (/\/responses\/compact$/i.test(normalizedEndpoint)) return true;
-
-  const userAgent = getHeaderValue(headers, "user-agent").toLowerCase();
-  if (userAgent.includes("codex")) return true;
-  if (getHeaderValue(headers, "x-codex-session-id")) return true;
-  if (getHeaderValue(headers, "x-codex-window-id")) return true;
-  if (getHeaderValue(headers, "x-codex-turn-metadata")) return true;
-
-  const metadataSource =
-    body && typeof body === "object" && body.metadata && typeof body.metadata === "object"
-      ? String(body.metadata.source || "")
-      : "";
-  return metadataSource.toLowerCase().includes("codex");
-}
-
-async function hasOnlyActiveCodexAccount() {
-  try {
-    const { getProviderConnections } = await import("@/lib/db/providers");
-    const connections = await getProviderConnections({ isActive: true });
-    const providers = new Set(
-      connections
-        .map((connection: any) => String(connection?.provider || "").trim())
-        .filter(Boolean)
-    );
-    return providers.size === 1 && providers.has("codex");
-  } catch {
-    return false;
-  }
-}
 
 export async function resolveModelOrError(
   modelStr: string,
@@ -110,62 +61,6 @@ export async function resolveModelOrError(
 ) {
   const modelInfo = await getModelInfo(modelStr);
   const sourceFormat = detectFormatFromEndpoint(body, endpointPath);
-
-  if (
-    modelInfo.provider === "openai" &&
-    typeof modelInfo.model === "string" &&
-    CODEX_NATIVE_RESPONSES_MODELS.has(modelInfo.model) &&
-    sourceFormat === "openai-responses" &&
-    isCodexNativeResponsesRequest(body, endpointPath, requestHeaders)
-  ) {
-    log.info("ROUTING", `${modelStr} → codex/${modelInfo.model} (Codex native responses)`);
-    modelInfo.provider = "codex";
-  }
-
-  if (
-    modelInfo.provider === "openai" &&
-    modelInfo.model === "gpt-5.5" &&
-    sourceFormat === "openai-responses" &&
-    !isCodexNativeResponsesRequest(body, endpointPath, requestHeaders) &&
-    (await hasOnlyActiveCodexAccount())
-  ) {
-    log.info("ROUTING", `${modelStr} → codex/gpt-5.5-medium (Codex-only active account)`);
-    modelInfo.provider = "codex";
-    modelInfo.model = "gpt-5.5-medium";
-  }
-
-  // Forced-rewrite: codex provider doesn't serve DeepSeek/Qwen/Kimi/etc. Reroute
-  // these to their canonical native provider so the request lands on the right
-  // upstream API key instead of failing with a 400 on the OAuth account.
-  // Ambiguous candidates (e.g. deepseek-v4-pro lives on both ds + opencode-go)
-  // resolve to the model-family's native provider via NON_OAUTH_PROVIDER_BY_FAMILY.
-  if (
-    modelInfo.provider === "codex" &&
-    typeof modelInfo.model === "string" &&
-    NON_OAUTH_MODEL_PREFIX.test(modelInfo.model)
-  ) {
-    log.info(
-      "ROUTING",
-      `codex/${modelInfo.model} → re-resolving via native provider (codex OAuth does not serve this model)`
-    );
-    const rerouted = await getModelInfo(modelInfo.model);
-    if (rerouted.provider && rerouted.provider !== "codex") {
-      log.info("ROUTING", `codex/${modelInfo.model} → ${rerouted.provider}/${rerouted.model}`);
-      Object.assign(modelInfo, rerouted);
-    } else if ((rerouted as any).errorType === "ambiguous_model") {
-      const candidates: string[] = (rerouted as any).candidateProviders || [];
-      const family = modelInfo.model.match(NON_OAUTH_MODEL_PREFIX)?.[1]?.toLowerCase();
-      const pick = family && PREFERRED_BY_FAMILY[family];
-      if (pick && candidates.includes(pick)) {
-        log.info(
-          "ROUTING",
-          `codex/${modelInfo.model} → ${pick}/${modelInfo.model} (ambiguity resolved by family)`
-        );
-        modelInfo.provider = pick;
-        modelInfo.model = (rerouted as any).model;
-      }
-    }
-  }
 
   // "auto" is a combo prefix, not a provider. parseModel("auto/fast") splits it into
   // provider="auto" model="fast" — redirect to matching combo before credential lookup fails.

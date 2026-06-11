@@ -66,9 +66,9 @@ test("parseSSEToOpenAIResponse preserves UTF-8 multibyte content", () => {
 
 test("parseSSEToOpenAIResponse ignores Responses API SSE payloads", () => {
   const rawSSE = [
-    'data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-5.3-codex","status":"in_progress","output":[]}}',
+    'data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-5.4","status":"in_progress","output":[]}}',
     'data: {"type":"response.output_text.delta","output_index":0,"delta":"Brasilia"}',
-    'data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.3-codex","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Brasilia"}]}]}}',
+    'data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Brasilia"}]}]}}',
     "data: [DONE]",
   ].join("\n");
 
@@ -146,7 +146,7 @@ test("parseSSEToClaudeResponse ignores malformed payloads and returns null when 
 test("parseSSEToClaudeResponse ignores Responses API SSE payloads", () => {
   const rawSSE = [
     "event: response.created",
-    'data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-5.3-codex","status":"in_progress","output":[]}}',
+    'data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-5.4","status":"in_progress","output":[]}}',
     "",
     "event: response.output_text.delta",
     'data: {"type":"response.output_text.delta","output_index":0,"delta":"Brasilia"}',
@@ -208,7 +208,7 @@ test("parseSSEToResponsesOutput handles large payloads without truncation", () =
 test("parseSSEToResponsesOutput treats response.cancelled as terminal and reconstructs output from deltas", () => {
   const rawSSE = [
     "event: response.created",
-    'data: {"type":"response.created","response":{"id":"resp_cancelled","model":"gpt-5.3-codex","status":"in_progress","output":[]}}',
+    'data: {"type":"response.created","response":{"id":"resp_cancelled","model":"gpt-5.4","status":"in_progress","output":[]}}',
     "",
     "event: response.output_item.added",
     'data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":""}]}}',
@@ -220,7 +220,7 @@ test("parseSSEToResponsesOutput treats response.cancelled as terminal and recons
     'data: {"type":"response.output_text.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"lo"}',
     "",
     "event: response.cancelled",
-    'data: {"type":"response.cancelled","response":{"id":"resp_cancelled","model":"gpt-5.3-codex","status":"cancelled","output":[],"usage":{"input_tokens":3}}}',
+    'data: {"type":"response.cancelled","response":{"id":"resp_cancelled","model":"gpt-5.4","status":"cancelled","output":[],"usage":{"input_tokens":3}}}',
     "",
     "data: [DONE]",
   ].join("\n");
@@ -237,7 +237,7 @@ test("parseSSEToResponsesOutput treats response.cancelled as terminal and recons
 test("parseSSEToResponsesOutput treats response.canceled as terminal and reconstructs message text without added item", () => {
   const rawSSE = [
     'data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"Bye"}',
-    'data: {"type":"response.canceled","response":{"id":"resp_canceled","model":"gpt-5.3-codex","output":[]}}',
+    'data: {"type":"response.canceled","response":{"id":"resp_canceled","model":"gpt-5.4","output":[]}}',
     "data: [DONE]",
   ].join("\n");
 

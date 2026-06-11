@@ -20,8 +20,6 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-const CODEX_REASONING_EFFORT_VALUES = new Set(["none", "low", "medium", "high", "xhigh"]);
-const REQUEST_DEFAULT_SERVICE_TIER_VALUES = new Set(["default", "priority", "fast", "flex"]);
 
 function validateProviderSpecificData(
   data: Record<string, unknown> | undefined,
@@ -117,46 +115,6 @@ function validateProviderSpecificData(
         message: "providerSpecificData.requestDefaults must be an object",
         path: ["requestDefaults"],
       });
-    } else {
-      const requestDefaultsRecord = requestDefaults as Record<string, unknown>;
-      const reasoningEffort = requestDefaultsRecord.reasoningEffort;
-      if (
-        reasoningEffort !== undefined &&
-        reasoningEffort !== null &&
-        (typeof reasoningEffort !== "string" ||
-          !CODEX_REASONING_EFFORT_VALUES.has(reasoningEffort.trim().toLowerCase()))
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            "providerSpecificData.requestDefaults.reasoningEffort must be one of none, low, medium, high, xhigh",
-          path: ["requestDefaults", "reasoningEffort"],
-        });
-      }
-
-      const serviceTier = requestDefaultsRecord.serviceTier;
-      if (
-        serviceTier !== undefined &&
-        serviceTier !== null &&
-        (typeof serviceTier !== "string" ||
-          !REQUEST_DEFAULT_SERVICE_TIER_VALUES.has(serviceTier.trim().toLowerCase()))
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message:
-            "providerSpecificData.requestDefaults.serviceTier must be one of default, priority, fast, flex when provided",
-          path: ["requestDefaults", "serviceTier"],
-        });
-      }
-
-      const context1m = requestDefaultsRecord.context1m;
-      if (context1m !== undefined && context1m !== null && typeof context1m !== "boolean") {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "providerSpecificData.requestDefaults.context1m must be a boolean",
-          path: ["requestDefaults", "context1m"],
-        });
-      }
     }
   }
 
@@ -734,7 +692,6 @@ export const updateSettingsSchema = z.object({
   bruteForceProtection: z.boolean().optional(),
   hiddenSidebarItems: z.array(z.enum(HIDEABLE_SIDEBAR_ITEM_IDS)).optional(),
   comboConfigMode: z.enum(COMBO_CONFIG_MODES).optional(),
-  codexSessionAffinityTtlMs: z.number().int().min(0).max(86_400_000).optional(),
   // Routing settings (#134)
   fallbackStrategy: settingsFallbackStrategySchema.optional(),
   wildcardAliases: z.array(z.object({ pattern: z.string(), target: z.string() })).optional(),
@@ -1882,7 +1839,7 @@ export const createProviderNodeSchema = z
       ])
       .optional(),
     baseUrl: z.string().trim().min(1).optional(),
-    type: z.enum(["openai-compatible", "anthropic-compatible"]).optional(),
+    type: z.enum(["openai-compatible"]).optional(),
     chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
     modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
   })
@@ -1918,7 +1875,7 @@ export const updateProviderNodeSchema = z.object({
 export const providerNodeValidateSchema = z.object({
   baseUrl: z.string().trim().min(1, "Base URL and API key required"),
   apiKey: z.string().trim().optional(),
-  type: z.enum(["openai-compatible", "anthropic-compatible"]).optional(),
+  type: z.enum(["openai-compatible"]).optional(),
   chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
   modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
 });

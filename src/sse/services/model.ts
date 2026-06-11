@@ -110,24 +110,6 @@ export async function getModelInfo(modelStr) {
       };
     }
 
-    // Check Anthropic Compatible nodes
-    const anthropicNodes = await getProviderNodes({ type: "anthropic-compatible" });
-    const matchedAnthropic = anthropicNodes.find(
-      (node) => node.prefix === prefixToCheck || node.id === prefixToCheck
-    );
-    if (matchedAnthropic) {
-      const apiFormat = await lookupCustomModelApiFormat(
-        matchedAnthropic.id as string,
-        parsed.model as string
-      );
-      return {
-        provider: matchedAnthropic.id,
-        model: parsed.model,
-        extendedContext,
-        ...(apiFormat && { apiFormat }),
-      };
-    }
-
     // stripModelPrefix: if enabled, strip provider prefix and re-resolve
     // the bare model name using existing heuristics (claude-* → anthropic, etc.)
     try {

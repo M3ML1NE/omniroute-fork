@@ -53,7 +53,7 @@ test("createProgressTransform maps SSE text output to valid byte stream with pro
 
 test("createPassthroughStreamWithLogger omits [DONE] for Responses clients", async () => {
   const transform = createPassthroughStreamWithLogger(
-    "codex",
+    "pollinations",
     null,
     null,
     "gpt-5.5-low",
@@ -93,7 +93,7 @@ test("createPassthroughStreamWithLogger omits [DONE] for Responses clients", asy
 
 test("createPassthroughStreamWithLogger synthesizes reasoning summary events from reasoning output items", async () => {
   const transform = createPassthroughStreamWithLogger(
-    "codex",
+    "pollinations",
     null,
     null,
     "gpt-5.5-low",
@@ -135,7 +135,7 @@ test("createPassthroughStreamWithLogger synthesizes reasoning summary events fro
 
 test("createPassthroughStreamWithLogger shows a placeholder for encrypted reasoning items", async () => {
   const transform = createPassthroughStreamWithLogger(
-    "codex",
+    "pollinations",
     null,
     null,
     "gpt-5.5-low",
@@ -177,7 +177,7 @@ test("createPassthroughStreamWithLogger shows a placeholder for encrypted reason
 
 test("createPassthroughStreamWithLogger backfills completed output from function_call arguments events", async () => {
   const transform = createPassthroughStreamWithLogger(
-    "codex",
+    "pollinations",
     null,
     null,
     "gpt-5.5-low",
@@ -225,7 +225,7 @@ test("createPassthroughStreamWithLogger backfills completed output from function
 test("createPassthroughStreamWithLogger keeps reasoning deltas out of logged assistant content", async () => {
   let completePayload = null;
   const transform = createPassthroughStreamWithLogger(
-    "codex",
+    "pollinations",
     null,
     null,
     "gpt-5.5-low",

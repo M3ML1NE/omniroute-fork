@@ -11,14 +11,11 @@ import {
   getProviderNodeById,
   isCloudEnabled,
 } from "@/models";
-import {
-  isOpenAICompatibleProvider,
-} from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { syncToCloud } from "@/lib/cloudSync";
 import { createProviderSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
-import { normalizeQoderPatProviderData } from "@omniroute/open-sse/services/qoderCli";
 import {
   normalizeProviderSpecificData,
   sanitizeProviderSpecificDataForResponse,
@@ -83,8 +80,7 @@ export async function POST(request: Request) {
 
     // Business validation
     const isValidProvider =
-      isManagedProviderConnectionId(provider) ||
-      isOpenAICompatibleProvider(provider);
+      isManagedProviderConnectionId(provider) || isOpenAICompatibleProvider(provider);
 
     if (!isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -93,10 +89,6 @@ export async function POST(request: Request) {
     let providerSpecificData = incomingPsd || null;
     const allowMultipleCompatibleConnections =
       process.env.ALLOW_MULTI_CONNECTIONS_PER_COMPAT_NODE === "true";
-
-    if (provider === "qoder") {
-      providerSpecificData = normalizeQoderPatProviderData(providerSpecificData || {});
-    }
 
     if (isOpenAICompatibleProvider(provider)) {
       const node: any = await getProviderNodeById(provider);

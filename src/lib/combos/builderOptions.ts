@@ -176,9 +176,6 @@ function getCompatibleProviderVisual(providerNodeType: string | null): ProviderV
   if (providerNodeType === "openai-compatible") {
     return { icon: "api", color: "#10A37F", source: "provider-node" };
   }
-  if (providerNodeType === "anthropic-compatible") {
-    return { icon: "api", color: "#D97757", source: "provider-node" };
-  }
   return { icon: "api", color: "#6B7280", source: "provider-node" };
 }
 

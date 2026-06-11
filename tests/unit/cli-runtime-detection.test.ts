@@ -37,16 +37,12 @@ describe("CLI_TOOL_IDS", () => {
   it("should include all expected tools", () => {
     const expected = [
       "claude",
-      "codex",
       "droid",
       "openclaw",
-      "cursor",
-      "windsurf",
       "cline",
       "kilo",
       "continue",
       "opencode",
-      "qoder",
       "qwen",
     ];
     for (const id of expected) {
@@ -151,23 +147,23 @@ describe("Healthcheck — checkRunnable", () => {
     }
   });
 
-  it("should detect qodercli via env override and mark it runnable", async () => {
-    const prev = process.env.CLI_QODER_BIN;
+  it("should detect qwen via env override and mark it runnable", async () => {
+    const prev = process.env.CLI_QWEN_BIN;
     const script =
       process.platform === "win32"
-        ? createFile(tmpDir, "qoder.cmd", "@echo off\necho qodercli 0.1.37\n")
-        : createFile(tmpDir, "qodercli", "#!/bin/sh\necho qodercli 0.1.37\n");
+        ? createFile(tmpDir, "qwen.cmd", "@echo off\necho qwen 0.1.37\n")
+        : createFile(tmpDir, "qwen", "#!/bin/sh\necho qwen 0.1.37\n");
 
-    process.env.CLI_QODER_BIN = script;
+    process.env.CLI_QWEN_BIN = script;
     try {
-      const result = await getCliRuntimeStatus("qoder");
+      const result = await getCliRuntimeStatus("qwen");
       assert.equal(result.installed, true);
       assert.equal(result.runnable, true);
       assert.equal(result.commandPath, script);
       assert.equal(result.reason, null);
     } finally {
-      if (prev !== undefined) process.env.CLI_QODER_BIN = prev;
-      else delete process.env.CLI_QODER_BIN;
+      if (prev !== undefined) process.env.CLI_QWEN_BIN = prev;
+      else delete process.env.CLI_QWEN_BIN;
     }
   });
 });
@@ -188,15 +184,6 @@ describe("continue tool — no binary required", () => {
   it("should report installed=true without checking binary", async () => {
     const result = await getCliRuntimeStatus("continue");
     assert.equal(result.installed, true);
-    assert.equal(result.reason, "not_required");
-  });
-});
-
-describe("windsurf tool — guide-only integration", () => {
-  it("should report installed=true without requiring a local binary", async () => {
-    const result = await getCliRuntimeStatus("windsurf");
-    assert.equal(result.installed, true);
-    assert.equal(result.runnable, true);
     assert.equal(result.reason, "not_required");
   });
 });

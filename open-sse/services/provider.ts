@@ -175,17 +175,21 @@ export function detectFormat(body) {
   return "openai";
 }
 
+const OPENAI_COMPATIBLE_FALLBACK_CONFIG = {
+  format: "openai",
+  baseUrl: OPENAI_COMPATIBLE_DEFAULTS.baseUrl,
+};
+
 // Get provider config
 export function getProviderConfig(provider, providerSpecificData = null) {
   if (isOpenAICompatible(provider)) {
     const apiType = getOpenAICompatibleType(provider, providerSpecificData);
     return {
-      ...PROVIDERS.openai,
+      ...OPENAI_COMPATIBLE_FALLBACK_CONFIG,
       format: apiType === "responses" ? "openai-responses" : "openai",
-      baseUrl: OPENAI_COMPATIBLE_DEFAULTS.baseUrl,
     };
   }
-  return PROVIDERS[provider] || PROVIDERS.openai;
+  return PROVIDERS[provider] || OPENAI_COMPATIBLE_FALLBACK_CONFIG;
 }
 
 // Get number of fallback URLs for provider (for retry logic)
@@ -253,21 +257,7 @@ export function buildProviderHeaders(provider, credentials, stream = true, body 
   };
 
   // Add auth header
-  if (provider === "github") {
-    // GitHub Copilot requires special dynamic headers (x-request-id)
-    const githubToken = credentials.copilotToken || credentials.accessToken;
-    headers["Authorization"] = `Bearer ${githubToken}`;
-    headers["x-request-id"] = crypto.randomUUID
-      ? crypto.randomUUID()
-      : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
-          const r = (Math.random() * 16) | 0;
-          const v = c == "x" ? r : (r & 0x3) | 0x8;
-          return v.toString(16);
-        });
-    if (!stream) {
-      headers["Accept"] = "application/json";
-    }
-  } else if (entry) {
+  if (entry) {
     // Registry-driven auth
     const authHeader = entry.authHeader || "bearer";
     if (authHeader === "x-api-key") {

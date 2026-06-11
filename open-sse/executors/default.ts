@@ -56,9 +56,14 @@ function normalizeOpenAIChatUrl(baseUrl: string): string {
   return normalized.endsWith("/v1") ? `${normalized}/chat/completions` : normalized;
 }
 
+const OPENAI_COMPATIBLE_FALLBACK_CONFIG = {
+  format: "openai",
+  baseUrl: "https://api.openai.com/v1",
+};
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider: string) {
-    super(provider, PROVIDERS[provider] || PROVIDERS.openai);
+    super(provider, PROVIDERS[provider] || OPENAI_COMPATIBLE_FALLBACK_CONFIG);
   }
 
   buildUrl(
@@ -78,6 +83,7 @@ export class DefaultExecutor extends BaseExecutor {
       const customPath =
         typeof psd?.chatPath === "string" && psd.chatPath ? psd.chatPath : null;
       if (customPath) return `${normalized}${customPath}`;
+      if (psd?.apiType === "responses") return `${normalized}/responses`;
       return `${normalized}/chat/completions`;
     }
 

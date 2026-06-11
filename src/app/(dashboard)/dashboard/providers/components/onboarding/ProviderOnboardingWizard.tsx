@@ -5,21 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-import {
-  Badge,
-  Button,
-  Card,
-  CursorAuthModal,
-  Input,
-  KiroOAuthWrapper,
-  OAuthModal,
-} from "@/shared/components";
+import { Badge, Button, Card, Input } from "@/shared/components";
 
 import {
   buildProviderSpecificData,
   filterWizardProviderOptions,
   getWizardApiKeyProviderOptions,
-  getWizardOAuthProviderOptions,
   type WizardProviderOption,
 } from "./providerOnboardingCatalog";
 import {
@@ -34,8 +25,8 @@ import {
   type OnboardingTestResult,
 } from "./providerOnboardingApi";
 
-type WizardKind = "apikey" | "custom" | "oauth";
-type WizardStep = "type" | "provider" | "credentials" | "oauth" | "result";
+type WizardKind = "apikey" | "custom";
+type WizardStep = "type" | "provider" | "credentials" | "result";
 
 type ApiKeyFormState = {
   name: string;
@@ -274,7 +265,6 @@ function ResultSummary({
           >
             {providerText(t, "backToProviders", "Back to providers")}
           </Link>
-          
         </div>
       </div>
     </Card>
@@ -289,7 +279,6 @@ export default function ProviderOnboardingWizard() {
   const defaultConnectionName = (provider: string) =>
     text("onboardingDefaultConnectionName", "{provider} Primary", { provider });
   const apiKeyOptions = useMemo(() => getWizardApiKeyProviderOptions(), []);
-  const oauthOptions = useMemo(() => getWizardOAuthProviderOptions(), []);
   const [kind, setKind] = useState<WizardKind>("apikey");
   const [step, setStep] = useState<WizardStep>("type");
   const [query, setQuery] = useState("");
@@ -301,11 +290,8 @@ export default function ProviderOnboardingWizard() {
   const [createdConnection, setCreatedConnection] = useState<OnboardingConnection | null>(null);
   const [testResult, setTestResult] = useState<OnboardingTestResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showOAuthModal, setShowOAuthModal] = useState(false);
-  const [knownOAuthConnectionIds, setKnownOAuthConnectionIds] = useState<Set<string>>(new Set());
-  const providerOptions = kind === "oauth" ? oauthOptions : apiKeyOptions;
-  const filteredOptions = filterWizardProviderOptions(providerOptions, query);
-  const currentStepIndex = ["type", "provider", "credentials", "oauth", "result"].indexOf(step);
+  const filteredOptions = filterWizardProviderOptions(apiKeyOptions, query);
+  const currentStepIndex = ["type", "provider", "credentials", "result"].indexOf(step);
 
   const resetProviderSelection = (nextKind: WizardKind) => {
     setKind(nextKind);
@@ -323,7 +309,7 @@ export default function ProviderOnboardingWizard() {
     setSelectedProvider(option);
     setApiKeyForm({ ...EMPTY_API_KEY_FORM, name: defaultConnectionName(option.name) });
     setError(null);
-    setStep(option.authKind === "oauth" ? "oauth" : "credentials");
+    setStep("credentials");
   };
 
   const runConnectionTest = async (connection: OnboardingConnection) => {
@@ -410,53 +396,6 @@ export default function ProviderOnboardingWizard() {
     }
   };
 
-  const openOAuth = async () => {
-    if (!selectedProvider) return;
-    setError(null);
-    const connections = await fetchOnboardingConnections().catch(() => []);
-    setKnownOAuthConnectionIds(new Set(connections.map((connection) => connection.id)));
-    setShowOAuthModal(true);
-  };
-
-  const handleOAuthSuccess = async () => {
-    if (!selectedProvider) return;
-    setShowOAuthModal(false);
-    setSubmitting(true);
-    setError(null);
-    try {
-      setStatus(text("onboardingLoadingOAuthConnection", "Loading OAuth connection…"));
-      const connections = await fetchOnboardingConnections();
-      const matchingConnections = connections.filter(
-        (connection) => connection.provider === selectedProvider.id
-      );
-      const connection =
-        matchingConnections.find((candidate) => !knownOAuthConnectionIds.has(candidate.id)) ||
-        matchingConnections[0] ||
-        null;
-      if (!connection) {
-        throw new Error(
-          text(
-            "onboardingOAuthNoConnectionFound",
-            "OAuth finished, but no provider connection was found."
-          )
-        );
-      }
-      setCreatedConnection(connection);
-      await runConnectionTest(connection);
-      setStep("result");
-    } catch (oauthError) {
-      setError(
-        oauthError instanceof Error
-          ? oauthError.message
-          : text("onboardingOAuthFailed", "OAuth onboarding failed")
-      );
-      setStep("result");
-    } finally {
-      setSubmitting(false);
-      setStatus("");
-    }
-  };
-
   const customReady = Boolean(
     customForm.name.trim() && customForm.prefix.trim() && customForm.baseUrl.trim()
   );
@@ -482,7 +421,7 @@ export default function ProviderOnboardingWizard() {
           <p className="mt-2 max-w-2xl text-sm text-text-muted">
             {text(
               "onboardingWizardDescription",
-              "Connect API-key, custom compatible, and OAuth providers with validation, persistence, and an immediate connection test."
+              "Connect API-key and custom compatible providers with validation, persistence, and an immediate connection test."
             )}
           </p>
         </div>
@@ -504,8 +443,8 @@ export default function ProviderOnboardingWizard() {
         />
         <StepPill
           label={text("onboardingStepCredentials", "Credentials")}
-          active={step === "credentials" || step === "oauth"}
-          done={currentStepIndex > 3}
+          active={step === "credentials"}
+          done={currentStepIndex > 2}
         />
         <StepPill
           label={text("onboardingStepResult", "Result")}
@@ -539,16 +478,7 @@ export default function ProviderOnboardingWizard() {
                 title: text("onboardingTypeCustomTitle", "Custom compatible provider"),
                 text: text(
                   "onboardingTypeCustomText",
-                  "Create an OpenAI-, Anthropic-, or Claude Code-compatible endpoint and add its key."
-                ),
-              },
-              {
-                id: "oauth" as const,
-                icon: "account_circle",
-                title: text("onboardingTypeOAuthTitle", "OAuth provider"),
-                text: text(
-                  "onboardingTypeOAuthText",
-                  "Reuse the existing OAuth, device-code, or local import flows for coding providers."
+                  "Create an OpenAI-compatible endpoint and add its key."
                 ),
               },
             ].map((item) => (
@@ -575,9 +505,7 @@ export default function ProviderOnboardingWizard() {
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-text-main">
-                  {kind === "oauth"
-                    ? text("onboardingChooseOAuthProvider", "Choose an OAuth provider")
-                    : text("onboardingChooseApiKeyProvider", "Choose an API-key provider")}
+                  {text("onboardingChooseApiKeyProvider", "Choose an API-key provider")}
                 </h2>
                 <p className="text-sm text-text-muted">
                   {text(
@@ -725,21 +653,13 @@ export default function ProviderOnboardingWizard() {
                     setCustomForm({
                       ...customForm,
                       mode: event.target.value as CompatibleNodeMode,
-                      baseUrl:
-                        event.target.value === "openai"
-                          ? "https://api.openai.com/v1"
-                          : event.target.value === "anthropic"
-                            ? "https://api.anthropic.com/v1"
-                            : "",
+                      baseUrl: event.target.value === "openai" ? "https://api.openai.com/v1" : "",
                       chatPath: "",
                     })
                   }
                 >
                   <option value="openai">
                     {text("onboardingOpenAiCompatible", "OpenAI-compatible")}
-                  </option>
-                  <option value="anthropic">
-                    {text("onboardingAnthropicCompatible", "Anthropic-compatible")}
                   </option>
                 </select>
               </label>
@@ -801,67 +721,9 @@ export default function ProviderOnboardingWizard() {
         </Card>
       )}
 
-      {step === "oauth" && selectedProvider && (
-        <Card padding="lg">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-text-main">
-                  {text("onboardingConnectProvider", "Connect {provider}", {
-                    provider: selectedProvider.name,
-                  })}
-                </h2>
-                <p className="text-sm text-text-muted">{selectedProvider.description}</p>
-              </div>
-              <Button variant="secondary" onClick={() => setStep("provider")}>
-                {text("onboardingChangeProvider", "Change provider")}
-              </Button>
-            </div>
-            <div className="rounded-lg border border-border bg-bg-subtle p-4 text-sm text-text-muted">
-              {text(
-                "onboardingOAuthFlowDescription",
-                "OmniRoute will open the existing OAuth flow for this provider. After login, the wizard reloads the saved connection and runs the same connection test as the provider page."
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={openOAuth} disabled={submitting}>
-                {text("onboardingStartOAuthFlow", "Start OAuth flow")}
-              </Button>
-              <Button variant="ghost" onClick={() => setStep("provider")}>
-                {text("onboardingBack", "Back")}
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
       {step === "result" && (
         <ResultSummary connection={createdConnection} testResult={testResult} error={error} t={t} />
       )}
-
-      {selectedProvider &&
-        (selectedProvider.id === "kiro" || selectedProvider.id === "amazon-q" ? (
-          <KiroOAuthWrapper
-            isOpen={showOAuthModal}
-            providerInfo={{ id: selectedProvider.id, name: selectedProvider.name }}
-            onSuccess={handleOAuthSuccess}
-            onClose={() => setShowOAuthModal(false)}
-          />
-        ) : selectedProvider.id === "cursor" ? (
-          <CursorAuthModal
-            isOpen={showOAuthModal}
-            onSuccess={handleOAuthSuccess}
-            onClose={() => setShowOAuthModal(false)}
-          />
-        ) : (
-          <OAuthModal
-            isOpen={showOAuthModal}
-            provider={selectedProvider.id}
-            providerInfo={selectedProvider}
-            onSuccess={handleOAuthSuccess}
-            onClose={() => setShowOAuthModal(false)}
-          />
-        ))}
     </div>
   );
 }

@@ -63,7 +63,7 @@ type ModelFailureState = {
 };
 type AccountState = JsonRecord & {
   id?: string | null;
-  rateLimitedUntil?: string | null;
+  rateLimitedUntil?: string | number | null;
   backoffLevel?: number | null;
   lastError?: unknown;
   status?: string;
@@ -252,10 +252,7 @@ function asRecord(value: unknown): JsonRecord {
 }
 
 function isCompatibleProvider(provider: string | null | undefined): boolean {
-  return (
-    typeof provider === "string" &&
-    (provider.startsWith("openai-compatible-") || provider.startsWith("anthropic-compatible-"))
-  );
+  return typeof provider === "string" && provider.startsWith("openai-compatible-");
 }
 
 function buildProviderProfile(
@@ -768,12 +765,12 @@ export function getProvidersInCooldown(): Array<{
   cooldownRemainingMs: number | null;
   lastFailureAt: number | null;
 }> {
-  return getAllCircuitBreakerStatuses()
-    .filter((status) => {
+  return (getAllCircuitBreakerStatuses() as any)
+    .filter((status: any) => {
       const breaker = getProviderBreaker(status.name);
       return Boolean(breaker && !breaker.canExecute());
     })
-    .map((status) => ({
+    .map((status: any) => ({
       provider: status.name,
       failureCount: status.failureCount,
       cooldownRemainingMs: status.retryAfterMs || null,
@@ -1411,32 +1408,62 @@ export function checkFallbackError(
 // ─── Account State Management ───────────────────────────────────────────────
 
 /**
- * Check if account is currently unavailable (cooldown not expired)
+ * Parse a timestamp to epoch ms, accepting ISO-8601 strings, Date objects,
+ * numbers, and numeric epoch-ms strings. Postgres returns BIGINT columns
+ * (rate_limited_until) as numeric strings like "1781137997300", which
+ * `new Date(str)` parses to NaN — so digit-only strings are coerced via Number.
  */
-export function isAccountUnavailable(unavailableUntil: string | Date | null | undefined): boolean {
-  if (!unavailableUntil) return false;
-  return new Date(unavailableUntil).getTime() > Date.now();
+export function parseTimestampMs(
+  value: string | number | Date | null | undefined
+): number | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (/^\d+$/.test(trimmed)) {
+    const epoch = Number(trimmed);
+    return Number.isFinite(epoch) ? epoch : null;
+  }
+  const ms = new Date(trimmed).getTime();
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /**
- * Calculate unavailable until timestamp
+ * Check if account is currently unavailable (cooldown not expired)
  */
-export function getUnavailableUntil(cooldownMs: number): string {
-  return new Date(Date.now() + cooldownMs).toISOString();
+export function isAccountUnavailable(
+  unavailableUntil: string | number | Date | null | undefined
+): boolean {
+  const ms = parseTimestampMs(unavailableUntil);
+  if (ms === null) return false;
+  return ms > Date.now();
+}
+
+/**
+ * Calculate unavailable until timestamp (epoch ms — the rate_limited_until
+ * column is BIGINT under Postgres, so writes must be numeric).
+ */
+export function getUnavailableUntil(cooldownMs: number): number {
+  return Date.now() + cooldownMs;
 }
 
 /**
  * Get the earliest rateLimitedUntil from a list of accounts
  */
 export function getEarliestRateLimitedUntil(
-  accounts: Array<{ rateLimitedUntil?: string | null }>
+  accounts: Array<{ rateLimitedUntil?: string | number | null }>
 ): string | null {
   let earliest: number | null = null;
   const now = Date.now();
   for (const acc of accounts) {
-    if (!acc.rateLimitedUntil) continue;
-    const until = new Date(acc.rateLimitedUntil).getTime();
-    if (until <= now) continue;
+    const until = parseTimestampMs(acc.rateLimitedUntil);
+    if (until === null || until <= now) continue;
     if (!earliest || until < earliest) earliest = until;
   }
   if (!earliest) return null;
@@ -1449,8 +1476,9 @@ export function getEarliestRateLimitedUntil(
 export function formatRetryAfter(
   rateLimitedUntil: string | number | Date | null | undefined
 ): string {
-  if (!rateLimitedUntil) return "";
-  const diffMs = new Date(rateLimitedUntil).getTime() - Date.now();
+  const untilMs = parseTimestampMs(rateLimitedUntil);
+  if (untilMs === null) return "";
+  const diffMs = untilMs - Date.now();
   if (diffMs <= 0) return "reset after 0s";
   const totalSec = Math.ceil(diffMs / 1000);
   const h = Math.floor(totalSec / 3600);
@@ -1473,10 +1501,8 @@ export function filterAvailableAccounts<T extends AccountState>(
   const now = Date.now();
   return accounts.filter((acc) => {
     if (excludeId && acc.id === excludeId) return false;
-    if (acc.rateLimitedUntil) {
-      const until = new Date(acc.rateLimitedUntil).getTime();
-      if (until > now) return false;
-    }
+    const until = parseTimestampMs(acc.rateLimitedUntil);
+    if (until !== null && until > now) return false;
     return true;
   });
 }

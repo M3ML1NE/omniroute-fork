@@ -6,5 +6,4 @@
 // own runtime check.
 export const CLI_RUNTIME_PROVIDER_MAP: Record<string, string> = {
   cline: "cline",
-  qoder: "qoder",
 };

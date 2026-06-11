@@ -16,13 +16,6 @@ function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
 }
 
-function sanitizeAnthropicBaseUrl(baseUrl: string) {
-  return (baseUrl || "")
-    .trim()
-    .replace(/\/$/, "")
-    .replace(/\/messages(?:\?[^#]*)?$/i, "");
-}
-
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let rawBody;
@@ -66,12 +59,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
     }
 
-    let sanitizedBaseUrl = baseUrl.trim();
-
-    // Sanitize Base URL for Anthropic Compatible
-    if (node.type === "anthropic-compatible") {
-      sanitizedBaseUrl = sanitizeAnthropicBaseUrl(sanitizedBaseUrl);
-    }
+    const sanitizedBaseUrl = baseUrl.trim();
 
     const updates: Record<string, unknown> = {
       name: name.trim(),

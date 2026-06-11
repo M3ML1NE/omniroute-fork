@@ -23,8 +23,9 @@ const {
   getDefaultDetectionPatterns,
   setBackgroundDegradationConfig,
 } = await import("../../open-sse/services/backgroundTaskDetector.ts");
-const { clearGeminiThoughtSignatures, getGeminiThoughtSignatureMode } =
-  await import("../../open-sse/services/geminiThoughtSignatureStore.ts");
+const { clearGeminiThoughtSignatures } = await import(
+  "../../open-sse/services/geminiThoughtSignatureStore.ts"
+);
 const { getPayloadRulesConfig, resetPayloadRulesConfigForTests } =
   await import("../../open-sse/services/payloadRules.ts");
 const { getCacheControlSettings, invalidateCacheControlSettingsCache } =
@@ -87,7 +88,6 @@ test("updateSettings applies runtime settings incrementally without restart", as
       ],
     },
     alwaysPreserveClientCache: "always",
-    antigravitySignatureCacheMode: "bypass",
   });
 
   assert.deepEqual(getCustomAliases(), { "team-default": "openai/gpt-4o-mini" });
@@ -96,21 +96,18 @@ test("updateSettings applies runtime settings incrementally without restart", as
   assert.deepEqual(getBackgroundDegradationConfig().detectionPatterns, ["summarize this"]);
   assert.equal((await getPayloadRulesConfig()).override[0].params.temperature, 0.1);
   assert.equal(await getCacheControlSettings(), "always");
-  assert.equal(getGeminiThoughtSignatureMode(), "bypass");
 
   await settingsDb.updateSettings({
     modelAliases: {},
     backgroundDegradation: null,
     payloadRules: null,
     alwaysPreserveClientCache: "auto",
-    antigravitySignatureCacheMode: "enabled",
   });
 
   assert.deepEqual(getCustomAliases(), {});
   assert.equal(getBackgroundDegradationConfig().enabled, false);
   assert.equal((await getPayloadRulesConfig()).override.length, 0);
   assert.equal(await getCacheControlSettings(), "auto");
-  assert.equal(getGeminiThoughtSignatureMode(), "enabled");
 });
 
 test("hot-reload watcher picks up external sqlite changes via polling fallback", async () => {
@@ -121,11 +118,12 @@ test("hot-reload watcher picks up external sqlite changes via polling fallback",
   startRuntimeConfigHotReload({ pollIntervalMs: 100 });
 
   const db = getDbInstance();
-  db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', 'antigravitySignatureCacheMode', ?)"
-  ).run(JSON.stringify("bypass-strict"));
+  await db
+    .prepare(
+      "INSERT INTO key_value (namespace, key, value) VALUES ('settings', 'alwaysPreserveClientCache', ?) " +
+        "ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
+    )
+    .run(JSON.stringify("always"));
 
-  await waitFor(
-    () => getGeminiThoughtSignatureMode() === "bypass-strict"
-  );
+  await waitFor(async () => (await getCacheControlSettings()) === "always");
 });

@@ -11,7 +11,6 @@ export type RuntimeReloadSection =
   | "healthCheckLogs"
   | "thoughtSignature"
   | "corsOrigins"
-  | "ccBridgeTransforms"
   | "authzBypass";
 
 export interface RuntimeReloadChange {
@@ -32,7 +31,6 @@ interface RuntimeSettingsSnapshot {
   usageTokenBuffer: unknown;
   hideHealthCheckLogs: boolean;
   corsOrigins: string;
-  ccBridgeTransforms: unknown;
   authzBypass: AuthzBypassSnapshot;
 }
 
@@ -52,7 +50,6 @@ const DEFAULT_RUNTIME_SETTINGS_SNAPSHOT: RuntimeSettingsSnapshot = {
   usageTokenBuffer: null,
   hideHealthCheckLogs: false,
   corsOrigins: "",
-  ccBridgeTransforms: null,
   authzBypass: DEFAULT_AUTHZ_BYPASS_SNAPSHOT,
 };
 
@@ -223,7 +220,6 @@ export function buildRuntimeSettingsSnapshot(
     usageTokenBuffer: settings.usageTokenBuffer ?? null,
     hideHealthCheckLogs: settings.hideHealthCheckLogs === true,
     corsOrigins: typeof settings.corsOrigins === "string" ? settings.corsOrigins : "",
-    ccBridgeTransforms: parseStoredJson(settings.ccBridgeTransforms, "ccBridgeTransforms"),
     authzBypass: normalizeAuthzBypass(settings),
   };
 }

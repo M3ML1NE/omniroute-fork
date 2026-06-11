@@ -16,7 +16,7 @@ function tools(count: number): Array<{ type: string; name: string }> {
 test("keeps the base timeout for small requests", () => {
   const result = resolveStreamReadinessTimeout({
     baseTimeoutMs: 30_000,
-    provider: "codex",
+    provider: "pollinations",
     model: "gpt-5.5",
     body: { input: items(3), tools: tools(2) },
   });
@@ -49,25 +49,12 @@ test("increases timeout for tool-heavy requests", () => {
   assert.ok(result.reasons.includes("tool_heavy"));
 });
 
-test("gives Codex GPT-5.5 large Responses requests extra readiness budget", () => {
-  const result = resolveStreamReadinessTimeout({
-    baseTimeoutMs: 30_000,
-    provider: "codex",
-    model: "gpt-5.5",
-    body: { input: items(181), tools: tools(20) },
-  });
-
-  assert.equal(result.timeoutMs, 95_000);
-  assert.ok(result.reasons.includes("large_history"));
-  assert.ok(result.reasons.includes("tool_heavy"));
-  assert.ok(result.reasons.includes("codex_gpt_5_5_large_responses"));
-});
 
 test("caps adaptive timeout at maxTimeoutMs", () => {
   const result = resolveStreamReadinessTimeout({
     baseTimeoutMs: 30_000,
     maxTimeoutMs: 120_000,
-    provider: "codex",
+    provider: "pollinations",
     model: "gpt-5.5",
     body: { input: items(500), tools: tools(20), instructions: "x".repeat(800_000) },
   });
@@ -80,7 +67,7 @@ test("caps adaptive timeout at maxTimeoutMs", () => {
 test("preserves zero timeout so readiness checks can be disabled", () => {
   const result = resolveStreamReadinessTimeout({
     baseTimeoutMs: 0,
-    provider: "codex",
+    provider: "pollinations",
     model: "gpt-5.5",
     body: { input: items(500), tools: tools(20) },
   });

@@ -145,46 +145,15 @@ export async function createProviderConnection(data: JsonRecord) {
   );
 
   // Upsert check
-  // For Codex/OpenAI, a single email can have multiple workspaces (Team + Personal)
-  // We need to check for workspace uniqueness, not just email
   let existing: JsonRecord | null = null;
 
   if (data.authType === "oauth" && data.email) {
-    // For Codex, check for existing connection with same workspace
-    const providerSpecificData = toRecord(data.providerSpecificData);
-    const workspaceId = toStringOrNull(providerSpecificData.workspaceId);
-    if (data.provider === "codex" && workspaceId) {
-      // For Codex, check for existing connection with same workspace AND email
-      // A single workspace can have multiple users (Team/Business plans)
-      // We need both workspace + email uniqueness to allow multiple accounts
-      existing =
-        ((await db
-          .prepare(
-            "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND NULLIF(provider_specific_data, '')::jsonb ->> 'workspaceId' = ? AND email = ?"
-          )
-          .get(data.provider, workspaceId, data.email)) as JsonRecord | undefined) || null;
-
-      // If no match with workspace+email, also check workspace-only for backward compat
-      // (old connections without email should still be updated, not duplicated)
-      if (!existing) {
-        existing =
-          ((await db
-            .prepare(
-              "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND NULLIF(provider_specific_data, '')::jsonb ->> 'workspaceId' = ? AND (email IS NULL OR email = '')"
-            )
-            .get(data.provider, workspaceId)) as JsonRecord | undefined) || null;
-      }
-      // For Codex with workspaceId, don't fall back to email-only check
-      // This allows creating new connections for different workspaces
-    } else {
-      // For other providers (or Codex without workspaceId), use email check
-      existing =
-        ((await db
-          .prepare(
-            "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND email = ?"
-          )
-          .get(data.provider, data.email)) as JsonRecord | undefined) || null;
-    }
+    existing =
+      ((await db
+        .prepare(
+          "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND email = ?"
+        )
+        .get(data.provider, data.email)) as JsonRecord | undefined) || null;
   } else if (data.authType === "apikey" && data.name) {
     existing =
       ((await db
@@ -307,8 +276,9 @@ export async function createProviderConnection(data: JsonRecord) {
 
 async function _insertConnectionRow(conn: JsonRecord) {
   const db = getDbInstance();
-  await db.prepare(
-    `
+  await db
+    .prepare(
+      `
     INSERT INTO provider_connections (
       id, provider, auth_type, name, email, priority, is_active,
       access_token, refresh_token, expires_at, token_expires_at,
@@ -333,58 +303,60 @@ async function _insertConnectionRow(conn: JsonRecord) {
       @createdAt, @updatedAt
     )
   `
-  ).run({
-    id: conn.id,
-    provider: conn.provider,
-    authType: conn.authType || null,
-    name: conn.name || null,
-    email: conn.email || null,
-    priority: conn.priority || 0,
-    isActive: conn.isActive === false ? 0 : 1,
-    accessToken: conn.accessToken || null,
-    refreshToken: conn.refreshToken || null,
-    expiresAt: conn.expiresAt || null,
-    tokenExpiresAt: conn.tokenExpiresAt || null,
-    scope: conn.scope || null,
-    projectId: conn.projectId || null,
-    testStatus: conn.testStatus || null,
-    errorCode: conn.errorCode || null,
-    lastError: conn.lastError || null,
-    lastErrorAt: conn.lastErrorAt || null,
-    lastErrorType: conn.lastErrorType || null,
-    lastErrorSource: conn.lastErrorSource || null,
-    backoffLevel: conn.backoffLevel || 0,
-    rateLimitedUntil: conn.rateLimitedUntil || null,
-    healthCheckInterval: conn.healthCheckInterval || null,
-    lastHealthCheckAt: conn.lastHealthCheckAt || null,
-    lastTested: conn.lastTested || null,
-    apiKey: conn.apiKey || null,
-    idToken: conn.idToken || null,
-    providerSpecificData: conn.providerSpecificData
-      ? JSON.stringify(conn.providerSpecificData)
-      : null,
-    expiresIn: conn.expiresIn || null,
-    displayName: conn.displayName || null,
-    globalPriority: conn.globalPriority || null,
-    defaultModel: conn.defaultModel || null,
-    tokenType: conn.tokenType || null,
-    consecutiveUseCount: conn.consecutiveUseCount || 0,
-    rateLimitProtection:
-      conn.rateLimitProtection === true || conn.rateLimitProtection === 1 ? 1 : 0,
-    lastUsedAt: conn.lastUsedAt || null,
-    group: conn.group || null,
-    maxConcurrent: conn.maxConcurrent ?? null,
-    quotaWindowThresholdsJson: serializeQuotaWindowThresholds(conn.quotaWindowThresholds),
-    createdAt: conn.createdAt,
-    updatedAt: conn.updatedAt,
-  });
+    )
+    .run({
+      id: conn.id,
+      provider: conn.provider,
+      authType: conn.authType || null,
+      name: conn.name || null,
+      email: conn.email || null,
+      priority: conn.priority || 0,
+      isActive: conn.isActive === false ? 0 : 1,
+      accessToken: conn.accessToken || null,
+      refreshToken: conn.refreshToken || null,
+      expiresAt: conn.expiresAt || null,
+      tokenExpiresAt: conn.tokenExpiresAt || null,
+      scope: conn.scope || null,
+      projectId: conn.projectId || null,
+      testStatus: conn.testStatus || null,
+      errorCode: conn.errorCode || null,
+      lastError: conn.lastError || null,
+      lastErrorAt: conn.lastErrorAt || null,
+      lastErrorType: conn.lastErrorType || null,
+      lastErrorSource: conn.lastErrorSource || null,
+      backoffLevel: conn.backoffLevel || 0,
+      rateLimitedUntil: conn.rateLimitedUntil || null,
+      healthCheckInterval: conn.healthCheckInterval || null,
+      lastHealthCheckAt: conn.lastHealthCheckAt || null,
+      lastTested: conn.lastTested || null,
+      apiKey: conn.apiKey || null,
+      idToken: conn.idToken || null,
+      providerSpecificData: conn.providerSpecificData
+        ? JSON.stringify(conn.providerSpecificData)
+        : null,
+      expiresIn: conn.expiresIn || null,
+      displayName: conn.displayName || null,
+      globalPriority: conn.globalPriority || null,
+      defaultModel: conn.defaultModel || null,
+      tokenType: conn.tokenType || null,
+      consecutiveUseCount: conn.consecutiveUseCount || 0,
+      rateLimitProtection:
+        conn.rateLimitProtection === true || conn.rateLimitProtection === 1 ? 1 : 0,
+      lastUsedAt: conn.lastUsedAt || null,
+      group: conn.group || null,
+      maxConcurrent: conn.maxConcurrent ?? null,
+      quotaWindowThresholdsJson: serializeQuotaWindowThresholds(conn.quotaWindowThresholds),
+      createdAt: conn.createdAt,
+      updatedAt: conn.updatedAt,
+    });
 }
 
 async function _updateConnectionRow(id: string, data: JsonRecord) {
   const db = getDbInstance();
   const now = data.updatedAt || new Date().toISOString();
-  await db.prepare(
-    `
+  await db
+    .prepare(
+      `
     UPDATE provider_connections SET
       provider = @provider, auth_type = @authType, name = @name, email = @email,
       priority = @priority, is_active = @isActive, access_token = @accessToken,
@@ -406,50 +378,51 @@ async function _updateConnectionRow(id: string, data: JsonRecord) {
       updated_at = @updatedAt
     WHERE id = @id
   `
-  ).run({
-    id,
-    provider: data.provider,
-    authType: data.authType || null,
-    name: data.name || null,
-    email: data.email || null,
-    priority: data.priority || 0,
-    isActive: data.isActive === false ? 0 : 1,
-    accessToken: data.accessToken || null,
-    refreshToken: data.refreshToken || null,
-    expiresAt: data.expiresAt || null,
-    tokenExpiresAt: data.tokenExpiresAt || null,
-    scope: data.scope || null,
-    projectId: data.projectId || null,
-    testStatus: data.testStatus || null,
-    errorCode: data.errorCode || null,
-    lastError: data.lastError || null,
-    lastErrorAt: data.lastErrorAt || null,
-    lastErrorType: data.lastErrorType || null,
-    lastErrorSource: data.lastErrorSource || null,
-    backoffLevel: data.backoffLevel || 0,
-    rateLimitedUntil: data.rateLimitedUntil || null,
-    healthCheckInterval: data.healthCheckInterval || null,
-    lastHealthCheckAt: data.lastHealthCheckAt || null,
-    lastTested: data.lastTested || null,
-    apiKey: data.apiKey || null,
-    idToken: data.idToken || null,
-    providerSpecificData: data.providerSpecificData
-      ? JSON.stringify(data.providerSpecificData)
-      : null,
-    expiresIn: data.expiresIn || null,
-    displayName: data.displayName || null,
-    globalPriority: data.globalPriority || null,
-    defaultModel: data.defaultModel || null,
-    tokenType: data.tokenType || null,
-    consecutiveUseCount: data.consecutiveUseCount || 0,
-    rateLimitProtection:
-      data.rateLimitProtection === true || data.rateLimitProtection === 1 ? 1 : 0,
-    lastUsedAt: data.lastUsedAt || null,
-    group: data.group || null,
-    maxConcurrent: data.maxConcurrent ?? null,
-    quotaWindowThresholdsJson: serializeQuotaWindowThresholds(data.quotaWindowThresholds),
-    updatedAt: now,
-  });
+    )
+    .run({
+      id,
+      provider: data.provider,
+      authType: data.authType || null,
+      name: data.name || null,
+      email: data.email || null,
+      priority: data.priority || 0,
+      isActive: data.isActive === false ? 0 : 1,
+      accessToken: data.accessToken || null,
+      refreshToken: data.refreshToken || null,
+      expiresAt: data.expiresAt || null,
+      tokenExpiresAt: data.tokenExpiresAt || null,
+      scope: data.scope || null,
+      projectId: data.projectId || null,
+      testStatus: data.testStatus || null,
+      errorCode: data.errorCode || null,
+      lastError: data.lastError || null,
+      lastErrorAt: data.lastErrorAt || null,
+      lastErrorType: data.lastErrorType || null,
+      lastErrorSource: data.lastErrorSource || null,
+      backoffLevel: data.backoffLevel || 0,
+      rateLimitedUntil: data.rateLimitedUntil || null,
+      healthCheckInterval: data.healthCheckInterval || null,
+      lastHealthCheckAt: data.lastHealthCheckAt || null,
+      lastTested: data.lastTested || null,
+      apiKey: data.apiKey || null,
+      idToken: data.idToken || null,
+      providerSpecificData: data.providerSpecificData
+        ? JSON.stringify(data.providerSpecificData)
+        : null,
+      expiresIn: data.expiresIn || null,
+      displayName: data.displayName || null,
+      globalPriority: data.globalPriority || null,
+      defaultModel: data.defaultModel || null,
+      tokenType: data.tokenType || null,
+      consecutiveUseCount: data.consecutiveUseCount || 0,
+      rateLimitProtection:
+        data.rateLimitProtection === true || data.rateLimitProtection === 1 ? 1 : 0,
+      lastUsedAt: data.lastUsedAt || null,
+      group: data.group || null,
+      maxConcurrent: data.maxConcurrent ?? null,
+      quotaWindowThresholdsJson: serializeQuotaWindowThresholds(data.quotaWindowThresholds),
+      updatedAt: now,
+    });
 }
 
 export async function updateProviderConnection(id: string, data: JsonRecord) {
@@ -518,10 +491,7 @@ export async function deleteProviderConnections(ids: string[]): Promise<number> 
 
   const deletedCount = await withTransaction(async (client) => {
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
-    await client.query(
-      `DELETE FROM quota_snapshots WHERE connection_id IN (${placeholders})`,
-      ids
-    );
+    await client.query(`DELETE FROM quota_snapshots WHERE connection_id IN (${placeholders})`, ids);
     const result = await client.query(
       `DELETE FROM provider_connections WHERE id IN (${placeholders})`,
       ids
@@ -631,16 +601,18 @@ export async function autoMigrateLegacyEncryptedConnections(): Promise<number> {
       // `encryptConnectionFields` in `_updateConnectionRow` will encrypt it AGAIN!
       // Let's modify the DB directly so we don't double encrypt.
 
-      await db.prepare(
-        "UPDATE provider_connections SET api_key = @apiKey, id_token = @idToken, access_token = @accessToken, refresh_token = @refreshToken, updated_at = @updatedAt WHERE id = @id"
-      ).run({
-        id: camelRow.id,
-        apiKey: camelRow.apiKey ?? null,
-        idToken: camelRow.idToken ?? null,
-        accessToken: camelRow.accessToken ?? null,
-        refreshToken: camelRow.refreshToken ?? null,
-        updatedAt: new Date().toISOString(),
-      });
+      await db
+        .prepare(
+          "UPDATE provider_connections SET api_key = @apiKey, id_token = @idToken, access_token = @accessToken, refresh_token = @refreshToken, updated_at = @updatedAt WHERE id = @id"
+        )
+        .run({
+          id: camelRow.id,
+          apiKey: camelRow.apiKey ?? null,
+          idToken: camelRow.idToken ?? null,
+          accessToken: camelRow.accessToken ?? null,
+          refreshToken: camelRow.refreshToken ?? null,
+          updatedAt: new Date().toISOString(),
+        });
       migratedCount++;
     }
   }
@@ -692,12 +664,14 @@ export async function createProviderNode(data: JsonRecord) {
     updatedAt: now,
   };
 
-  await db.prepare(
-    `
+  await db
+    .prepare(
+      `
     INSERT INTO provider_nodes (id, type, name, prefix, api_type, base_url, chat_path, models_path, created_at, updated_at)
     VALUES (@id, @type, @name, @prefix, @apiType, @baseUrl, @chatPath, @modelsPath, @createdAt, @updatedAt)
   `
-  ).run(node);
+    )
+    .run(node);
 
   backupDbFile("pre-write");
   return node;
@@ -714,24 +688,26 @@ export async function updateProviderNode(id: string, data: JsonRecord) {
     updatedAt: new Date().toISOString(),
   };
 
-  await db.prepare(
-    `
+  await db
+    .prepare(
+      `
     UPDATE provider_nodes SET type = @type, name = @name, prefix = @prefix,
     api_type = @apiType, base_url = @baseUrl, chat_path = @chatPath,
     models_path = @modelsPath, updated_at = @updatedAt
     WHERE id = @id
   `
-  ).run({
-    id,
-    type: merged["type"],
-    name: merged["name"],
-    prefix: merged["prefix"] || null,
-    apiType: merged["apiType"] || null,
-    baseUrl: merged["baseUrl"] || null,
-    chatPath: merged["chatPath"] || null,
-    modelsPath: merged["modelsPath"] || null,
-    updatedAt: merged["updatedAt"],
-  });
+    )
+    .run({
+      id,
+      type: merged["type"],
+      name: merged["name"],
+      prefix: merged["prefix"] || null,
+      apiType: merged["apiType"] || null,
+      baseUrl: merged["baseUrl"] || null,
+      chatPath: merged["chatPath"] || null,
+      modelsPath: merged["modelsPath"] || null,
+      updatedAt: merged["updatedAt"],
+    });
 
   backupDbFile("pre-write");
   return merged;
@@ -759,11 +735,14 @@ export async function deleteProviderNode(id: string) {
  * @param connectionId - The provider_connections.id
  * @param until - Epoch ms when the rate limit expires (null to clear)
  */
-export async function setConnectionRateLimitUntil(connectionId: string, until: number | null): Promise<void> {
+export async function setConnectionRateLimitUntil(
+  connectionId: string,
+  until: number | null
+): Promise<void> {
   const db = getDbInstance();
-  await db.prepare(
-    "UPDATE provider_connections SET rate_limited_until = ?, updated_at = ? WHERE id = ?"
-  ).run(until, new Date().toISOString(), connectionId);
+  await db
+    .prepare("UPDATE provider_connections SET rate_limited_until = ?, updated_at = ? WHERE id = ?")
+    .run(until, new Date().toISOString(), connectionId);
   invalidateDbCache("connections");
 }
 

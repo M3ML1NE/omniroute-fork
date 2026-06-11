@@ -161,14 +161,14 @@ test("Responses -> Chat strips background flag and degrades to synchronous execu
         background: true,
       },
       true,
-      { provider: "codex" }
+      { provider: "openai" }
     );
     const r = result as Record<string, unknown>;
     assert.equal(r.background, undefined, "background flag must be stripped from output");
     assert.ok(Array.isArray(r.messages), "translation must complete and produce messages");
     assert.equal((r.messages as unknown[]).length, 1, "user message must be preserved");
     assert.ok(
-      warnLog.some((m) => m.startsWith("BACKGROUND_DEGRADE provider=codex model=gpt-5.5")),
+      warnLog.some((m) => m.startsWith("BACKGROUND_DEGRADE provider=openai model=gpt-5.5")),
       "BACKGROUND_DEGRADE warning log must be emitted when background=true"
     );
   } finally {
@@ -190,7 +190,7 @@ test("Responses -> Chat passes through when background flag is unset or false (n
       "gpt-5.5",
       { input: [{ role: "user", content: [{ type: "input_text", text: "hi" }] }] },
       true,
-      { provider: "codex" }
+      { provider: "openai" }
     ) as Record<string, unknown>;
     assert.equal(r1.background, undefined, "background must be absent on output (unset case)");
 
@@ -202,7 +202,7 @@ test("Responses -> Chat passes through when background flag is unset or false (n
         background: false,
       },
       true,
-      { provider: "codex" }
+      { provider: "openai" }
     ) as Record<string, unknown>;
     assert.equal(r2.background, undefined, "background must be stripped on output (false case)");
 
@@ -358,7 +358,7 @@ test("Responses round-trip preserves store and previous_response_id when opt-in 
 
 test("Chat -> Responses preserves prompt_cache_key and session affinity fields", () => {
   const result = openaiToOpenAIResponsesRequest(
-    "gpt-5.3-codex",
+    "gpt-5.3-openai",
     {
       messages: [{ role: "user", content: "Hello" }],
       prompt_cache_key: "cache-key-1",
@@ -377,7 +377,7 @@ test("Chat -> Responses preserves prompt_cache_key and session affinity fields",
 
 test("Chat -> Responses preserves explicit reasoning objects", () => {
   const result = openaiToOpenAIResponsesRequest(
-    "gpt-5.3-codex-spark",
+    "gpt-5.3-openai-spark",
     {
       messages: [{ role: "user", content: "Hello" }],
       reasoning: { effort: "low" },
@@ -392,7 +392,7 @@ test("Chat -> Responses preserves explicit reasoning objects", () => {
 
 test("Chat -> Responses propagates include so upstream streams the reasoning summary", () => {
   const result = openaiToOpenAIResponsesRequest(
-    "gpt-5.3-codex-spark",
+    "gpt-5.3-openai-spark",
     {
       messages: [{ role: "user", content: "Hello" }],
       reasoning: { effort: "high", summary: "auto" },
@@ -407,7 +407,7 @@ test("Chat -> Responses propagates include so upstream streams the reasoning sum
 
 test("Chat -> Responses does not inject include when caller did not set one", () => {
   const result = openaiToOpenAIResponsesRequest(
-    "gpt-5.3-codex-spark",
+    "gpt-5.3-openai-spark",
     {
       messages: [{ role: "user", content: "Hello" }],
       reasoning: { effort: "high" },
@@ -421,7 +421,7 @@ test("Chat -> Responses does not inject include when caller did not set one", ()
 
 test("Chat -> Responses maps reasoning_effort into Responses reasoning", () => {
   const result = openaiToOpenAIResponsesRequest(
-    "gpt-5.3-codex-spark",
+    "gpt-5.3-openai-spark",
     {
       messages: [{ role: "user", content: "Hello" }],
       reasoning_effort: "low",

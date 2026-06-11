@@ -133,12 +133,7 @@ test("checkAndRefreshToken leaves credentials untouched when nothing is close to
     accessToken: "stable-access",
     refreshToken: "stable-refresh",
     expiresAt: new Date(now + tokenRefresh.TOKEN_EXPIRY_BUFFER_MS + 60_000).toISOString(),
-    providerSpecificData: {
-      copilotToken: "copilot-stable",
-      copilotTokenExpiresAt: Math.floor(
-        (now + tokenRefresh.TOKEN_EXPIRY_BUFFER_MS + 60_000) / 1000
-      ),
-    },
+    providerSpecificData: {},
   };
 
   await withMockedNow(now, async () => {
@@ -147,7 +142,7 @@ test("checkAndRefreshToken leaves credentials untouched when nothing is close to
         throw new Error("fetch should not be called");
       },
       async () => {
-        const refreshed = await tokenRefresh.checkAndRefreshToken("github", credentials);
+        const refreshed = await tokenRefresh.checkAndRefreshToken("claude", credentials);
         assert.deepEqual(refreshed, credentials);
       }
     );

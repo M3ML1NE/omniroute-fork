@@ -115,11 +115,6 @@ import {
   providerSupportsCaching,
 } from "../utils/cacheControlPolicy.ts";
 import { getCachedSettings } from "@/lib/db/readCache";
-import {
-  getCodexRequestDefaults,
-  normalizeCodexServiceTier,
-  type CodexServiceTier,
-} from "@/lib/providers/requestDefaults";
 import { cacheReasoningFromAssistantMessage } from "../services/reasoningCache.ts";
 import { sanitizeOpenAITool } from "../services/toolSchemaSanitizer.ts";
 import {
@@ -129,23 +124,6 @@ import {
   shouldDetectLimit,
 } from "../services/toolLimitDetector.ts";
 
-interface CodexQuotaSnapshot {
-  usage5h: number;
-  limit5h: number;
-  resetAt5h: string;
-  usage7d: number;
-  limit7d: number;
-  resetAt7d: string;
-}
-const parseCodexQuotaHeaders = (
-  _headers: Record<string, string> | null
-): CodexQuotaSnapshot | null => null;
-const getCodexModelScope = (_model: string): string => "default";
-const getCodexDualWindowCooldownMs = (
-  _quota: unknown
-): { cooldownMs: number; window: string } => ({ cooldownMs: 0, window: "" });
-const isCompactResponsesEndpoint = (_endpointPath?: string | null): boolean => false;
-const invalidateCodexQuotaCache = (_connectionId: string): void => {};
 import { translateNonStreamingResponse } from "./responseTranslator.ts";
 import { extractUsageFromResponse } from "./usageExtractor.ts";
 import {
@@ -212,7 +190,6 @@ import {
   toMemoryRetrievalConfig,
 } from "@/lib/memory/settings";
 import { OMNIROUTE_RESPONSE_HEADERS } from "@/shared/constants/headers";
-import { setGeminiThoughtSignatureMode } from "../services/geminiThoughtSignatureStore.ts";
 import { fetchLiveProviderLimits } from "@/lib/usage/providerLimits";
 import {
   classifyModelScope429,
@@ -223,11 +200,21 @@ import {
 // ── Claude stubs (GigaChat fork) ──
 const CLAUDE_OAUTH_TOOL_PREFIX = "__claude_oauth_";
 const DEFAULT_THINKING_CLAUDE_SIGNATURE = "";
-function splitMisplacedToolResults(msgs: unknown[]): unknown[] { return msgs; }
-function isClaudeCodeCompatibleProvider(_provider: unknown): boolean { return false; }
-function resolveClaudeCodeCompatibleSessionId(_headers: unknown): string | null { return null; }
-function buildClaudeCodeCompatibleRequest(opts: Record<string, unknown>): Record<string, unknown> { return opts.normalizedBody as Record<string, unknown> || {}; }
-function isClaudeExtraUsageBlockEnabled(..._args: unknown[]): boolean { return false; }
+function splitMisplacedToolResults(msgs: unknown[]): unknown[] {
+  return msgs;
+}
+function isClaudeCodeCompatibleProvider(_provider: unknown): boolean {
+  return false;
+}
+function resolveClaudeCodeCompatibleSessionId(_headers: unknown): string | null {
+  return null;
+}
+function buildClaudeCodeCompatibleRequest(opts: Record<string, unknown>): Record<string, unknown> {
+  return (opts.normalizedBody as Record<string, unknown>) || {};
+}
+function isClaudeExtraUsageBlockEnabled(..._args: unknown[]): boolean {
+  return false;
+}
 
 const MEMORY_EXTRACTION_TEXT_LIMIT = 64 * 1024;
 
@@ -439,23 +426,6 @@ function resolveMemoryOwnerId(apiKeyInfo: Record<string, unknown> | null): strin
     return rawId;
   }
   return null;
-}
-
-export function shouldUseNativeCodexPassthrough({
-  provider,
-  sourceFormat,
-  endpointPath,
-}: {
-  provider?: string | null;
-  sourceFormat?: string | null;
-  endpointPath?: string | null;
-}): boolean {
-  if (provider !== "codex") return false;
-  if (sourceFormat !== FORMATS.OPENAI_RESPONSES) return false;
-  let normalizedEndpoint = String(endpointPath || "");
-  while (normalizedEndpoint.endsWith("/")) normalizedEndpoint = normalizedEndpoint.slice(0, -1);
-  const segments = normalizedEndpoint.split("/");
-  return segments.includes("responses");
 }
 
 /**
@@ -1507,42 +1477,7 @@ export async function handleChatCore({
   let tokensCompressed: number | null = null;
   body = injectSystemPrompt(body);
 
-  type EffectiveServiceTier = "standard" | CodexServiceTier;
-  let effectiveServiceTier: EffectiveServiceTier = "standard";
-  const resolveEffectiveServiceTier = (requestBody?: unknown): EffectiveServiceTier => {
-    if (provider !== "codex") return "standard";
-    const requestRecord =
-      requestBody && typeof requestBody === "object" && !Array.isArray(requestBody)
-        ? (requestBody as Record<string, unknown>)
-        : {};
-    const rawServiceTier = requestRecord.service_tier;
-    if (typeof rawServiceTier === "string" && rawServiceTier.trim().length > 0) {
-      const normalizedServiceTier = normalizeCodexServiceTier(rawServiceTier);
-      if (normalizedServiceTier) return normalizedServiceTier;
-    }
-    return getCodexRequestDefaults(credentials?.providerSpecificData).serviceTier ?? "standard";
-  };
-  const resolveReportedServiceTier = (
-    payload?: unknown,
-    maxDepth = 3
-  ): EffectiveServiceTier | null => {
-    if (
-      maxDepth <= 0 ||
-      provider !== "codex" ||
-      !payload ||
-      typeof payload !== "object" ||
-      Array.isArray(payload)
-    ) {
-      return null;
-    }
-    const record = payload as Record<string, unknown>;
-    const rawServiceTier = record.service_tier;
-    if (typeof rawServiceTier === "string" && rawServiceTier.trim().length > 0) {
-      const normalizedServiceTier = normalizeCodexServiceTier(rawServiceTier);
-      if (normalizedServiceTier) return normalizedServiceTier;
-    }
-    return resolveReportedServiceTier(record.response, maxDepth - 1);
-  };
+  const effectiveServiceTier = "standard";
   const persistFailureUsage = (statusCode: number, errorCode?: string | null) => {
     saveRequestUsage({
       provider: provider || "unknown",
@@ -1619,80 +1554,6 @@ export async function handleChatCore({
     }
   };
 
-  const persistCodexQuotaState = async (
-    headers: Record<string, string> | null,
-    status = 0
-  ) => {
-    if (provider !== "codex" || !connectionId || !headers) return;
-
-    try {
-      const quota = parseCodexQuotaHeaders(headers);
-      if (!quota) return;
-
-      const existingProviderData =
-        credentials?.providerSpecificData && typeof credentials.providerSpecificData === "object"
-          ? credentials.providerSpecificData
-          : {};
-      const scope = getCodexModelScope(model || requestedModel || "");
-      const quotaState = {
-        usage5h: quota.usage5h,
-        limit5h: quota.limit5h,
-        resetAt5h: quota.resetAt5h,
-        usage7d: quota.usage7d,
-        limit7d: quota.limit7d,
-        resetAt7d: quota.resetAt7d,
-        scope,
-        updatedAt: new Date().toISOString(),
-      };
-
-      const nextProviderData: Record<string, unknown> = {
-        ...existingProviderData,
-        codexQuotaState: quotaState,
-      };
-
-      // T03/T09: on 429, persist exact reset time per scope to avoid global over-blocking.
-      // Use dual-window cooldown to distinguish short-term and weekly Codex exhaustion.
-      if (status === 429) {
-        const { cooldownMs, window: exhaustedWindow } = getCodexDualWindowCooldownMs(quota);
-        if (cooldownMs > 0) {
-          const scopeUntil = new Date(Date.now() + cooldownMs).toISOString();
-          const scopeMapRaw =
-            existingProviderData &&
-            typeof existingProviderData === "object" &&
-            existingProviderData.codexScopeRateLimitedUntil &&
-            typeof existingProviderData.codexScopeRateLimitedUntil === "object"
-              ? existingProviderData.codexScopeRateLimitedUntil
-              : {};
-
-          nextProviderData.codexScopeRateLimitedUntil = {
-            ...(scopeMapRaw as Record<string, unknown>),
-            [scope]: scopeUntil,
-          };
-          nextProviderData.codexExhaustedWindow = exhaustedWindow;
-          log?.debug?.(
-            "CODEX",
-            `Quota exhaustion on ${exhaustedWindow} window, cooldown until ${scopeUntil}`
-          );
-        }
-
-        // Invalidate the preflight cache for this connection so the next
-        // isModelAvailable check fetches fresh quota data.
-        if (connectionId) {
-          invalidateCodexQuotaCache(connectionId);
-        }
-      }
-
-      await updateProviderConnection(connectionId, {
-        providerSpecificData: nextProviderData,
-      });
-
-      credentials.providerSpecificData = nextProviderData;
-    } catch (err) {
-      const errMessage = err instanceof Error ? err.message : String(err);
-      log?.debug?.("CODEX", `Failed to persist codex quota state: ${errMessage}`);
-    }
-  };
-
   // ── Phase 9.2: Idempotency check ──
   const idempotencyKey = getIdempotencyKey(clientRawRequest?.headers);
   const cachedIdemp = checkIdempotency(idempotencyKey);
@@ -1739,13 +1600,7 @@ export async function handleChatCore({
   const sourceFormat = detectFormatFromEndpoint(body, endpointPath);
   const isResponsesEndpoint =
     /\/responses(?=\/|$)/i.test(endpointPath) || /^responses(?=\/|$)/i.test(endpointPath);
-  const nativeCodexPassthrough = shouldUseNativeCodexPassthrough({
-    provider,
-    sourceFormat,
-    endpointPath,
-  });
-  const isDroidCLI =
-    userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
+  const isDroidCLI = userAgent?.toLowerCase().includes("droid");
   const copilotCompatibleReasoning = isCopilotClient(clientRawRequest?.headers, userAgent);
   const clientResponseFormat =
     sourceFormat === FORMATS.OPENAI_RESPONSES && !isResponsesEndpoint && !isDroidCLI
@@ -1839,7 +1694,6 @@ export async function handleChatCore({
       provider,
       sourceFormat,
       targetFormat,
-      nativeCodexPassthrough,
     });
   if (webSearchFallbackPlan.enabled) {
     body = bodyWithWebSearchFallback as typeof body;
@@ -1997,17 +1851,27 @@ export async function handleChatCore({
       ? credentials.providerSpecificData.customUserAgent.trim()
       : "";
 
-  const buildUpstreamHeadersForExecute = async (modelToCall: string): Promise<Record<string, string>> => {
+  const buildUpstreamHeadersForExecute = async (
+    modelToCall: string
+  ): Promise<Record<string, string>> => {
     const upstreamHeaders =
       modelToCall === effectiveModel
         ? {
             ...(await getModelUpstreamExtraHeaders(provider || "", model || "", sourceFormat)),
-            ...(await getModelUpstreamExtraHeaders(provider || "", resolvedModel || "", sourceFormat)),
+            ...(await getModelUpstreamExtraHeaders(
+              provider || "",
+              resolvedModel || "",
+              sourceFormat
+            )),
           }
         : await (async () => {
             const r = resolveModelAlias(modelToCall);
             return {
-              ...(await getModelUpstreamExtraHeaders(provider || "", modelToCall || "", sourceFormat)),
+              ...(await getModelUpstreamExtraHeaders(
+                provider || "",
+                modelToCall || "",
+                sourceFormat
+              )),
               ...(await getModelUpstreamExtraHeaders(provider || "", r || "", sourceFormat)),
             };
           })();
@@ -2044,18 +1908,12 @@ export async function handleChatCore({
     delete b.streaming;
   }
 
-  // Codex /responses/compact is JSON-only: Codex CLI does not send stream=false,
-  // so route shape must override the usual Accept/header fallback.
   // sourceFormat="claude" applies the Anthropic Messages spec default (stream=false
   // when body omits stream), preventing STREAM_EARLY_EOF on /v1/messages when
   // clients send Accept: */* without an explicit stream flag.
-  const stream =
-    nativeCodexPassthrough && isCompactResponsesEndpoint(endpointPath)
-      ? false
-      : resolveStreamFlag(body?.stream, acceptHeader, sourceFormat);
+  const stream = resolveStreamFlag(body?.stream, acceptHeader, sourceFormat);
   const settings = cachedSettings ?? (await getCachedSettings());
-  effectiveServiceTier = resolveEffectiveServiceTier(body);
-  setGeminiThoughtSignatureMode(settings.antigravitySignatureCacheMode);
+
   const semanticCacheEnabled = settings.semanticCacheEnabled !== false;
 
   // Create request logger for this session: sourceFormat_targetFormat_model
@@ -2089,7 +1947,7 @@ export async function handleChatCore({
       log?.debug?.("CACHE", `Semantic cache HIT for ${model} (stream=${stream})`);
       reqLogger.logConvertedResponse(cached as Record<string, unknown>);
       const cachedUsage =
-        extractUsageFromResponse(cached as Record<string, unknown>, provider) ||
+        extractUsageFromResponse(cached as Record<string, unknown>) ||
         ((cached as Record<string, unknown>)?.usage as Record<string, unknown> | undefined);
       const cachedCost = cachedUsage
         ? await calculateCost(provider, model, cachedUsage as Record<string, number>, {
@@ -2931,10 +2789,7 @@ export async function handleChatCore({
   };
 
   try {
-    if (nativeCodexPassthrough) {
-      translatedBody = { ...body, _nativeCodexPassthrough: true };
-      log?.debug?.("FORMAT", "native codex passthrough enabled");
-    } else if (isClaudeCodeCompatible) {
+    if (isClaudeCodeCompatible) {
       let normalizedForCc = { ...body };
 
       // Claude Code-compatible providers expect Anthropic Messages-shaped payloads,
@@ -3204,28 +3059,6 @@ export async function handleChatCore({
   }
   translatedBody.model = finalModelToUpstream;
 
-  // #1789: Prevent output_config.effort from overriding effort encoded in model name (Codex)
-  if (provider === "codex" || provider?.startsWith("codex")) {
-    const hasEffortSuffix = finalModelToUpstream.match(/-(low|medium|high|xhigh)$/i);
-    if (
-      hasEffortSuffix &&
-      translatedBody.output_config &&
-      typeof translatedBody.output_config === "object"
-    ) {
-      const oc = translatedBody.output_config as Record<string, unknown>;
-      if (oc.effort) {
-        log?.warn?.(
-          "PARAMS",
-          `Stripped output_config.effort="${oc.effort}" because model "${finalModelToUpstream}" already encodes effort`
-        );
-        delete oc.effort;
-        if (Object.keys(oc).length === 0) {
-          delete translatedBody.output_config;
-        }
-      }
-    }
-  }
-
   // Strip unsupported parameters for reasoning models (o1, o3, etc.)
   const unsupported = getUnsupportedParams(provider, model);
   if (unsupported.length > 0) {
@@ -3301,14 +3134,19 @@ export async function handleChatCore({
     let fallbackCodes: number[] = [429, 500, 502, 503, 504];
     try {
       const allSettings = await getCachedSettings();
-      if (typeof allSettings.cliproxyapi_fallback_codes === "string" && allSettings.cliproxyapi_fallback_codes.trim()) {
+      if (
+        typeof allSettings.cliproxyapi_fallback_codes === "string" &&
+        allSettings.cliproxyapi_fallback_codes.trim()
+      ) {
         const parsed = allSettings.cliproxyapi_fallback_codes
           .split(",")
           .map((s: string) => parseInt(s.trim(), 10))
           .filter((n: number) => !isNaN(n));
         if (parsed.length > 0) fallbackCodes = parsed;
       }
-    } catch { /* use defaults */ }
+    } catch {
+      /* use defaults */
+    }
     const isRetryableStatus = (s: number) => fallbackCodes.includes(s) || s === 0;
 
     const wrapper = Object.create(nativeExec);
@@ -3357,9 +3195,7 @@ export async function handleChatCore({
   // Get executor for this provider (with optional upstream proxy routing)
   const executor = await resolveExecutorWithProxy(provider);
   const getExecutionCredentials = () => {
-    const nextCredentials = nativeCodexPassthrough
-      ? { ...credentials, requestEndpointPath: endpointPath }
-      : credentials;
+    const nextCredentials = credentials;
 
     const providerSpecificData =
       nextCredentials?.providerSpecificData &&
@@ -3498,8 +3334,7 @@ export async function handleChatCore({
         targetFormat === FORMATS.OPENAI &&
         providerSupportsCaching(provider) &&
         !bodyToSend.prompt_cache_key &&
-        Array.isArray(bodyToSend.messages) &&
-        !["nvidia", "codex", "xai"].includes(provider)
+        Array.isArray(bodyToSend.messages)
       ) {
         const { generatePromptCacheKey } = await import("@/lib/promptCache");
         const cacheKey = generatePromptCacheKey(bodyToSend.messages);
@@ -3547,22 +3382,7 @@ export async function handleChatCore({
             });
             let attempts = 0;
             const isModelScopeForRequest = isModelScope();
-            const maxAttempts = isModelScopeForRequest
-              ? 3
-              : provider === "qwen"
-                ? 3
-                : provider === "codex"
-                  ? 3
-                  : 1;
-
-            // ── Codex 429 account-rotation state ─────────────────────────────────
-            // Track excluded connection IDs for codex failover across attempts.
-            const codexExcludedIds: string[] = [];
-            // Derive session affinity key once for codex failover (used to clear affinity on 429).
-            const codexSessionAffinityKey =
-              provider === "codex"
-                ? (extractSessionAffinityKey(body, clientRawRequest?.headers) ?? null)
-                : null;
+            const maxAttempts = isModelScopeForRequest ? 3 : provider === "qwen" ? 3 : 1;
 
             while (attempts < maxAttempts) {
               trace("pre_executor", { attempt: attempts });
@@ -3642,85 +3462,6 @@ export async function handleChatCore({
                   attempts++;
                   continue;
                 }
-              }
-
-              // Codex 429 account-rotation failover (disabled for context-relay so combo.ts can inject handoff)
-              if (
-                provider === "codex" &&
-                comboStrategy !== "context-relay" &&
-                res.response.status === 429 &&
-                attempts < maxAttempts - 1
-              ) {
-                const failedConnectionId = credentials?.connectionId || connectionId;
-                const normalizedHeaders = normalizeHeaders(res.response.headers);
-                const retryAfterHeader = normalizedHeaders["retry-after"] ?? null;
-                const retryAfterMs = retryAfterHeader
-                  ? Number.parseFloat(retryAfterHeader) * 1000
-                  : null;
-
-                log?.warn?.(
-                  "CODEX_FAILOVER",
-                  `429 on connection ${String(failedConnectionId).slice(0, 8)} (attempt ${attempts + 1}/${maxAttempts}), rotating account`
-                );
-
-                // Mark current connection as rate-limited in the DB
-                if (failedConnectionId) {
-                  const rateLimitedUntil = new Date(
-                    Date.now() + (retryAfterMs || 60_000)
-                  ).toISOString();
-                  updateProviderConnection(String(failedConnectionId), {
-                    rateLimitedUntil,
-                    testStatus: "unavailable",
-                    lastError: "429 rate limited — codex account rotation",
-                    errorCode: 429,
-                  }).catch(() => {});
-                  if (!codexExcludedIds.includes(String(failedConnectionId))) {
-                    codexExcludedIds.push(String(failedConnectionId));
-                  }
-                }
-
-                // Clear session affinity so next request won't be pinned to the failing account
-                if (codexSessionAffinityKey) {
-                  try {
-                    await deleteSessionAccountAffinity(codexSessionAffinityKey, "codex");
-                  } catch {
-                    // best-effort
-                  }
-                }
-
-                // Fetch next available codex connection (excluding all previously failed ones)
-                const nextCreds = await getProviderCredentials("codex", null, null, null, {
-                  excludeConnectionIds: [...codexExcludedIds],
-                }).catch(() => null);
-
-                if (!nextCreds || nextCreds.allRateLimited) {
-                  log?.warn?.("CODEX_FAILOVER", "No more codex accounts available — returning 429");
-                  return res;
-                }
-
-                const newConnectionId = nextCreds.connectionId;
-                log?.info?.(
-                  "CODEX_FAILOVER",
-                  `Rotating codex account: ${String(failedConnectionId).slice(0, 8)} → ${newConnectionId.slice(0, 8)} (attempt ${attempts + 2}/${maxAttempts})`
-                );
-
-                await logAuditEvent({
-                  action: "codex.account_rotation",
-                  actor: apiKeyInfo?.name || "system",
-                  target: newConnectionId,
-                  details: {
-                    failed_connection_id: failedConnectionId,
-                    new_connection_id: newConnectionId,
-                    attempt: attempts + 1,
-                    retry_after_ms: retryAfterMs,
-                  },
-                });
-
-                // Update credentials in-place so getExecutionCredentials() picks up the new account
-                Object.assign(credentials, nextCreds);
-
-                attempts++;
-                continue;
               }
 
               // For streaming: release the semaphore when the client drains or cancels the stream.
@@ -3852,7 +3593,11 @@ export async function handleChatCore({
   // ── Tier 2: Authoritative per-model/provider token-limit check (provider now resolved) ──
   if (apiKeyInfo?.id) {
     try {
-      const tokenBreach = await checkTokenLimits(apiKeyInfo.id, provider || undefined, model || undefined);
+      const tokenBreach = await checkTokenLimits(
+        apiKeyInfo.id,
+        provider || undefined,
+        model || undefined
+      );
       if (tokenBreach) {
         const scopeLabel =
           tokenBreach.scopeType === "global"
@@ -3892,7 +3637,7 @@ export async function handleChatCore({
     providerUrl = result.url;
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
-    effectiveServiceTier = resolveEffectiveServiceTier(finalBody);
+
     claudePromptCacheLogMeta = buildClaudePromptCacheLogMeta(
       targetFormat,
       finalBody,
@@ -4079,16 +3824,15 @@ export async function handleChatCore({
       provider // Explicitly pass the provider to avoid universally tripping the "unknown" circuit breaker
     )) as null | {
       accessToken?: string;
-      copilotToken?: string;
     };
 
-    if (newCredentials?.accessToken || newCredentials?.copilotToken) {
+    if (newCredentials?.accessToken) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed`);
 
       // Fall back to post-mutex mutation only for executors that don't route
       // through getAccessToken (and therefore never fire onPersist). For
-      // executors that DO route through it (Codex, Claude, Gemini, etc.) the
-      // mutation already happened atomically inside the mutex.
+      // executors that DO route through it the mutation already happened
+      // atomically inside the mutex.
       if (!persistFnRan) {
         Object.assign(credentials, newCredentials);
         if (onCredentialsRefreshed) {
@@ -4147,8 +3891,6 @@ export async function handleChatCore({
       }
     }
   }
-
-  await persistCodexQuotaState(normalizeHeaders(providerResponse.headers), providerResponse.status);
 
   // Check provider response - return error info for fallback handling
   if (!providerResponse.ok) {
@@ -4318,12 +4060,6 @@ export async function handleChatCore({
 
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     console.log(`${COLORS.red}[ERROR] ${errMsg}${COLORS.reset}`);
-
-    // Log Antigravity retry time if available
-    if (retryAfterMs && provider === "antigravity") {
-      const retrySeconds = Math.ceil(retryAfterMs / 1000);
-      log?.debug?.("RETRY", `Antigravity quota reset in ${retrySeconds}s (${retryAfterMs}ms)`);
-    }
 
     // Log error with full request body for debugging
     reqLogger.logError(new Error(message), finalBody || translatedBody);
@@ -4766,7 +4502,6 @@ export async function handleChatCore({
           }
         : responseBody
     );
-    effectiveServiceTier = resolveReportedServiceTier(responseBody) ?? effectiveServiceTier;
 
     // Notify success - caller can clear error status if needed
     if (onRequestSuccess) {
@@ -4780,7 +4515,7 @@ export async function handleChatCore({
     });
 
     // Log usage for non-streaming responses
-    const usage = extractUsageFromResponse(responseBody, provider);
+    const usage = extractUsageFromResponse(responseBody);
     if (usage && typeof usage === "object") {
       attachCompressionUsageReceiptAfterAnalytics(usage as Record<string, unknown>, "provider");
     }
@@ -4816,7 +4551,8 @@ export async function handleChatCore({
       if (apiKeyInfo?.id) {
         try {
           const billable = computeBillableTokens(usage);
-          if (billable > 0) recordTokenUsage(apiKeyInfo.id, provider || "unknown", model || "unknown", billable);
+          if (billable > 0)
+            recordTokenUsage(apiKeyInfo.id, provider || "unknown", model || "unknown", billable);
         } catch {
           // never block the response on counter recording
         }
@@ -4847,7 +4583,9 @@ export async function handleChatCore({
     // T24: GigaChat reverse translation - function_call -> tool_calls[]
     if (provider === "gigachat" && translatedResponse?.choices) {
       for (const choice of translatedResponse.choices) {
-        const msg = (choice as Record<string, unknown>).message as Record<string, unknown> | undefined;
+        const msg = (choice as Record<string, unknown>).message as
+          | Record<string, unknown>
+          | undefined;
         if (msg?.["function_call"]) {
           const fc = msg["function_call"] as { name: string; arguments: unknown };
           msg["tool_calls"] = [
@@ -4857,9 +4595,7 @@ export async function handleChatCore({
               function: {
                 name: fc.name,
                 arguments:
-                  typeof fc.arguments === "string"
-                    ? fc.arguments
-                    : JSON.stringify(fc.arguments),
+                  typeof fc.arguments === "string" ? fc.arguments : JSON.stringify(fc.arguments),
               },
             },
           ];
@@ -4871,7 +4607,7 @@ export async function handleChatCore({
       }
     }
 
-        // T18: Normalize finish_reason to 'tool_calls' if tool calls are present
+    // T18: Normalize finish_reason to 'tool_calls' if tool calls are present
     if (translatedResponse?.choices) {
       for (const choice of translatedResponse.choices) {
         if (
@@ -5171,7 +4907,6 @@ export async function handleChatCore({
         // Cache capture is non-critical — never block the stream
       }
     }
-    effectiveServiceTier = resolveReportedServiceTier(streamResponseBody) ?? effectiveServiceTier;
 
     // Track cache token metrics for streaming responses
     if (streamUsage && typeof streamUsage === "object") {
@@ -5199,7 +4934,8 @@ export async function handleChatCore({
       if (apiKeyInfo?.id && streamStatus === 200) {
         try {
           const billable = computeBillableTokens(streamUsage);
-          if (billable > 0) recordTokenUsage(apiKeyInfo.id, provider || "unknown", model || "unknown", billable);
+          if (billable > 0)
+            recordTokenUsage(apiKeyInfo.id, provider || "unknown", model || "unknown", billable);
         } catch {
           // never block the stream on counter recording
         }

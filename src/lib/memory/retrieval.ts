@@ -40,7 +40,7 @@ async function hasTable(tableName: string): Promise<boolean> {
   const db = getDbInstance();
   const row = (await db
     .prepare(
-      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?"
+      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?"
     )
     .get(tableName)) as { name?: string } | undefined;
   return row?.name === tableName;

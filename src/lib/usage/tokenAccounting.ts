@@ -56,7 +56,7 @@ export function getLoggedInputTokens(tokens: unknown): number {
   }
 
   if (tokenRecord.input_tokens !== undefined && tokenRecord.input_tokens !== null) {
-    // Anthropic / anthropic-compatible-cc streaming: input_tokens is only the
+    // Streaming usage in Claude wire format: input_tokens is only the
     // non-cached portion.  The cache counters sit as separate top-level fields
     // (cache_read_input_tokens, cache_creation_input_tokens).  We need to add
     // them to get the true total input.
