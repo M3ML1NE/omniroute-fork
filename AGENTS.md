@@ -6,7 +6,7 @@ Unified AI proxy/router — route any LLM through one endpoint. Multi-provider s
 with **212 providers** (OpenAI, Anthropic, Gemini, DeepSeek, Groq, xAI, Mistral, Fireworks,
 Cohere, NVIDIA, Cerebras, Pollinations, Puter, Cloudflare AI, HuggingFace, DeepInfra,
 SambaNova, Meta Llama API, Moonshot AI, AI21 Labs, Databricks, Snowflake, and many more)
-with **MCP Server** (37 tools), **A2A v0.3 Protocol**, and **Electron desktop app**.
+**A2A v0.3 Protocol**, and **Electron desktop app**.
 
 ## Stack
 
@@ -52,7 +52,6 @@ node --import tsx/esm --test tests/unit/security-fase01.test.ts
 # Integration tests
 node --import tsx/esm --test tests/integration/*.test.ts
 
-# Vitest (MCP server, autoCombo)
 npm run test:vitest
 
 # E2E with Playwright
@@ -341,7 +340,6 @@ Policy engine modules: `policyEngine.ts`, `comboResolver.ts`, `costRules.ts`,
 `degradation.ts`, `fallbackPolicy.ts`, `lockoutPolicy.ts`, `modelAvailability.ts`,
 `providerExpiration.ts`, `quotaCache.ts`, `responses.ts`, `configAudit.ts`.
 
-### MCP Server (`open-sse/mcp-server/`)
 
 37 tools (30 base + 3 memory + 4 skills), 3 transports (stdio / SSE / Streamable HTTP). Scoped auth (~13 scopes), Zod schemas. See [`docs/frameworks/MCP-SERVER.md`](docs/frameworks/MCP-SERVER.md).
 
@@ -365,7 +363,6 @@ list_compression_combos, compression_combo_stats.
 
 - **Tool registration**: Each tool is an object with `{ name, description, inputSchema: ZodSchema,
 handler: async (args) => {...} }`. Zod validates inputs before the handler fires.
-- **`createMcpServer()`** and **`startMcpStdio()`** exported from `mcp-server/index.ts`.
   `createMcpServer()` wires all tool sets; `startMcpStdio()` launches the stdio transport.
 - **Transports**: stdio (CLI `omniroute --mcp`), SSE (`/api/mcp/sse`), Streamable HTTP
   (`/api/mcp/stream`). All share the same tool/scope engine.
@@ -497,7 +494,6 @@ For any non-trivial change, read the matching deep-dive first:
 | Stealth                              | [`docs/security/STEALTH_GUIDE.md`](docs/security/STEALTH_GUIDE.md)                                                                  |
 | Reasoning replay                     | [`docs/routing/REASONING_REPLAY.md`](docs/routing/REASONING_REPLAY.md)                                                              |
 | Agent protocols (A2A / ACP / Cloud)  | [`docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`](docs/frameworks/AGENT_PROTOCOLS_GUIDE.md)                                              |
-| MCP server                           | [`docs/frameworks/MCP-SERVER.md`](docs/frameworks/MCP-SERVER.md)                                                                    |
 | A2A server                           | [`docs/frameworks/A2A-SERVER.md`](docs/frameworks/A2A-SERVER.md)                                                                    |
 | API reference                        | [`docs/reference/API_REFERENCE.md`](docs/reference/API_REFERENCE.md) + [`docs/reference/openapi.yaml`](docs/reference/openapi.yaml) |
 | Provider catalog (auto-generated)    | [`docs/reference/PROVIDER_REFERENCE.md`](docs/reference/PROVIDER_REFERENCE.md)                                                      |

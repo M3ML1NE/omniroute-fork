@@ -354,7 +354,6 @@ const MCP_GROUP: SidebarItemGroup = {
   items: [
     {
       id: "mcp",
-      href: "/dashboard/mcp",
       i18nKey: "mcp",
       subtitleKey: "mcpSubtitle",
       icon: "hub",

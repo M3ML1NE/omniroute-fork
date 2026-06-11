@@ -11,7 +11,6 @@
 | `POST /v1/chat/completions` | чат (streaming и non-streaming) |
 | `POST /v1/embeddings` | эмбеддинги |
 | `GET /v1/models` | список моделей |
-| MCP server | 12 Atlassian инструментов (Jira, Bitbucket, Confluence) |
 | Admin Next.js dashboard | провайдеры, настройки, комбо |
 | PostgreSQL persistence | через `DATABASE_URL` |
 | Контекстная компрессия | lite / caveman / rtk |
@@ -31,7 +30,7 @@
 - Встроенные алиасы моделей (Built-in model aliases)
 - Electron desktop app
 - OAuth/WebCookie провайдеры
-- 37 оригинальных MCP инструментов (заменены на 12 инструментов Atlassian)
+- 37 оригинальных MCP инструментов
 - 41 локаль (оставлена только `ru`)
 - Legacy `/v1/completions` эндпоинт
 
@@ -98,9 +97,6 @@ node --import tsx/esm --test tests/parity/**/*.test.ts
 
 ---
 
-## Atlassian Integration
-
-OmniRoute теперь работает как **MCP server** для Atlassian Data Center: Jira, Bitbucket Server, Confluence Server. LLM-клиенты (Claude Desktop, Cursor и другие) могут вызывать Atlassian-операции через стандартный MCP протокол.
 
 ### Что доступно
 
