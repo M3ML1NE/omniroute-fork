@@ -189,8 +189,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           : {};
       const mergedPsd = { ...existingPsd, ...incomingPsd };
 
-      }
-
       updateData.providerSpecificData =
         normalizeProviderSpecificData(existing.provider, mergedPsd) || {};
 
