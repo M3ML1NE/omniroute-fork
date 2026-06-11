@@ -102,8 +102,6 @@ export async function getSettings() {
     requestRetry: 3,
     maxRetryIntervalSec: 30,
     requireLogin: true,
-    mcpEnabled: false,
-    a2aEnabled: false,
     hiddenSidebarItems: [],
     sidebarSectionOrder: [],
     sidebarItemOrder: {},
@@ -126,7 +124,7 @@ export async function getSettings() {
     // Settings UI; the change hot-reloads through `applyRuntimeSettings` →
     // `applyAuthzBypassSection` → `getAuthzBypassSnapshot()`.
     localOnlyManageScopeBypassEnabled: true,
-    localOnlyManageScopeBypassPrefixes: ["/api/mcp/"],
+    localOnlyManageScopeBypassPrefixes: [],
   };
   for (const row of rows) {
     const record = toRecord(row);

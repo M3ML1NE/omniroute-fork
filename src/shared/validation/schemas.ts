@@ -710,9 +710,6 @@ export const updateSettingsSchema = z.object({
   intentExtraCodeKeywords: z.array(z.string().max(100)).optional(),
   intentExtraReasoningKeywords: z.array(z.string().max(100)).optional(),
   intentExtraSimpleKeywords: z.array(z.string().max(100)).optional(),
-  // Protocol toggles (default: disabled)
-  mcpEnabled: z.boolean().optional(),
-  a2aEnabled: z.boolean().optional(),
   wsAuth: z.boolean().optional(),
 
   // Qdrant integration

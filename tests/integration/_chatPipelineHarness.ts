@@ -48,7 +48,6 @@ export async function createChatPipelineHarness(prefix) {
     "model_combo_mappings",
     "semantic_cache",
     "session_account_affinity",
-    "request_detail_logs",
     "routing_decisions",
   ];
 

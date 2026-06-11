@@ -28,13 +28,9 @@ DeepSeek, Groq, xAI, Mistral, and many more). It supports:
 - **Single endpoint**: One API key, one URL (/v1/chat/completions) for all providers
 - **Smart routing**: Combos with 14 strategies (priority, weighted, round-robin, auto, etc.)
 - **Resilience**: Circuit breakers, retry with exponential backoff, account fallback
-- **MCP Server**: 37 tools across 3 transports (stdio, SSE, Streamable HTTP)
-- **A2A Protocol**: Agent-to-Agent communication v0.3
 - **Compression**: Prompt compression (lite, caveman, RTK, stacked)
 - **MITM Proxy**: Intercept desktop AI apps and route through OmniRoute
 - **Dashboard**: Web UI for monitoring and configuration
-- **CLI**: Full command-line interface for headless operations
-- **Webhooks**: Removed in Wave 1 cleanup
 - **Memory system**: Persistent conversational memory across sessions
 - **Skills system**: Extensible skill framework with sandbox execution
 

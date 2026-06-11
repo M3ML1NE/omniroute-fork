@@ -81,8 +81,6 @@ test("getSettings exposes defaults and updateSettings persists typed values", as
   assert.equal(defaults.requestRetry, 3);
   assert.equal(defaults.maxRetryIntervalSec, 30);
   assert.equal(defaults.comboConfigMode, "guided");
-  assert.equal(defaults.mcpEnabled, false);
-  assert.equal(defaults.a2aEnabled, false);
   assert.equal(updated.requireLogin, false);
   assert.equal(updated.cloudEnabled, true);
   assert.equal(updated.stickyRoundRobinLimit, 7);

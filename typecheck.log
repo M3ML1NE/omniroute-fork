@@ -1,0 +1,96 @@
+
+> omniroute@3.9.0 typecheck:core
+> tsc --pretty false -p tsconfig.typecheck-core.json
+
+src/lib/db/compressionAnalytics.ts(66,16): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ name: string; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ name: string; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionAnalytics.ts(266,18): error TS2352: Conversion of type 'Promise<Row | undefined>' to type 'ScalarRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type 'ScalarRow': total, totalSaved, avgPct, avgDur
+src/lib/db/compressionAnalytics.ts(279,20): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ mode: string; cnt: number; saved: number; avgPct: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ mode: string; cnt: number; saved: number; avgPct: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionAnalytics.ts(295,22): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ engine: string; cnt: number; saved: number; avgPct: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ engine: string; cnt: number; saved: number; avgPct: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionAnalytics.ts(316,32): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ compressionComboId: string | null; cnt: number; saved: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ compressionComboId: string | null; cnt: number; saved: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionAnalytics.ts(333,20): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ provider: string | null; cnt: number; saved: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ provider: string | null; cnt: number; saved: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionAnalytics.ts(357,20): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ hour: string; cnt: number; saved: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ hour: string; cnt: number; saved: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionAnalytics.ts(381,23): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ source: string | null; cnt: number; prompt: number; completion: number; total: number; cacheRead: number; cacheWrite: number; usdSaved: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ source: string | null; cnt: number; prompt: number; completion: number; total: number; cacheRead: number; cacheWrite: number; usdSaved: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionAnalytics.ts(428,23): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ cnt: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'cnt' is missing in type 'Promise<Row | undefined>' but required in type '{ cnt: number; }'.
+src/lib/db/compressionAnalytics.ts(437,29): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ cnt: number; saved: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type '{ cnt: number; saved: number; }': cnt, saved
+src/lib/db/compressionCacheStats.ts(57,8): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ totalRequests: number; avgNetSavings: number; cacheHitRate: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type '{ totalRequests: number; avgNetSavings: number; cacheHitRate: number; }': totalRequests, avgNetSavings, cacheHitRate
+src/lib/db/compressionCacheStats.ts(64,8): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ totalRequests: number; avgNetSavings: number; cacheHitRate: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type '{ totalRequests: number; avgNetSavings: number; cacheHitRate: number; }': totalRequests, avgNetSavings, cacheHitRate
+src/lib/db/compressionCacheStats.ts(78,8): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ provider: string; count: number; avgNetSavings: number; cacheHitRate: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ provider: string; count: number; avgNetSavings: number; cacheHitRate: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionCacheStats.ts(88,8): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ provider: string; count: number; avgNetSavings: number; cacheHitRate: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ provider: string; count: number; avgNetSavings: number; cacheHitRate: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/compressionCombos.ts(224,6): error TS2339: Property 'map' does not exist on type 'Promise<Row[]>'.
+src/lib/db/compressionCombos.ts(321,14): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/compressionCombos.ts(322,17): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/compressionCombos.ts(350,6): error TS2339: Property 'map' does not exist on type 'Promise<Row[]>'.
+src/lib/db/compressionCombos.ts(399,14): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/compressionCombos.ts(400,17): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/files.ts(79,15): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ content: string | Buffer<ArrayBufferLike> | Uint8Array<ArrayBufferLike> | null; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'content' is missing in type 'Promise<Row | undefined>' but required in type '{ content: string | Buffer<ArrayBufferLike> | Uint8Array<ArrayBufferLike> | null; }'.
+src/lib/db/files.ts(130,15): error TS2339: Property 'map' does not exist on type 'Promise<Row[]>'.
+src/lib/db/files.ts(147,15): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ c: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'c' is missing in type 'Promise<Row | undefined>' but required in type '{ c: number; }'.
+src/lib/db/files.ts(175,17): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/reasoningCache.ts(109,15): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ reasoning: string; provider: string; model: string; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type '{ reasoning: string; provider: string; model: string; }': reasoning, provider, model
+src/lib/db/reasoningCache.ts(126,17): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/reasoningCache.ts(138,17): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/reasoningCache.ts(150,19): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/reasoningCache.ts(153,17): error TS2339: Property 'changes' does not exist on type 'Promise<RunResult>'.
+src/lib/db/reasoningCache.ts(166,18): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ total_entries: number; total_chars: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type '{ total_entries: number; total_chars: number; }': total_entries, total_chars
+src/lib/db/reasoningCache.ts(174,24): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ provider: string; entries: number; chars: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ provider: string; entries: number; chars: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/reasoningCache.ts(188,21): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ model: string; entries: number; chars: number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ model: string; entries: number; chars: number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/reasoningCache.ts(202,18): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ created_at: string; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'created_at' is missing in type 'Promise<Row | undefined>' but required in type '{ created_at: string; }'.
+src/lib/db/reasoningCache.ts(209,18): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ created_at: string; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'created_at' is missing in type 'Promise<Row | undefined>' but required in type '{ created_at: string; }'.
+src/lib/db/reasoningCache.ts(258,16): error TS2352: Conversion of type 'Promise<Row[]>' to type '{ tool_call_id: string; provider: string; model: string; reasoning: string; char_count: number; created_at: string; expires_at: string | number; }[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type '{ tool_call_id: string; provider: string; model: string; reasoning: string; char_count: number; created_at: string; expires_at: string | number; }[]': length, pop, push, concat, and 35 more.
+src/lib/db/relayProxies.ts(140,17): error TS2352: Conversion of type 'Promise<Row | undefined>' to type 'RelayTokenRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type 'RelayTokenRow': id, name, token_hash, token_prefix, and 13 more.
+src/lib/db/relayProxies.ts(147,16): error TS2352: Conversion of type 'Promise<Row[]>' to type 'RelayTokenRow[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'RelayTokenRow[]': length, pop, push, concat, and 35 more.
+src/lib/db/relayProxies.ts(159,15): error TS2352: Conversion of type 'Promise<Row | undefined>' to type 'RelayTokenRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type 'RelayTokenRow': id, name, token_hash, token_prefix, and 13 more.
+src/lib/db/relayProxies.ts(171,15): error TS2352: Conversion of type 'Promise<Row | undefined>' to type 'RelayTokenRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type 'RelayTokenRow': id, name, token_hash, token_prefix, and 13 more.
+src/lib/db/relayProxies.ts(253,17): error TS2352: Conversion of type 'Promise<Row | undefined>' to type 'RelayTokenRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type 'RelayTokenRow': id, name, token_hash, token_prefix, and 13 more.
+src/lib/db/relayProxies.ts(263,21): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ request_count: number; cost: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type '{ request_count: number; cost: number; }': request_count, cost
+src/lib/db/relayProxies.ts(275,18): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ total: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'total' is missing in type 'Promise<Row | undefined>' but required in type '{ total: number; }'.
+src/lib/db/relayProxies.ts(357,15): error TS2352: Conversion of type 'Promise<Row | undefined>' to type '{ request_count: number; total_cost: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row | undefined>' is missing the following properties from type '{ request_count: number; total_cost: number; }': request_count, total_cost
+src/lib/db/relayProxies.ts(369,12): error TS2352: Conversion of type 'Promise<Row[]>' to type 'RelayLogRow[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'RelayLogRow[]': length, pop, push, concat, and 35 more.
+src/lib/db/relayProxies.ts(373,10): error TS2352: Conversion of type 'Promise<Row[]>' to type 'RelayLogRow[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'RelayLogRow[]': length, pop, push, concat, and 35 more.
+src/lib/usage/usageHistory.ts(433,15): error TS2339: Property 'map' does not exist on type 'Promise<Row[]>'.
+src/lib/usage/usageHistory.ts(505,16): error TS2352: Conversion of type 'Promise<Row[]>' to type 'LatencyRow[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'LatencyRow[]': length, pop, push, concat, and 35 more.
+src/lib/usage/usageHistory.ts(624,18): error TS2352: Conversion of type 'Promise<Row[]>' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'Record<string, unknown>[]': length, pop, push, concat, and 35 more.
+src/lib/usage/usageStats.ts(291,21): error TS2352: Conversion of type 'Promise<Row[]>' to type 'unknown[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'unknown[]': length, pop, push, concat, and 35 more.
+src/lib/usage/usageStats.ts(347,23): error TS2352: Conversion of type 'Promise<Row[]>' to type 'unknown[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'unknown[]': length, pop, push, concat, and 35 more.
+src/lib/usage/usageStats.ts(400,22): error TS2352: Conversion of type 'Promise<Row[]>' to type 'unknown[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'unknown[]': length, pop, push, concat, and 35 more.
+src/lib/usage/usageStats.ts(454,22): error TS2352: Conversion of type 'Promise<Row[]>' to type 'unknown[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<Row[]>' is missing the following properties from type 'unknown[]': length, pop, push, concat, and 35 more.
+src/shared/constants/sidebarVisibility.ts(355,5): error TS2741: Property 'href' is missing in type '{ id: "mcp"; i18nKey: string; subtitleKey: string; icon: string; }' but required in type 'SidebarItemDefinition'.

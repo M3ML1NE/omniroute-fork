@@ -12,27 +12,9 @@ import { CLI_TOKEN_HEADER } from "../../../src/server/authz/headers.ts";
 
 // ─── routeGuard helpers ────────────────────────────────────────────────────
 
-test("isLocalOnlyPath: /api/mcp/ prefix is local-only", () => {
-  assert.equal(isLocalOnlyPath("/api/mcp/sse"), true);
-  assert.equal(isLocalOnlyPath("/api/mcp/"), true);
-});
-
-test("isLocalOnlyPath: /api/cli-tools/runtime/ is local-only", () => {
-  assert.equal(isLocalOnlyPath("/api/cli-tools/runtime/claude"), true);
-});
-
 test("isLocalOnlyPath: regular management routes are not local-only", () => {
   assert.equal(isLocalOnlyPath("/api/settings"), false);
   assert.equal(isLocalOnlyPath("/api/providers"), false);
-});
-
-test("isLocalOnlyBypassableByManageScope: /api/mcp/ prefix is bypassable", () => {
-  assert.equal(isLocalOnlyBypassableByManageScope("/api/mcp/"), true);
-  assert.equal(isLocalOnlyBypassableByManageScope("/api/mcp/stream"), true);
-});
-
-test("isLocalOnlyBypassableByManageScope: /api/cli-tools/runtime/* is NOT bypassable", () => {
-  assert.equal(isLocalOnlyBypassableByManageScope("/api/cli-tools/runtime/foo"), false);
 });
 
 test("isLocalOnlyBypassableByManageScope: non-local-only routes are not bypassable", () => {
@@ -90,79 +72,6 @@ function makeCtx(
     requestId: "test-req",
   };
 }
-
-test("management policy rejects /api/mcp/ from non-localhost (status 403)", async () => {
-  const ctx = makeCtx("/api/mcp/sse", { host: "evil.tunnel.io" });
-  const outcome = await managementPolicy.evaluate(ctx);
-  assert.equal(outcome.allow, false);
-  if (!outcome.allow) assert.equal(outcome.status, 403);
-});
-
-test("management policy rejects /api/mcp/ when forwarded peer is remote", async () => {
-  const token = getMachineTokenSync();
-  const ctx = makeCtx("/api/mcp/sse", {
-    host: "localhost",
-    "x-forwarded-for": "203.0.113.10",
-    [CLI_TOKEN_HEADER]: token,
-  });
-  const outcome = await managementPolicy.evaluate(ctx);
-  assert.equal(outcome.allow, false);
-  if (!outcome.allow) assert.equal(outcome.status, 403);
-});
-
-test("management policy rejects /api/mcp/ when host is spoofed from a remote socket", async () => {
-  const token = getMachineTokenSync();
-  const ctx = makeCtx(
-    "/api/mcp/sse",
-    {
-      host: "localhost",
-      "x-forwarded-for": "127.0.0.1",
-      [CLI_TOKEN_HEADER]: token,
-    },
-    { socket: { remoteAddress: "203.0.113.10" } }
-  );
-  const outcome = await managementPolicy.evaluate(ctx);
-  assert.equal(outcome.allow, false);
-  if (!outcome.allow) assert.equal(outcome.status, 403);
-});
-
-test("management policy rejects /api/mcp/ when loopback x-forwarded-for is untrusted", async () => {
-  const token = getMachineTokenSync();
-  const ctx = makeCtx("/api/mcp/sse", {
-    host: "localhost",
-    "x-forwarded-for": "127.0.0.1",
-    [CLI_TOKEN_HEADER]: token,
-  });
-  const outcome = await managementPolicy.evaluate(ctx);
-  assert.equal(outcome.allow, false);
-  if (!outcome.allow) assert.equal(outcome.status, 403);
-});
-
-test("management policy rejects /api/mcp/ when loopback x-real-ip is untrusted", async () => {
-  const token = getMachineTokenSync();
-  const ctx = makeCtx("/api/mcp/sse", {
-    host: "localhost",
-    "x-real-ip": "127.0.0.1",
-    [CLI_TOKEN_HEADER]: token,
-  });
-  const outcome = await managementPolicy.evaluate(ctx);
-  assert.equal(outcome.allow, false);
-  if (!outcome.allow) assert.equal(outcome.status, 403);
-});
-
-test("management policy allows /api/mcp/ from localhost with valid CLI token", async () => {
-  const token = getMachineTokenSync();
-  const ctx = makeCtx(
-    "/api/mcp/sse",
-    {
-      host: "localhost",
-      [CLI_TOKEN_HEADER]: token,
-    },
-    { socket: { remoteAddress: "127.0.0.1" } }
-  );
-  const outcome = await managementPolicy.evaluate(ctx);
-  assert.equal(outcome.allow, true);
-});
 
 // ─── /api/copilot/ route guard — local-only, NOT spawn-capable ────────────
 

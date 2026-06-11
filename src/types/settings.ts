@@ -22,9 +22,6 @@ export interface Settings {
   maxRetryIntervalSec: number;
   maxBodySizeMb?: number;
   jwtSecret?: string;
-  mcpEnabled?: boolean;
-  mcpTransport?: "stdio" | "sse" | "streamable-http";
-  a2aEnabled?: boolean;
   hideHealthCheckLogs?: boolean;
   hideEndpointCloudflaredTunnel?: boolean;
   hideEndpointTailscaleFunnel?: boolean;

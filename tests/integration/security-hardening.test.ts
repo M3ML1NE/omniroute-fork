@@ -193,27 +193,8 @@ test("API key update route and DB layer wire persisted no-log controls", () => {
   assert.ok(dbContent.includes("no_log"), "api key DB module should persist no_log column");
 });
 
-test("MCP server enforces scopes from caller context before tool execution", () => {
-  const serverContent = readIfExists("open-sse/mcp-server/server.ts");
-  assert.ok(serverContent, "open-sse/mcp-server/server.ts should exist");
-  assert.ok(
-    serverContent.includes("resolveCallerScopeContext"),
-    "MCP server should resolve caller scopes from request context"
-  );
-  assert.ok(
-    serverContent.includes("evaluateToolScopes"),
-    "MCP server should evaluate required scopes per tool"
-  );
-
-  const scopeContent = readIfExists("open-sse/mcp-server/scopeEnforcement.ts");
-  assert.ok(scopeContent, "open-sse/mcp-server/scopeEnforcement.ts should exist");
-  assert.ok(
-    scopeContent.includes("authInfo"),
-    "scope enforcement should parse authInfo scopes when provided by transport"
-  );
-});
-
 test("ACP agents route requires management authentication before CLI discovery", () => {
+
   const content = readIfExists("src/app/api/acp/agents/route.ts");
   assert.ok(content, "src/app/api/acp/agents/route.ts should exist");
   assert.ok(

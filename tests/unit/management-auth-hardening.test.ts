@@ -180,33 +180,6 @@ test("middleware hook registry routes require management authentication before s
   }
 });
 
-test("MCP transport and inspection routes require management authentication", () => {
-  // /api/mcp/* is classified as LOCAL_ONLY in routeGuard.ts, but that
-  // classification only takes effect inside runAuthzPipeline, which is not
-  // invoked by Next.js in production (src/proxy.ts vs middleware.ts). Each
-  // route must self-enforce. requireManagementAuth covers: CLI machine
-  // token (loopback), dashboard session cookie, and manage-scope API key —
-  // matching the documented bypasses in LOCAL_ONLY_MANAGE_SCOPE_BYPASS_PREFIXES.
-  const routePaths = [
-    "src/app/api/mcp/status/route.ts",
-    "src/app/api/mcp/tools/route.ts",
-    "src/app/api/mcp/audit/route.ts",
-    "src/app/api/mcp/audit/stats/route.ts",
-    "src/app/api/mcp/sse/route.ts",
-    "src/app/api/mcp/stream/route.ts",
-  ];
-
-  for (const routePath of routePaths) {
-    const content = fs.readFileSync(routePath, "utf8");
-    assert.ok(content.includes('from "@/lib/api/requireManagementAuth"'), routePath);
-    assert.ok(
-      content.includes("const authError = await requireManagementAuth(request);"),
-      routePath
-    );
-    assert.ok(content.includes("if (authError) return authError;"), routePath);
-  }
-});
-
 test("management routes sanitize error.message before returning it to clients", () => {
   // Hard Rule #12 (docs/security/ERROR_SANITIZATION.md): HTTP responses must
   // route every err.message/err.stack through sanitizeErrorMessage() or

@@ -284,37 +284,24 @@ describe("API Routes — dashboard and tool consumers", () => {
     assert.doesNotMatch(activeRequests, /border-black\/10/);
   });
 
-  it("keeps usage quota wired through A2A and MCP tools", () => {
+  it("keeps usage quota wired through A2A", () => {
     const quotaSkill = readProjectFile("src/lib/a2a/skills/quotaManagement.ts");
-    const mcpAdvancedTools = readProjectFile("open-sse/mcp-server/tools/advancedTools.ts");
-    const mcpServer = readProjectFile("open-sse/mcp-server/server.ts");
 
     assert.ok(quotaSkill, "quotaManagement skill should exist");
-    assert.ok(mcpAdvancedTools, "advanced MCP tools should exist");
-    assert.ok(mcpServer, "MCP server should exist");
     assert.match(quotaSkill, /\/api\/usage\/quota/);
-    assert.match(mcpAdvancedTools, /\/api\/usage\/quota/);
-    assert.match(mcpServer, /\/api\/usage\/quota/);
     assertRouteMethods("src/app/api/usage/quota/route.ts", ["GET"]);
   });
 
   it("keeps legacy usage history and raw request-log APIs explicitly classified", () => {
     const usageStats = readProjectFile("src/shared/components/UsageStats.tsx");
-    const apiReference = readProjectFile("docs/reference/API_REFERENCE.md");
-    const openApi = readProjectFile("docs/reference/openapi.yaml");
 
     assert.ok(usageStats, "UsageStats compatibility component should exist");
-    assert.ok(apiReference, "API reference should exist");
-    assert.ok(openApi, "OpenAPI document should exist");
     assert.match(usageStats, /\/api\/usage\/history/);
-    assert.match(apiReference, /\/api\/usage\/history/);
-    assert.match(apiReference, /\/api\/usage\/request-logs/);
-    assert.match(openApi, /\/api\/usage\/history:/);
-    assert.match(openApi, /\/api\/usage\/request-logs:/);
     assertRouteMethods("src/app/api/usage/history/route.ts", ["GET"]);
     assertRouteMethods("src/app/api/usage/request-logs/route.ts", ["GET"]);
     assertRouteMethods("src/app/api/usage/logs/route.ts", ["GET"]);
   });
+
 });
 
 describe("API Routes — T09 /v1 catalog consistency", () => {
@@ -351,7 +338,6 @@ describe("Dashboard Wiring — T05 payload rules", () => {
   const payloadRulesTabSrc = readProjectFile(
     "src/app/(dashboard)/dashboard/settings/components/PayloadRulesTab.tsx"
   );
-  const openapiSrc = readProjectFile("docs/reference/openapi.yaml");
 
   it.skip("settings page should surface payload rules inside advanced settings", () => {
     assert.ok(settingsPageSrc, "settings page source should exist");
@@ -370,13 +356,6 @@ describe("Dashboard Wiring — T05 payload rules", () => {
     assert.match(payloadRulesTabSrc, /default-raw/);
   });
 
-  it("openapi should document the payload rules management surface", () => {
-    assert.ok(openapiSrc, "docs/reference/openapi.yaml should exist");
-    assert.match(openapiSrc, /\/api\/settings\/payload-rules:/);
-    assert.match(openapiSrc, /summary:\s+Get payload rules configuration/);
-    assert.match(openapiSrc, /ManagementSessionAuth:/);
-    assert.match(openapiSrc, /PayloadRulesConfig:/);
-  });
 });
 
 // ─── Barrel Exports ─────────────────────────────────

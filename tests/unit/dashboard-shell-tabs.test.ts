@@ -33,16 +33,13 @@ test("analytics page exposes the restored analytics tab shell", () => {
   }
 });
 
-test("endpoint page keeps APIs, MCP, and A2A as in-page tabs", () => {
+test("endpoint page renders the APIs surface without protocol tabs", () => {
   const source = readSource("src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.tsx");
 
-  assert.ok(source.includes('type EndpointTab = "apis" | "mcp" | "a2a"'));
-  for (const label of ["APIs", "MCP", "A2A"]) {
-    assert.ok(source.includes('label: "' + label + '"'));
-  }
-  assert.ok(source.includes('useState<EndpointTab>("apis")'));
-  assert.ok(source.includes('activeEndpointTab === "mcp" ? <McpDashboardPage /> : null'));
-  assert.ok(source.includes('activeEndpointTab === "a2a" ? <A2ADashboardPage /> : null'));
+  assert.ok(!source.includes("EndpointTab"));
+  assert.ok(!source.includes("A2ADashboardPage"));
+  assert.ok(!source.includes("McpDashboardPage"));
+  assert.ok(!source.includes('"/api/a2a/status"'));
 });
 
 test("settings root renders the General, Appearance, and Resilience tab panel", () => {

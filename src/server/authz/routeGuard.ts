@@ -26,7 +26,6 @@ import { getAuthzBypassSnapshot } from "@/lib/config/runtimeSettings";
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 export const LOCAL_ONLY_API_PREFIXES: ReadonlyArray<string> = [
-  "/api/mcp/",
   "/api/copilot/", // unauthenticated LLM driver CLI-only default; admins opt-in remote access manage-scope bypass
 ];
 
@@ -58,7 +57,7 @@ export const SPAWN_CAPABLE_PREFIXES: ReadonlyArray<string> = [
  * consult this constant — it reads `getAuthzBypassSnapshot().prefixes`,
  * which is hot-reloaded on every settings PATCH.
  */
-export const LOCAL_ONLY_MANAGE_SCOPE_BYPASS_PREFIXES: ReadonlyArray<string> = ["/api/mcp/"];
+export const LOCAL_ONLY_MANAGE_SCOPE_BYPASS_PREFIXES: ReadonlyArray<string> = [];
 
 export const ALWAYS_PROTECTED_API_PATHS: ReadonlyArray<string> = [
   "/api/shutdown",

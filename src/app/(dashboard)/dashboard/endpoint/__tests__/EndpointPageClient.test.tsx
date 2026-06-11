@@ -178,12 +178,6 @@ describe("EndpointPageClient", () => {
       if (path === "/v1/models") {
         return modelsDeferred.promise;
       }
-      if (path === "/api/mcp/status") {
-        return Promise.resolve(jsonResponse({ online: false }));
-      }
-      if (path === "/api/a2a/status") {
-        return Promise.resolve(jsonResponse({ status: "ok", tasks: { activeStreams: 0 } }));
-      }
       if (path === "/api/search/providers") {
         return Promise.resolve(jsonResponse({ providers: [] }));
       }

@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Card, Button, Modal, CardSkeleton, SegmentedControl } from "@/shared/components";
+import { Card, Button, Modal, CardSkeleton } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useDisplayBaseUrl } from "@/shared/hooks";
 import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
 import { getProviderDisplayName } from "@/lib/display/names";
 import { useTranslations } from "next-intl";
-import A2ADashboardPage from "./components/A2ADashboard";
-import McpDashboardPage from "./components/MCPDashboard";
 import TokenSaverCard from "./components/TokenSaverCard";
 
 type TranslationValues = Record<string, string | number | boolean | Date>;
@@ -34,15 +32,7 @@ type EndpointModelSummary = {
   root?: string;
 };
 
-type EndpointTab = "apis" | "mcp" | "a2a";
-
 type CopyHandler = (text: string, key?: string) => void;
-
-const ENDPOINT_TABS: Array<{ value: EndpointTab; label: string; icon: string }> = [
-  { value: "apis", label: "APIs", icon: "api" },
-  { value: "mcp", label: "MCP", icon: "extension" },
-  { value: "a2a", label: "A2A", icon: "hub" },
-];
 
 function runEndpointBackgroundTask(taskName: string, task: () => Promise<unknown>) {
   void task().catch((error) => {
@@ -61,10 +51,8 @@ export default function APIPageClient({ machineId }: Readonly<APIPageClientProps
   const [modelsLoading, setModelsLoading] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState<EndpointProviderSummary | null>(null);
 
-  const [mcpStatus, setMcpStatus] = useState<any>(null);
-  const [a2aStatus, setA2aStatus] = useState<any>(null);
+
   const [searchProviders, setSearchProviders] = useState<any[]>([]);
-  const [activeEndpointTab, setActiveEndpointTab] = useState<EndpointTab>("apis");
 
   const { copied, copy } = useCopyToClipboard();
 
@@ -103,7 +91,6 @@ export default function APIPageClient({ machineId }: Readonly<APIPageClientProps
       setLoading(false);
 
       runEndpointBackgroundTask("models", fetchModels);
-      runEndpointBackgroundTask("protocol-status", fetchProtocolStatus);
       runEndpointBackgroundTask("search-providers", fetchSearchProviders);
     };
 
@@ -126,24 +113,6 @@ export default function APIPageClient({ machineId }: Readonly<APIPageClientProps
       console.log("Error fetching models:", e);
     } finally {
       setModelsLoading(false);
-    }
-  };
-
-  const fetchProtocolStatus = async () => {
-    try {
-      const [mcpRes, a2aRes] = await Promise.allSettled([
-        fetch("/api/mcp/status"),
-        fetch("/api/a2a/status"),
-      ]);
-
-      if (mcpRes.status === "fulfilled" && mcpRes.value.ok) {
-        setMcpStatus(await mcpRes.value.json());
-      }
-      if (a2aRes.status === "fulfilled" && a2aRes.value.ok) {
-        setA2aStatus(await a2aRes.value.json());
-      }
-    } catch {
-      // Ignore status failures; protocols panel has fallback text.
     }
   };
 
@@ -233,24 +202,8 @@ export default function APIPageClient({ machineId }: Readonly<APIPageClientProps
 
   const currentEndpoint = baseUrl;
 
-  const mcpOnline = Boolean(mcpStatus?.online);
-  const a2aOnline = a2aStatus?.status === "ok";
-  const mcpToolCount = Number(mcpStatus?.heartbeat?.toolCount || 0);
-  const a2aActiveStreams = Number(a2aStatus?.tasks?.activeStreams || 0);
-
   return (
     <div className="flex flex-col gap-8">
-      <SegmentedControl
-        options={ENDPOINT_TABS}
-        value={activeEndpointTab}
-        onChange={(value) => setActiveEndpointTab(value as EndpointTab)}
-        aria-label="Endpoint sections"
-        className="w-fit"
-      />
-
-      {activeEndpointTab === "mcp" ? <McpDashboardPage /> : null}
-      {activeEndpointTab === "a2a" ? <A2ADashboardPage /> : null}
-
       {/* Endpoint Card */}
       <Card>
         <h2 className="text-lg font-semibold mb-4">{t("title")}</h2>

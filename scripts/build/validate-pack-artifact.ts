@@ -35,8 +35,8 @@ function ensureAppStagingReady(): void {
 
   if (missingAppRequiredPaths.length === 0) return;
 
-  console.log("📦 app/ staging is missing required runtime files; running npm run build:cli...");
-  runNpm(["run", "build:cli"], "inherit");
+  console.log("📦 app/ staging is missing required runtime files; running npm run build...");
+  runNpm(["run", "build"], "inherit");
 }
 
 function runPackDryRun(): any {

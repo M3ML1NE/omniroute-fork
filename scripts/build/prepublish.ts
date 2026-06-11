@@ -384,34 +384,6 @@ if (existsSync(mitmSrc)) {
   }
 }
 
-// ── Step 8.5: Bundle MCP server ────────────────────────────
-const mcpSrcFile = join(ROOT, "open-sse", "mcp-server", "server.ts");
-const mcpDestDir = join(APP_DIR, "open-sse", "mcp-server");
-const mcpDestFile = join(mcpDestDir, "server.js");
-
-if (existsSync(mcpSrcFile)) {
-  console.log("  🔨 Bundling MCP Server (TypeScript → JavaScript)...");
-  mkdirSync(mcpDestDir, { recursive: true });
-  try {
-    execFileSync(
-      NPX_BIN,
-      [
-        "esbuild",
-        "open-sse/mcp-server/server.ts",
-        "--bundle",
-        "--platform=node",
-        "--packages=external",
-        "--format=esm",
-        "--outfile=app/open-sse/mcp-server/server.js",
-      ],
-      { cwd: ROOT, stdio: "inherit" }
-    );
-    console.log("  ✅ MCP Server bundled to app/open-sse/mcp-server/server.js");
-  } catch (err: any) {
-    console.warn("  ⚠️  MCP Server bundle error:", err.message);
-  }
-}
-
 // ── Step 8.7: Bundle CLI Entrypoint ──────────────────────────
 const cliSrcFile = join(ROOT, "bin", "omniroute.ts");
 const cliDestFile = join(ROOT, "bin", "omniroute.mjs");

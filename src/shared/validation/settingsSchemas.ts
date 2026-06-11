@@ -66,10 +66,6 @@ export const updateSettingsSchema = z.object({
   intentExtraCodeKeywords: z.array(z.string().max(100)).optional(),
   intentExtraReasoningKeywords: z.array(z.string().max(100)).optional(),
   intentExtraSimpleKeywords: z.array(z.string().max(100)).optional(),
-  // Protocol toggles (default: disabled)
-  mcpEnabled: z.boolean().optional(),
-  mcpTransport: z.enum(["stdio", "sse", "streamable-http"]).optional(),
-  a2aEnabled: z.boolean().optional(),
   wsAuth: z.boolean().optional(),
   // Strip provider/model prefix at proxy layer (e.g. "openai/gpt-4" → "gpt-4")
   stripModelPrefix: z.boolean().optional(),

@@ -55,8 +55,8 @@ test("combo strategies stay aligned between UI metadata and schema validation", 
   const { comboStrategySchema, createComboSchema } =
     await import("../../src/shared/validation/schemas.ts");
   const { comboSchema } = await import("../../src/shared/schemas/validation.ts");
-  const { setRoutingStrategyInput } = await import("../../open-sse/mcp-server/schemas/tools.ts");
   const strategyValues = ROUTING_STRATEGIES.map((strategy) => strategy.value);
+
 
   assert.deepEqual(strategyValues, [...ROUTING_STRATEGY_VALUES]);
   assert.equal(new Set(strategyValues).size, ROUTING_STRATEGY_VALUES.length);
@@ -79,12 +79,7 @@ test("combo strategies stay aligned between UI metadata and schema validation", 
         nodes: [{ connectionId: crypto.randomUUID() }],
       }).success,
       true,
-      `legacy combo schema should accept strategy ${strategy}`
-    );
-    assert.equal(
-      setRoutingStrategyInput.safeParse({ comboId: "combo", strategy }).success,
-      true,
-      `MCP set strategy schema should accept ${strategy}`
+      `legacy schema should accept strategy ${strategy}`
     );
   });
 
@@ -99,6 +94,7 @@ test("combo strategies stay aligned between UI metadata and schema validation", 
   });
   assert.equal(invalidParse.success, false);
 });
+
 
 test("intelligent combo selection defaults only inside the intelligent filter", () => {
   const intelligentCombos = [

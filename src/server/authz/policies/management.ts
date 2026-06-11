@@ -62,7 +62,6 @@ export const managementPolicy: RoutePolicy = {
     //   - headless / remote MCP clients drive the management surface with a
     //     manage-scope Bearer key, and
     //   - the Dashboard UI itself (cookie session) render its MCP pages
-    //     (/api/mcp/status, /api/mcp/tools) from a public hostname.
     //
     // The strict-loopback default still applies to everything else (notably
     // the subprocess-spawning service surfaces (e.g. /api/services/), which are NOT
@@ -99,7 +98,6 @@ export const managementPolicy: RoutePolicy = {
           }
         }
         // Dashboard session bypass: the Dashboard UI itself needs to render
-        // /api/mcp/status, /api/mcp/tools, etc. from a public hostname. Cookie
         // auth is already proof of an authenticated admin — same trust level
         // as a manage-scope Bearer for the surface in scope here.
         try {

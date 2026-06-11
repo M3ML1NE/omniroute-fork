@@ -9,7 +9,6 @@ const defaultRoots = [
   "src/lib/db",
   "src/lib/compliance",
   "open-sse/translator",
-  "open-sse/mcp-server",
 ];
 const roots = process.argv.slice(2).length > 0 ? process.argv.slice(2) : defaultRoots;
 const sourceExtensions = [".ts", ".tsx", ".js", ".mjs", ".jsx", ".mts", ".cts"];

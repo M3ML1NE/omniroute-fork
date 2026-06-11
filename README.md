@@ -189,33 +189,3 @@ OmniRoute предоставляет MCP server через **HTTP SSE transport*
 {
   "mcpServers": {
     "omniroute-atlassian": {
-      "url": "http://localhost:3000/api/mcp/sse",
-      "transport": "sse"
-    }
-  }
-}
-```
-
-После подключения клиент увидит 12 тулов (или меньше, если какие-то сервисы отключены).
-
-#### Health check
-
-```bash
-curl http://localhost:3000/api/mcp/health
-# {"status":"ok","transport":"sse","server":"omniroute","version":"1.0.0"}
-```
-
-### Безопасность
-
-- Пароли service accounts автоматически редактируются в логах (показываются как `***<last4>`)
-- `Authorization` headers замаскированы как `[redacted]`
-- mTLS поддерживается per-service для дополнительной защиты внутренних endpoints
-- Логи **не содержат** raw PEM содержимое или passwords
-
-### Поддерживаемые версии Atlassian
-
-- **Jira Data Center / Server** (REST API v2: `/rest/api/2/`)
-- **Bitbucket Server / Stash** (REST API v1: `/rest/api/1.0/`)
-- **Confluence Server** (REST API v1: `/rest/api/`)
-
-> **Atlassian Cloud не поддерживается** (api.atlassian.com использует другой API). Только on-prem версии.

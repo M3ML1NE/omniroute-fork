@@ -30,7 +30,6 @@ export const APP_STAGING_REMOVAL_PATHS: string[] = [
 export const APP_STAGING_ALLOWED_EXACT_PATHS: string[] = [
   ".env.example",
   "docs/reference/openapi.yaml",
-  "open-sse/mcp-server/server.js",
   "package.json",
   "responses-ws-proxy.mjs",
   "scripts/dev/sync-env.mjs",
@@ -61,17 +60,9 @@ export const PACK_ARTIFACT_ROOT_ALLOWED_EXACT_PATHS: string[] = [
   ".env.example",
   "LICENSE",
   "README.md",
-  "bin/mcp-server.mjs",
   "bin/nodeRuntimeSupport.mjs",
   "bin/omniroute.mjs",
   "bin/reset-password.mjs",
-  "open-sse/mcp-server/README.md",
-  "open-sse/mcp-server/audit.ts",
-  "open-sse/mcp-server/httpTransport.ts",
-  "open-sse/mcp-server/index.ts",
-  "open-sse/mcp-server/runtimeHeartbeat.ts",
-  "open-sse/mcp-server/scopeEnforcement.ts",
-  "open-sse/mcp-server/server.ts",
   // Runtime polyfill eagerly imported by bin/omniroute.mjs (Node <22 compat);
   // shipped via package.json "files", so it must be allowed in the tarball.
   "open-sse/utils/setupPolyfill.ts",
@@ -91,10 +82,6 @@ export const PACK_ARTIFACT_ROOT_ALLOWED_EXACT_PATHS: string[] = [
 export const PACK_ARTIFACT_ROOT_ALLOWED_PATH_PREFIXES: string[] = [
   "@omniroute/opencode-plugin/",
   "@omniroute/opencode-provider/",
-  "bin/cli/",
-  "open-sse/mcp-server/schemas/",
-  "open-sse/mcp-server/tools/",
-  "src/lib/cli-helper/",
   "src/shared/contracts/",
 ];
 
@@ -104,8 +91,6 @@ export const PACK_ARTIFACT_REQUIRED_PATHS: string[] = [
   "app/server.js",
   "app/server-ws.mjs",
   "app/responses-ws-proxy.mjs",
-  "bin/cli/program.mjs",
-  "bin/mcp-server.mjs",
   "bin/nodeRuntimeSupport.mjs",
   "bin/omniroute.mjs",
   "package.json",

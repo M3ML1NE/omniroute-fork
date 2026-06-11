@@ -21,30 +21,6 @@ import {
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { isApiKeyRevealEnabled, maskStoredApiKey } from "@/lib/apiKeyExposure";
 
-function normalizeCodexLimitPolicy(
-  incoming: unknown,
-  existing: unknown
-): { use5h: boolean; useWeekly: boolean } {
-  const incomingRecord =
-    incoming && typeof incoming === "object" && !Array.isArray(incoming)
-      ? (incoming as Record<string, unknown>)
-      : {};
-  const existingRecord =
-    existing && typeof existing === "object" && !Array.isArray(existing)
-      ? (existing as Record<string, unknown>)
-      : {};
-
-  const existingUse5h = typeof existingRecord.use5h === "boolean" ? existingRecord.use5h : true;
-  const existingUseWeekly =
-    typeof existingRecord.useWeekly === "boolean" ? existingRecord.useWeekly : true;
-
-  return {
-    use5h: typeof incomingRecord.use5h === "boolean" ? incomingRecord.use5h : existingUse5h,
-    useWeekly:
-      typeof incomingRecord.useWeekly === "boolean" ? incomingRecord.useWeekly : existingUseWeekly,
-  };
-}
-
 // GET /api/providers/[id] - Get single connection
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const authError = await requireManagementAuth(request);

@@ -90,24 +90,6 @@ export const AGENT_SKILLS: AgentSkill[] = [
     category: "api",
   },
   {
-    id: "omniroute-mcp",
-    name: "MCP Server",
-    description:
-      "37 tools over SSE/stdio/HTTP: routing, cache, compression, memory, skills, providers, audit.",
-    endpoint: "/api/mcp/sse",
-    icon: "electrical_services",
-    category: "api",
-  },
-  {
-    id: "omniroute-a2a",
-    name: "A2A Protocol",
-    description:
-      "JSON-RPC 2.0 agent-to-agent server with 5 built-in skills: smart-routing, quota, discovery, cost, health.",
-    endpoint: "/a2a",
-    icon: "device_hub",
-    category: "api",
-  },
-  {
     id: "omniroute-routing",
     name: "Routing & Combos",
     description:

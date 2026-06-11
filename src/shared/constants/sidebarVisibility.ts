@@ -33,12 +33,8 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "costs-budget",
   // Monitoring > Audit
   "audit",
-  "audit-mcp",
-  "audit-a2a",
   // Agentic Features
   "memory",
-  "mcp",
-  "a2a",
   // Other Features — flat
   "media",
   // Configuration
@@ -329,35 +325,6 @@ const AUDIT_GROUP: SidebarItemGroup = {
       subtitleKey: "auditLogSubtitle",
       icon: "policy",
     },
-    {
-      id: "audit-mcp",
-      href: "/dashboard/audit/mcp",
-      i18nKey: "auditMcp",
-      subtitleKey: "auditMcpSubtitle",
-      icon: "security",
-    },
-    {
-      id: "audit-a2a",
-      href: "/dashboard/audit/a2a",
-      i18nKey: "auditA2a",
-      subtitleKey: "auditA2aSubtitle",
-      icon: "device_hub",
-    },
-  ],
-};
-
-const MCP_GROUP: SidebarItemGroup = {
-  type: "group",
-  id: "mcp",
-  titleKey: "mcp",
-  titleFallback: "MCP Server",
-  items: [
-    {
-      id: "mcp",
-      i18nKey: "mcp",
-      subtitleKey: "mcpSubtitle",
-      icon: "hub",
-    },
   ],
 };
 
@@ -368,14 +335,6 @@ const AGENTIC_FEATURES_ITEMS: readonly SidebarSectionChild[] = [
     i18nKey: "memory",
     subtitleKey: "memorySubtitle",
     icon: "psychology",
-  },
-  MCP_GROUP,
-  {
-    id: "a2a",
-    href: "/dashboard/a2a",
-    i18nKey: "a2a",
-    subtitleKey: "a2aSubtitle",
-    icon: "device_hub",
   },
 ];
 
@@ -556,8 +515,6 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "health",
   "runtime",
   "memory",
-  "mcp",
-  "a2a",
   "settings",
   "settings-routing",
   "settings-resilience",
@@ -582,8 +539,6 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "health",
   "runtime",
   "audit",
-  "audit-mcp",
-  "audit-a2a",
   "settings",
   "settings-general",
   "settings-routing",

@@ -52,9 +52,6 @@ const HEADER_DESCRIPTIONS: Partial<Record<HideableSidebarItemId, string>> = {
   audit: "auditDescription",
   // Webhook subsystem removed — see Wave 1 cleanup
   health: "healthDescription",
-  // Protocols
-  mcp: "mcpDescription",
-  a2a: "a2aDescription",
   "api-endpoints": "apiEndpointsDescription",
   // Analytics sub-pages
   "analytics-evals": "analyticsEvalsDescription",
@@ -68,8 +65,6 @@ const HEADER_DESCRIPTIONS: Partial<Record<HideableSidebarItemId, string>> = {
   "logs-proxy": "logsProxyDescription",
   "logs-console": "logsConsoleDescription",
   "logs-activity": "logsActivityDescription",
-  // Audit sub-pages
-  "audit-mcp": "auditMcpDescription",
   // Settings sub-pages
   "settings-general": "settingsGeneralDescription",
   "settings-appearance": "settingsAppearanceDescription",
