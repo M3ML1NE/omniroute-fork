@@ -360,6 +360,16 @@ export async function GET(request: Request) {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+    // Create a filtered params object for queries that only use whereClause
+    const paramsForHistory: Record<string, unknown> = {};
+    if (sinceIso) paramsForHistory.since = sinceIso;
+    if (untilIso) paramsForHistory.until = untilIso;
+    if (apiKeyIds.length > 0) {
+      apiKeyIds.forEach((id, i) => {
+        paramsForHistory[`apiKey${i}`] = id;
+      });
+    }
+
     // Build a UNION data source that merges recent raw rows with aggregated history.
     // daily_usage_summary rows are included only when the query window extends before
     // rawCutoffIso. They are gated off entirely when an api_key filter is active:

@@ -483,11 +483,18 @@ function getStrategyBadgeClass(strategy) {
   return "bg-blue-500/15 text-blue-600 dark:text-blue-400";
 }
 
-function getI18nOrFallback(t, key, fallback) {
+function getI18nOrFallback(t, key, fallback, values?: Record<string, unknown>) {
   try {
-    if (typeof t.has === "function" && t.has(key)) return t(key);
+    if (typeof t.has === "function" && t.has(key)) return t(key, values);
   } catch {
     // Some translations require ICU variables; fallback keeps optional helper text safe.
+  }
+  if (values && typeof fallback === "string") {
+    let out = fallback;
+    for (const [k, v] of Object.entries(values)) {
+      out = out.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
+    }
+    return out;
   }
   return fallback;
 }
@@ -1234,7 +1241,6 @@ export default function CombosPage() {
         activeProviders={activeProviders}
         comboConfigMode={comboConfigMode}
       />
-
     </div>
   );
 }
@@ -1424,8 +1430,9 @@ function StrategyRecommendationsPanel({ strategy, onApply, showNudge }) {
           {getI18nOrFallback(
             t,
             "recommendationsUpdated",
-            "Recommendations updated for {strategy}."
-          ).replace("{strategy}", strategyLabel)}
+            "Recommendations updated for {strategy}.",
+            { strategy: strategyLabel }
+          )}
         </div>
       )}
     </div>

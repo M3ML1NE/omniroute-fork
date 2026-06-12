@@ -253,16 +253,15 @@ export async function buildProviderHealthAutopilotReport(
   const includeActions = options.includeActions !== false;
   const providerFilter = toString(options.provider);
 
-  const [{ getAllCircuitBreakerStatuses }, { getAllModelLockouts }] =
-    await Promise.all([
-      import("@/shared/utils/circuitBreaker"),
-      import("@omniroute/open-sse/services/accountFallback"),
-    ]);
+  const [{ getAllCircuitBreakerStatuses }, { getAllModelLockouts }] = await Promise.all([
+    import("@/shared/utils/circuitBreaker"),
+    import("@omniroute/open-sse/services/accountFallback"),
+  ]);
 
   const connections = (await getProviderConnections(
     providerFilter ? { provider: providerFilter } : {}
   )) as JsonRecord[];
-  const breakers = getAllCircuitBreakerStatuses().filter((breaker) => {
+  const breakers = (await getAllCircuitBreakerStatuses()).filter((breaker) => {
     const name = toString((breaker as JsonRecord).name);
     if (!name || name.startsWith("test-") || name.startsWith("test_")) return false;
     return !providerFilter || name === providerFilter;

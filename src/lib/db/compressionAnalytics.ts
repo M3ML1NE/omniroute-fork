@@ -1,4 +1,4 @@
-import { getDbInstance } from "./core";
+import { getDbInstance, getDriverInfo } from "./core";
 import { nonCriticalDbDisabled } from "./minimalDb";
 
 export interface CompressionAnalyticsRow {
@@ -63,6 +63,11 @@ let columnsEnsuredForDb: unknown = null;
 function ensureCompressionAnalyticsColumns(): void {
   const db = getDbInstance();
   if (columnsEnsuredForDb === db) return;
+  const driverInfo = getDriverInfo();
+  if (driverInfo?.kind === "postgres") {
+    columnsEnsuredForDb = db;
+    return;
+  }
   const rows = db.prepare("PRAGMA table_info(compression_analytics)").all() as Array<{
     name: string;
   }>;
@@ -246,7 +251,30 @@ function appendCondition(whereClause: string, condition: string): string {
 }
 
 export function getCompressionAnalyticsSummary(since?: string): CompressionAnalyticsSummary {
-  if (nonCriticalDbDisabled()) return { totalRequests: 0, totalTokensSaved: 0, avgSavingsPct: 0, avgDurationMs: 0, byMode: {}, byEngine: {}, byCompressionCombo: {}, byProvider: {}, last24h: [], validationFallbacks: 0, realUsage: { requestsWithReceipts: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedUsdSaved: 0, bySource: {} }, mcpDescriptionCompression: { snapshots: 0, estimatedTokensSaved: 0 } };
+  if (nonCriticalDbDisabled())
+    return {
+      totalRequests: 0,
+      totalTokensSaved: 0,
+      avgSavingsPct: 0,
+      avgDurationMs: 0,
+      byMode: {},
+      byEngine: {},
+      byCompressionCombo: {},
+      byProvider: {},
+      last24h: [],
+      validationFallbacks: 0,
+      realUsage: {
+        requestsWithReceipts: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        estimatedUsdSaved: 0,
+        bySource: {},
+      },
+      mcpDescriptionCompression: { snapshots: 0, estimatedTokensSaved: 0 },
+    };
   const db = getDbInstance();
   ensureCompressionAnalyticsColumns();
 

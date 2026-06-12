@@ -191,14 +191,14 @@ function maxIso(left: string | null, right: string | null): string | null {
   return Date.parse(right) > Date.parse(left) ? right : left;
 }
 
-function queryCallLogTargetStats(
+async function queryCallLogTargetStats(
   cutoff: string,
   providerFilter: string | null
-): CallLogTargetStats[] {
+): Promise<CallLogTargetStats[]> {
   const db = getDbInstance();
   const providerClause = providerFilter ? "AND c.provider = @provider" : "";
   const params = providerFilter ? { cutoff, provider: providerFilter } : { cutoff };
-  const rows = db
+  const rows = (await db
     .prepare(
       `WITH log_targets AS (
         SELECT
@@ -256,8 +256,8 @@ function queryCallLogTargetStats(
         MAX(
           CASE
             WHEN isError = 1
-            THEN timestamp
-            ELSE NULL
+              THEN timestamp
+              ELSE NULL
           END
         ) as lastErrorAt,
         MAX(CASE WHEN latestRank = 1 THEN status ELSE NULL END) as lastStatus,
@@ -265,7 +265,7 @@ function queryCallLogTargetStats(
       FROM ranked
       GROUP BY provider, connectionId, model`
     )
-    .all(params) as JsonRecord[];
+    .all(params)) as JsonRecord[];
 
   return rows.map((row) => {
     const connectionId = toString(row.connectionId);
@@ -337,7 +337,7 @@ export async function buildProviderHealthMatrix(
     getProviderConnections(providerFilter ? { provider: providerFilter } : {}),
     getAllCircuitBreakerStatuses(),
     getAllModelLockouts(),
-    Promise.resolve(queryCallLogTargetStats(cutoff, providerFilter)),
+    queryCallLogTargetStats(cutoff, providerFilter),
   ]);
 
   const connectionRows = (connections as JsonRecord[]).filter((connection) => {

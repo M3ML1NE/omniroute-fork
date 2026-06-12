@@ -729,9 +729,9 @@ export async function deleteSyncedAvailableModelsForProvider(providerId: string)
   const keyPrefix = `${providerId}:`;
   const result = await db
     .prepare(
-      "DELETE FROM key_value WHERE namespace = 'syncedAvailableModels' AND substr(key, 1, $1) = $2"
+      "DELETE FROM key_value WHERE namespace = 'syncedAvailableModels' AND key LIKE ?"
     )
-    .run(keyPrefix.length, keyPrefix);
+    .run(`${keyPrefix}%`);
   backupDbFile("pre-write");
   return Number(result.changes || 0);
 }

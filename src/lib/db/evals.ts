@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getDbInstance, rowToCamel } from "./core";
+import { getDbInstance, rowToCamel, getDriverInfo } from "./core";
 
 export type EvalTargetType = "suite-default" | "model" | "combo";
 export type EvalCaseStrategy = "contains" | "exact" | "regex" | "custom";
@@ -92,6 +92,10 @@ function hasColumn(db: DbLike, table: string, column: string): boolean {
 }
 
 function ensureEvalSuiteTables(db: DbLike) {
+  const driverInfo = getDriverInfo();
+  if (driverInfo?.kind === "postgres") {
+    return;
+  }
   db.prepare(
     `CREATE TABLE IF NOT EXISTS eval_suites (
       id TEXT PRIMARY KEY,
@@ -493,13 +497,13 @@ export function saveEvalRun(input: {
   };
 }
 
-export function listEvalRuns(
+export async function listEvalRuns(
   options: {
     suiteId?: string;
     runGroupId?: string;
     limit?: number;
   } = {}
-): PersistedEvalRun[] {
+): Promise<PersistedEvalRun[]> {
   const db = getDbInstance() as unknown as DbLike;
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -524,13 +528,15 @@ export function listEvalRuns(
     ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
     ORDER BY created_at DESC
     LIMIT ?`;
-  const rows = db.prepare(sql).all(...params);
+  const rows = await db.prepare(sql).all(...params);
   return rows
     .map((row) => toPersistedEvalRun(row))
     .filter((row): row is PersistedEvalRun => row !== null);
 }
 
-export function listModelEvalRunsForRouting(options: EvalRoutingRunQuery): PersistedEvalRun[] {
+export async function listModelEvalRunsForRouting(
+  options: EvalRoutingRunQuery
+): Promise<PersistedEvalRun[]> {
   const targetIds = [...new Set(options.targetIds.map((id) => id.trim()).filter(Boolean))].slice(
     0,
     200
@@ -563,7 +569,7 @@ export function listModelEvalRunsForRouting(options: EvalRoutingRunQuery): Persi
     : Math.min(1000, Math.max(50, targetIds.length * Math.max(3, suiteIds.length || 5) * 2));
   params.push(limit);
 
-  const rows = db
+  const rows = await db
     .prepare(
       `SELECT *
        FROM eval_runs
@@ -578,13 +584,13 @@ export function listModelEvalRunsForRouting(options: EvalRoutingRunQuery): Persi
     .filter((row): row is PersistedEvalRun => row !== null);
 }
 
-export function getEvalScorecard(
+export async function getEvalScorecard(
   options: {
     suiteId?: string;
     limit?: number;
   } = {}
 ) {
-  const runs = listEvalRuns({ suiteId: options.suiteId, limit: options.limit || 50 });
+  const runs = await listEvalRuns({ suiteId: options.suiteId, limit: options.limit || 50 });
   if (runs.length === 0) return null;
 
   const latestByScope = new Map<string, PersistedEvalRun>();
@@ -605,13 +611,13 @@ export function getEvalScorecard(
   );
 }
 
-export function listCustomEvalSuites(): EvalSuiteRecord[] {
+export async function listCustomEvalSuites(): Promise<EvalSuiteRecord[]> {
   const db = getDbInstance() as unknown as DbLike;
   ensureEvalSuiteTables(db);
-  const suiteRows = db
+  const suiteRows = await db
     .prepare("SELECT * FROM eval_suites ORDER BY updated_at DESC, created_at DESC")
     .all();
-  const caseRows = db
+  const caseRows = await db
     .prepare(
       "SELECT * FROM eval_cases ORDER BY suite_id ASC, sort_order ASC, created_at ASC, id ASC"
     )
@@ -635,13 +641,14 @@ export function listCustomEvalSuites(): EvalSuiteRecord[] {
     .filter((suite): suite is EvalSuiteRecord => suite !== null);
 }
 
-export function getCustomEvalSuite(suiteId: string): EvalSuiteRecord | null {
+export async function getCustomEvalSuite(suiteId: string): Promise<EvalSuiteRecord | null> {
   const normalizedSuiteId = suiteId.trim();
   if (!normalizedSuiteId) return null;
-  return listCustomEvalSuites().find((suite) => suite.id === normalizedSuiteId) || null;
+  const suitesList = await listCustomEvalSuites();
+  return suitesList.find((suite) => suite.id === normalizedSuiteId) || null;
 }
 
-export function saveCustomEvalSuite(input: {
+export async function saveCustomEvalSuite(input: {
   id?: string;
   name: string;
   description?: string;
@@ -659,7 +666,7 @@ export function saveCustomEvalSuite(input: {
     };
     tags?: string[];
   }>;
-}): EvalSuiteRecord {
+}): Promise<EvalSuiteRecord> {
   const db = getDbInstance() as unknown as DbLike;
   ensureEvalSuiteTables(db);
   const now = new Date().toISOString();
@@ -679,28 +686,33 @@ export function saveCustomEvalSuite(input: {
     throw new Error("At least one eval case is required");
   }
 
-  db.prepare("BEGIN").run();
+  await db.prepare("BEGIN").run();
   try {
-    const existing = db
+    const existing = await db
       .prepare<{ id: string }>("SELECT id FROM eval_suites WHERE id = ?")
       .get(suiteId);
 
     if (existing) {
-      db.prepare(
-        `UPDATE eval_suites
+      await db
+        .prepare(
+          `UPDATE eval_suites
          SET name = ?, description = ?, updated_at = ?
          WHERE id = ?`
-      ).run(name, description, now, suiteId);
+        )
+        .run(name, description, now, suiteId);
     } else {
-      db.prepare(
-        `INSERT INTO eval_suites (id, name, description, created_at, updated_at)
+      await db
+        .prepare(
+          `INSERT INTO eval_suites (id, name, description, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`
-      ).run(suiteId, name, description, now, now);
+        )
+        .run(suiteId, name, description, now, now);
     }
 
-    db.prepare("DELETE FROM eval_cases WHERE suite_id = ?").run(suiteId);
+    await db.prepare("DELETE FROM eval_cases WHERE suite_id = ?").run(suiteId);
 
-    input.cases.forEach((rawCase, index) => {
+    for (let index = 0; index < input.cases.length; index++) {
+      const rawCase = input.cases[index];
       const caseId =
         typeof rawCase.id === "string" && rawCase.id.trim().length > 0
           ? rawCase.id.trim()
@@ -733,33 +745,35 @@ export function saveCustomEvalSuite(input: {
         throw new Error(`Case ${index + 1} must include an expected value`);
       }
 
-      db.prepare(
-        `INSERT INTO eval_cases
+      await db
+        .prepare(
+          `INSERT INTO eval_cases
           (id, suite_id, sort_order, name, model, input_json, expected_strategy, expected_value,
            tags_json, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        caseId,
-        suiteId,
-        index,
-        caseName,
-        model,
-        JSON.stringify(sanitizedInput),
-        sanitizedExpected.strategy,
-        sanitizedExpected.value || null,
-        JSON.stringify(tags),
-        now,
-        now
-      );
-    });
+        )
+        .run(
+          caseId,
+          suiteId,
+          index,
+          caseName,
+          model,
+          JSON.stringify(sanitizedInput),
+          sanitizedExpected.strategy,
+          sanitizedExpected.value || null,
+          JSON.stringify(tags),
+          now,
+          now
+        );
+    }
 
-    db.prepare("COMMIT").run();
+    await db.prepare("COMMIT").run();
   } catch (error) {
-    db.prepare("ROLLBACK").run();
+    await db.prepare("ROLLBACK").run();
     throw error;
   }
 
-  const saved = getCustomEvalSuite(suiteId);
+  const saved = await getCustomEvalSuite(suiteId);
   if (!saved) {
     throw new Error("Failed to persist eval suite");
   }
@@ -767,20 +781,20 @@ export function saveCustomEvalSuite(input: {
   return saved;
 }
 
-export function deleteCustomEvalSuite(suiteId: string): boolean {
+export async function deleteCustomEvalSuite(suiteId: string): Promise<boolean> {
   const db = getDbInstance() as unknown as DbLike;
   ensureEvalSuiteTables(db);
   const normalizedSuiteId = suiteId.trim();
   if (!normalizedSuiteId) return false;
 
-  db.prepare("BEGIN").run();
+  await db.prepare("BEGIN").run();
   try {
-    db.prepare("DELETE FROM eval_cases WHERE suite_id = ?").run(normalizedSuiteId);
-    const result = db.prepare("DELETE FROM eval_suites WHERE id = ?").run(normalizedSuiteId);
-    db.prepare("COMMIT").run();
+    await db.prepare("DELETE FROM eval_cases WHERE suite_id = ?").run(normalizedSuiteId);
+    const result = await db.prepare("DELETE FROM eval_suites WHERE id = ?").run(normalizedSuiteId);
+    await db.prepare("COMMIT").run();
     return result.changes > 0;
   } catch (error) {
-    db.prepare("ROLLBACK").run();
+    await db.prepare("ROLLBACK").run();
     throw error;
   }
 }
