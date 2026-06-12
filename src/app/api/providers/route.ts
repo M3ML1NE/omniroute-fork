@@ -107,6 +107,7 @@ export async function POST(request: Request) {
         nodeName: node.name,
         ...(node.chatPath ? { chatPath: node.chatPath } : {}),
         ...(node.modelsPath ? { modelsPath: node.modelsPath } : {}),
+        ...(node.mtls ? { mtls: node.mtls } : {}),
       };
     }
 

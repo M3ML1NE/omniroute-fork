@@ -17,9 +17,7 @@ export const API_ENDPOINTS = {
 };
 
 // Provider API endpoints (for display only)
-export const PROVIDER_ENDPOINTS = {
-  gigachat: "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
-};
+export const PROVIDER_ENDPOINTS = {};
 
 // Re-export from providers.js for backward compatibility
 export {

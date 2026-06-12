@@ -638,13 +638,26 @@ export async function getProviderNodes(filter: JsonRecord = {}) {
     params.type = filter.type;
   }
 
-  return (await db.prepare(sql).all(params)).map(rowToCamel);
+  return (await db.prepare(sql).all(params)).map((r) => hydrateNodeMtls(rowToCamel(r)));
 }
 
 export async function getProviderNodeById(id: string) {
   const db = getDbInstance();
   const row = await db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
-  return row ? rowToCamel(row) : null;
+  return row ? hydrateNodeMtls(rowToCamel(row)) : null;
+}
+
+function hydrateNodeMtls(node: JsonRecord | null): JsonRecord | null {
+  if (!node) return node;
+  if (typeof node.mtlsJson === "string" && node.mtlsJson) {
+    try {
+      node.mtls = JSON.parse(node.mtlsJson);
+    } catch {
+      node.mtls = null;
+    }
+  }
+  delete node.mtlsJson;
+  return node;
 }
 
 export async function createProviderNode(data: JsonRecord) {
@@ -660,6 +673,7 @@ export async function createProviderNode(data: JsonRecord) {
     baseUrl: data.baseUrl || null,
     chatPath: data.chatPath || null,
     modelsPath: data.modelsPath || null,
+    mtls: data.mtls ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -667,11 +681,14 @@ export async function createProviderNode(data: JsonRecord) {
   await db
     .prepare(
       `
-    INSERT INTO provider_nodes (id, type, name, prefix, api_type, base_url, chat_path, models_path, created_at, updated_at)
-    VALUES (@id, @type, @name, @prefix, @apiType, @baseUrl, @chatPath, @modelsPath, @createdAt, @updatedAt)
+    INSERT INTO provider_nodes (id, type, name, prefix, api_type, base_url, chat_path, models_path, mtls_json, created_at, updated_at)
+    VALUES (@id, @type, @name, @prefix, @apiType, @baseUrl, @chatPath, @modelsPath, @mtlsJson, @createdAt, @updatedAt)
   `
     )
-    .run(node);
+    .run({
+      ...node,
+      mtlsJson: node.mtls ? JSON.stringify(node.mtls) : null,
+    });
 
   backupDbFile("pre-write");
   return node;
@@ -682,18 +699,18 @@ export async function updateProviderNode(id: string, data: JsonRecord) {
   const existing = await db.prepare("SELECT * FROM provider_nodes WHERE id = ?").get(id);
   if (!existing) return null;
 
-  const merged: JsonRecord = {
+  const merged: JsonRecord = hydrateNodeMtls({
     ...toRecord(rowToCamel(existing)),
     ...data,
     updatedAt: new Date().toISOString(),
-  };
+  }) as JsonRecord;
 
   await db
     .prepare(
       `
     UPDATE provider_nodes SET type = @type, name = @name, prefix = @prefix,
     api_type = @apiType, base_url = @baseUrl, chat_path = @chatPath,
-    models_path = @modelsPath, updated_at = @updatedAt
+    models_path = @modelsPath, mtls_json = @mtlsJson, updated_at = @updatedAt
     WHERE id = @id
   `
     )
@@ -706,6 +723,7 @@ export async function updateProviderNode(id: string, data: JsonRecord) {
       baseUrl: merged["baseUrl"] || null,
       chatPath: merged["chatPath"] || null,
       modelsPath: merged["modelsPath"] || null,
+      mtlsJson: merged["mtls"] ? JSON.stringify(merged["mtls"]) : null,
       updatedAt: merged["updatedAt"],
     });
 

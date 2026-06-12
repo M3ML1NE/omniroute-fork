@@ -335,6 +335,12 @@ export async function getPricingForModel(provider: string, model: string) {
     }
   }
 
+  // GigaChat-compatible cert nodes carry per-node synthetic ids but bill
+  // against the shared GigaChat pricing table.
+  if (!providerPricing && pLower.startsWith("gigachat-compatible-")) {
+    providerPricing = findKeyInsensitive(pricing, "gigachat");
+  }
+
   if (!providerPricing) return null;
 
   const mLower = (model || "").toLowerCase();

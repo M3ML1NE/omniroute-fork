@@ -33,6 +33,7 @@ import {
 import type { ProviderEntry } from "./providerPageUtils";
 import { readConfiguredOnlyPreference, writeConfiguredOnlyPreference } from "./providerPageStorage";
 import AddCompatibleProviderModal from "./components/AddCompatibleProviderModal";
+import AddGigachatCompatibleModal from "./components/AddGigachatCompatibleModal";
 import { CategoryDot } from "./components/CategoryDot";
 import ProviderCard from "./components/ProviderCard";
 import ProviderCountBadge from "./components/ProviderCountBadge";
@@ -161,6 +162,7 @@ export default function ProvidersPage() {
   const [loading, setLoading] = useState(true);
   const [showAllProviders, setShowAllProviders] = useState(false);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
+  const [showAddGigachatModal, setShowAddGigachatModal] = useState(false);
   const [testingMode, setTestingMode] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<any>(null);
   const [showConfiguredOnly, setShowConfiguredOnly] = useState(false);
@@ -424,13 +426,17 @@ export default function ProvidersPage() {
     }
   };
 
-          const compatibleProviders = providerNodes
-    .filter((node) => node.type === "openai-compatible")
+  const compatibleProviders = providerNodes
+    .filter((node) => node.type === "openai-compatible" || node.type === "gigachat-compatible")
     .map((node) => ({
       id: node.id,
-      name: node.name || t("openaiCompatibleName"),
-      color: "#10A37F",
-      textIcon: "OC",
+      name:
+        node.name ||
+        (node.type === "gigachat-compatible"
+          ? t("gigachatCompatibleName")
+          : t("openaiCompatibleName")),
+      color: node.type === "gigachat-compatible" ? "#21A038" : "#10A37F",
+      textIcon: node.type === "gigachat-compatible" ? "GC" : "OC",
       apiType: node.apiType,
     }));
 
@@ -880,6 +886,9 @@ export default function ProvidersPage() {
               <Button size="sm" icon="add" onClick={() => setShowAddCompatibleModal(true)}>
                 {t("addOpenAICompatible")}
               </Button>
+              <Button size="sm" icon="add" onClick={() => setShowAddGigachatModal(true)}>
+                {t("addGigachatCompatible")}
+              </Button>
             </div>
           </div>
           <p className="text-sm text-text-muted -mt-2">{t("compatibleProvidersDesc")}</p>
@@ -906,10 +915,6 @@ export default function ProvidersPage() {
           )}
         </div>
       )}
-
-
-
-
 
       {/* API Key Providers — fixed list */}
       {showSection("apikey") && (
@@ -964,24 +969,21 @@ export default function ProvidersPage() {
         </div>
       )}
 
-
-
-
-
-
-
-
-
-
-
-
-
       <AddCompatibleProviderModal
         isOpen={showAddCompatibleModal}
         onClose={() => setShowAddCompatibleModal(false)}
         onCreated={(node) => {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddCompatibleModal(false);
+          router.push(`/dashboard/providers/${node.id}`);
+        }}
+      />
+      <AddGigachatCompatibleModal
+        isOpen={showAddGigachatModal}
+        onClose={() => setShowAddGigachatModal(false)}
+        onCreated={(node) => {
+          setProviderNodes((prev) => [...prev, node]);
+          setShowAddGigachatModal(false);
           router.push(`/dashboard/providers/${node.id}`);
         }}
       />

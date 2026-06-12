@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { createProviderNode, getProviderNodes } from "@/models";
-import {
-  OPENAI_COMPATIBLE_PREFIX,
-} from "@/shared/constants/providers";
+import { GIGACHAT_COMPATIBLE_PREFIX, OPENAI_COMPATIBLE_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
 import { createProviderNodeSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 const OPENAI_COMPATIBLE_DEFAULTS = {
   baseUrl: "https://api.openai.com/v1",
+};
+
+const GIGACHAT_COMPATIBLE_DEFAULTS = {
+  baseUrl: "https://gigachat.devices.sberbank.ru/api/v1",
 };
 
 // GET /api/provider-nodes - List all provider nodes
@@ -46,8 +48,7 @@ export async function POST(request) {
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { name, prefix, apiType, baseUrl, type, chatPath, modelsPath } =
-      validation.data;
+    const { name, prefix, apiType, baseUrl, type, chatPath, modelsPath, mtls } = validation.data;
 
     // Determine type
     const nodeType = type || "openai-compatible";
@@ -62,6 +63,24 @@ export async function POST(request) {
         name: name.trim(),
         chatPath: chatPath || null,
         modelsPath: modelsPath || null,
+      });
+      return NextResponse.json({ node }, { status: 201 });
+    }
+
+    if (nodeType === "gigachat-compatible") {
+      if (!mtls) {
+        return NextResponse.json({ error: "mTLS certificate paths are required" }, { status: 400 });
+      }
+      const node = await createProviderNode({
+        id: `${GIGACHAT_COMPATIBLE_PREFIX}${generateId()}`,
+        type: "gigachat-compatible",
+        prefix: prefix.trim(),
+        apiType: "chat",
+        baseUrl: (baseUrl || GIGACHAT_COMPATIBLE_DEFAULTS.baseUrl).trim(),
+        name: name.trim(),
+        chatPath: chatPath || null,
+        modelsPath: modelsPath || null,
+        mtls,
       });
       return NextResponse.json({ node }, { status: 201 });
     }

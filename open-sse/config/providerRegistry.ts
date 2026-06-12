@@ -89,23 +89,9 @@ interface LegacyProvider {
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-const buildModels = (ids: readonly string[]): RegistryModel[] =>
-  ids.map((id) => ({ id, name: id }));
-
 // ─── Registry ──────────────────────────────────────────────────────────
 
-export const REGISTRY: Record<string, RegistryEntry> = {
-  gigachat: {
-    id: "gigachat",
-    alias: "gigachat",
-    format: "openai",
-    executor: "default",
-    baseUrl: "https://gigachat.devices.sberbank.ru/api/v1",
-    authType: "apikey",
-    authHeader: "bearer",
-    models: buildModels(["GigaChat-2-Max", "GigaChat-2-Pro", "GigaChat-2-Lite"]),
-  },
-};
+export const REGISTRY: Record<string, RegistryEntry> = {};
 
 // ─── Generator Functions ───────────────────────────────────────────────
 

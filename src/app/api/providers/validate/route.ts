@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance/index";
 import { getProviderNodeById } from "@/models";
-import {
-  isOpenAICompatibleProvider,
-} from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { validateProviderApiKey } from "@/lib/providers/validation";
 import { getProxyForLevel, resolveProxyForProvider } from "@/lib/localDb";
 import { validateProviderApiKeySchema } from "@/shared/validation/schemas";
@@ -74,10 +72,7 @@ export async function POST(request) {
     if (isOpenAICompatibleProvider(provider)) {
       const node: any = await getProviderNodeById(provider);
       if (!node) {
-        return NextResponse.json(
-          { error: "OpenAI Compatible node not found" },
-          { status: 404 }
-        );
+        return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
       }
       providerSpecificData = {
         ...providerSpecificData,
@@ -85,6 +80,7 @@ export async function POST(request) {
         apiType: node.apiType,
         chatPath: node.chatPath,
         modelsPath: node.modelsPath,
+        ...(node.mtls ? { mtls: node.mtls } : {}),
       };
     }
 

@@ -1,8 +1,6 @@
 import { HTTP_STATUS, FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { supportsXHighEffort } from "../config/providerModels.ts";
-import {
-  resolveKeyForRequest,
-} from "../services/apiKeyRotator.ts";
+import { resolveKeyForRequest } from "../services/apiKeyRotator.ts";
 import type { KeyHealth } from "../services/apiKeyRotator.ts";
 import { getOpenAICompatibleType } from "../services/provider.ts";
 import {
@@ -12,6 +10,7 @@ import {
 } from "../services/tokenRefresh.ts";
 import type { ProviderRequestDefaults } from "../services/providerRequestDefaults.ts";
 import { sanitizeResponsesInputItems } from "../services/responsesInputSanitizer.ts";
+import { getMtlsDispatcher, resolveMtlsConfig } from "../services/mtlsAgent.ts";
 
 /**
  * Sanitizes a custom API path to prevent path traversal attacks.
@@ -53,6 +52,7 @@ export type ProviderCredentials = {
   apiKey?: string;
   projectId?: string | null;
   expiresAt?: string;
+  expiresIn?: number;
   connectionId?: string; // T07: used for API key rotation index
   maxConcurrent?: number | null;
   providerSpecificData?: JsonRecord;
@@ -288,7 +288,10 @@ export class BaseExecutor {
   ) {
     void model;
     void stream;
-    if (this.provider?.startsWith?.("openai-compatible-")) {
+    if (
+      this.provider?.startsWith?.("openai-compatible-") ||
+      this.provider?.startsWith?.("gigachat-compatible-")
+    ) {
       const psd = credentials?.providerSpecificData;
       const baseUrl = typeof psd?.baseUrl === "string" ? psd.baseUrl : "https://api.openai.com/v1";
       const normalized = baseUrl.replace(/\/$/, "");
@@ -488,12 +491,15 @@ export class BaseExecutor {
     }
 
     try {
-      const response = await fetch(url, {
+      const ctMtlsCfg = resolveMtlsConfig(credentials?.providerSpecificData?.mtls);
+      const ctFetchOptions: RequestInit & { dispatcher?: unknown } = {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
         signal: activeSignal || undefined,
-      });
+      };
+      if (ctMtlsCfg) ctFetchOptions.dispatcher = getMtlsDispatcher(ctMtlsCfg);
+      const response = await fetch(url, ctFetchOptions);
 
       const text = await response.text();
       if (!response.ok) {
@@ -628,6 +634,9 @@ export class BaseExecutor {
       }
     }
 
+    const mtlsCfg = resolveMtlsConfig(activeCredentials?.providerSpecificData?.mtls);
+    const mtlsDispatcher = mtlsCfg ? getMtlsDispatcher(mtlsCfg) : undefined;
+
     for (let urlIndex = 0; urlIndex < fallbackCount; urlIndex++) {
       const url = this.buildUrl(model, stream, urlIndex, activeCredentials);
       const headers = this.buildHeaders(activeCredentials, stream, clientHeaders, model);
@@ -679,6 +688,9 @@ export class BaseExecutor {
           body: bodyString,
         };
         if (combinedSignal) fetchOptions.signal = combinedSignal;
+        if (mtlsDispatcher) {
+          (fetchOptions as RequestInit & { dispatcher?: unknown }).dispatcher = mtlsDispatcher;
+        }
 
         let response;
         try {

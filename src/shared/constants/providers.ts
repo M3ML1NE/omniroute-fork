@@ -41,18 +41,9 @@ export const OAUTH_PROVIDERS = {};
 // Web / Cookie Providers
 export const WEB_COOKIE_PROVIDERS = {};
 
-// API Key Providers
-export const APIKEY_PROVIDERS = {
-  gigachat: {
-    id: "gigachat",
-    alias: "gigachat",
-    name: "GigaChat (Sber)",
-    icon: "lock_person",
-    color: "#10B981",
-    textIcon: "GC",
-    website: "https://developers.sber.ru",
-  },
-};
+// API Key Providers — none. GigaChat access is provided exclusively through
+// per-certificate "gigachat-compatible-*" provider nodes (mTLS auth).
+export const APIKEY_PROVIDERS = {};
 
 // Sub-categories within APIKEY_PROVIDERS (used by dashboard and catalog views).
 export const IMAGE_ONLY_PROVIDER_IDS = new Set<string>([]);
@@ -80,9 +71,22 @@ export const SEARCH_PROVIDERS = {};
 export const AUDIO_ONLY_PROVIDERS = {};
 
 export const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
+export const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
 
+export function isGigachatCompatibleProvider(providerId: unknown): providerId is string {
+  return typeof providerId === "string" && providerId.startsWith(GIGACHAT_COMPATIBLE_PREFIX);
+}
+
+// Both prefixes are custom DB-node providers that speak the OpenAI wire format
+// (baseUrl in providerSpecificData, /chat/completions + /models). They share all
+// routing/validation/discovery plumbing; GigaChat nodes additionally apply the
+// GigaChat request transform and mTLS-only auth.
 export function isOpenAICompatibleProvider(providerId: unknown): providerId is string {
-  return typeof providerId === "string" && providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
+  return (
+    typeof providerId === "string" &&
+    (providerId.startsWith(OPENAI_COMPATIBLE_PREFIX) ||
+      providerId.startsWith(GIGACHAT_COMPATIBLE_PREFIX))
+  );
 }
 
 export const UPSTREAM_PROXY_PROVIDERS = {};
@@ -181,17 +185,19 @@ function getOrCreateIdToAlias(): Record<string, string> {
 }
 
 export function getProviderById(id: string) {
-  return (NOAUTH_PROVIDERS as Record<string, any>)[id]
-    ?? (OAUTH_PROVIDERS as Record<string, any>)[id]
-    ?? (APIKEY_PROVIDERS as Record<string, any>)[id]
-    ?? (WEB_COOKIE_PROVIDERS as Record<string, any>)[id]
-    ?? (LOCAL_PROVIDERS as Record<string, any>)[id]
-    ?? (SEARCH_PROVIDERS as Record<string, any>)[id]
-    ?? (AUDIO_ONLY_PROVIDERS as Record<string, any>)[id]
-    ?? (UPSTREAM_PROXY_PROVIDERS as Record<string, any>)[id]
-    ?? (CLOUD_AGENT_PROVIDERS as Record<string, any>)[id]
-    ?? (SYSTEM_PROVIDERS as Record<string, any>)[id]
-    ?? undefined;
+  return (
+    (NOAUTH_PROVIDERS as Record<string, any>)[id] ??
+    (OAUTH_PROVIDERS as Record<string, any>)[id] ??
+    (APIKEY_PROVIDERS as Record<string, any>)[id] ??
+    (WEB_COOKIE_PROVIDERS as Record<string, any>)[id] ??
+    (LOCAL_PROVIDERS as Record<string, any>)[id] ??
+    (SEARCH_PROVIDERS as Record<string, any>)[id] ??
+    (AUDIO_ONLY_PROVIDERS as Record<string, any>)[id] ??
+    (UPSTREAM_PROXY_PROVIDERS as Record<string, any>)[id] ??
+    (CLOUD_AGENT_PROVIDERS as Record<string, any>)[id] ??
+    (SYSTEM_PROVIDERS as Record<string, any>)[id] ??
+    undefined
+  );
 }
 
 export const AI_PROVIDERS = new Proxy({} as Record<string, any>, {
@@ -214,7 +220,8 @@ export const AI_PROVIDERS = new Proxy({} as Record<string, any>, {
   },
 });
 
-export type AiProviderId = keyof typeof NOAUTH_PROVIDERS
+export type AiProviderId =
+  | keyof typeof NOAUTH_PROVIDERS
   | keyof typeof OAUTH_PROVIDERS
   | keyof typeof APIKEY_PROVIDERS
   | keyof typeof WEB_COOKIE_PROVIDERS
@@ -225,16 +232,15 @@ export type AiProviderId = keyof typeof NOAUTH_PROVIDERS
   | keyof typeof CLOUD_AGENT_PROVIDERS
   | keyof typeof SYSTEM_PROVIDERS;
 
-export type AiProviderDefinition = (typeof NOAUTH_PROVIDERS)[keyof typeof NOAUTH_PROVIDERS]
-  | (typeof OAUTH_PROVIDERS)[keyof typeof OAUTH_PROVIDERS]
-  | (typeof APIKEY_PROVIDERS)[keyof typeof APIKEY_PROVIDERS]
-  | (typeof WEB_COOKIE_PROVIDERS)[keyof typeof WEB_COOKIE_PROVIDERS]
-  | (typeof LOCAL_PROVIDERS)[keyof typeof LOCAL_PROVIDERS]
-  | (typeof SEARCH_PROVIDERS)[keyof typeof SEARCH_PROVIDERS]
-  | (typeof AUDIO_ONLY_PROVIDERS)[keyof typeof AUDIO_ONLY_PROVIDERS]
-  | (typeof UPSTREAM_PROXY_PROVIDERS)[keyof typeof UPSTREAM_PROXY_PROVIDERS]
-  | (typeof CLOUD_AGENT_PROVIDERS)[keyof typeof CLOUD_AGENT_PROVIDERS]
-  | (typeof SYSTEM_PROVIDERS)[keyof typeof SYSTEM_PROVIDERS];
+export interface AiProviderDefinition {
+  id: string;
+  alias?: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  textIcon?: string;
+  website?: string;
+}
 
 // Auth methods
 export const AUTH_METHODS = {
@@ -244,9 +250,9 @@ export const AUTH_METHODS = {
 
 export function getProviderByAlias(alias: string): AiProviderDefinition | null {
   for (const section of _PROVIDER_SECTIONS) {
-    for (const provider of Object.values(section)) {
+    for (const provider of Object.values(section) as AiProviderDefinition[]) {
       if (provider.alias === alias || provider.id === alias) {
-        return provider as AiProviderDefinition;
+        return provider;
       }
     }
   }
@@ -302,8 +308,8 @@ export const ID_TO_ALIAS = new Proxy({} as Record<string, string>, {
   },
 });
 
-// Providers that support usage/quota API
-export const USAGE_SUPPORTED_PROVIDERS = ["gigachat"];
+// Providers that support usage/quota API — none in the mTLS-only fork.
+export const USAGE_SUPPORTED_PROVIDERS: string[] = [];
 
 // ── Zod validation at module load (Phase 7.2) ──
 import { validateProviders } from "../validation/providerSchema";

@@ -6,12 +6,16 @@ import {
 } from "../../../open-sse/config/providerWhitelist.js";
 
 describe("isAllowedProvider", () => {
-  it("allows gigachat", () => {
-    assert.equal(isAllowedProvider("gigachat"), true);
+  it("allows gigachat-compatible", () => {
+    assert.equal(isAllowedProvider("gigachat-compatible"), true);
   });
 
   it("allows openai-compatible", () => {
     assert.equal(isAllowedProvider("openai-compatible"), true);
+  });
+
+  it("rejects standalone gigachat (removed)", () => {
+    assert.equal(isAllowedProvider("gigachat"), false);
   });
 
   it("rejects anthropic", () => {

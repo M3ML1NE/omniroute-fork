@@ -1,17 +1,10 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  startMockGigachat,
-  type MockGigachatServer,
-} from "../fixtures/mock-gigachat-server.js";
-import {
-  KeyStore,
-  _resetKeyStoreSingleton,
-} from "../../open-sse/services/keyStore.js";
-import { getAgent, clearPool } from "../../open-sse/services/mtlsAgent.js";
+import { startMockGigachat, type MockGigachatServer } from "../fixtures/mock-gigachat-server.js";
+import { getMtlsDispatcher, clearPool } from "../../open-sse/services/mtlsAgent.js";
 import { query, closePool } from "../../src/lib/db/postgres.js";
 
 const TMP = join(tmpdir(), `e2e-smoke-${Date.now()}`);
@@ -27,7 +20,6 @@ describe("OmniRoute smoke tests", () => {
   after(async () => {
     await mock.close();
     clearPool();
-    _resetKeyStoreSingleton();
     await closePool();
     rmSync(TMP, { recursive: true, force: true });
   });
@@ -103,50 +95,38 @@ describe("OmniRoute smoke tests", () => {
     assert.equal(r.status, 404);
   });
 
-  // 6. keyStore loads + get(id) returns entry
-  it("6: keyStore loads JSON and get(id) returns entry", async () => {
-    const keysFile = join(TMP, "keys.json");
-    writeFileSync(
-      keysFile,
-      JSON.stringify({
-        version: 1,
-        keys: [
-          {
-            id: "smoke-k1",
-            api_key: "sk-smoke-test",
-            provider: "gigachat",
-            baseUrl: mock.url + "/api/v1",
-          },
-        ],
-      }),
-    );
-    const ks = new KeyStore(keysFile);
-    await ks.load();
-    const entry = ks.get("smoke-k1");
-    assert.ok(entry, "entry should exist");
-    assert.equal(entry!.api_key, "sk-smoke-test");
-    assert.ok(entry!.baseUrl?.includes(mock.url));
-  });
-
-  // 7. mTLS agent creation (no actual TLS - verify agent created without error)
-  it("7: mTLS agent created from cert files", async () => {
+  // 6. mTLS dispatcher creation (no actual TLS - verify agent created without error)
+  it("6: mTLS dispatcher created from cert files", async () => {
     const tlsDir = join(process.cwd(), "tests/fixtures/mock-tls");
     try {
-      const agent = getAgent({
+      const agent = getMtlsDispatcher({
         cert_path: join(tlsDir, "client.crt"),
         key_path: join(tlsDir, "client.key"),
         ca_path: join(tlsDir, "ca.crt"),
       });
-      assert.ok(agent, "agent created");
+      assert.ok(agent, "dispatcher created");
       clearPool();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cannot read")) {
-        console.log("  [skip] mock-tls certs not found, skipping mTLS agent test");
+        console.log("  [skip] mock-tls certs not found, skipping mTLS dispatcher test");
       } else {
         throw err;
       }
     }
+  });
+
+  // 7. mTLS dispatcher surfaces a clear error on unreadable cert files
+  it("7: mTLS dispatcher throws on missing cert files", () => {
+    assert.throws(
+      () =>
+        getMtlsDispatcher({
+          cert_path: join(TMP, "does-not-exist.crt"),
+          key_path: join(TMP, "does-not-exist.key"),
+          ca_path: join(TMP, "does-not-exist.ca"),
+        }),
+      /mTLS: cannot read cert file/
+    );
   });
 
   // 8. Postgres connection

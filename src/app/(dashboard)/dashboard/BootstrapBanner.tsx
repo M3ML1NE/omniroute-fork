@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
 /**
@@ -10,14 +10,17 @@ import { useTranslations } from "next-intl";
 export default function BootstrapBanner() {
   const t = useTranslations("common");
   const [dismissed, setDismissed] = useState(false);
+  // Platform-specific path is resolved after mount so the SSR and first client
+  // render emit identical markup (prevents a hydration mismatch on Windows).
+  const [dataDir, setDataDir] = useState("~/.omniroute/server.env");
+
+  useEffect(() => {
+    if (navigator.platform?.startsWith("Win")) {
+      setDataDir("%APPDATA%\\omniroute\\server.env");
+    }
+  }, []);
 
   if (dismissed) return null;
-
-  // Determine default data dir hint based on platform hint from user-agent
-  const dataDir =
-    typeof navigator !== "undefined" && navigator.platform?.startsWith("Win")
-      ? "%APPDATA%\\omniroute\\server.env"
-      : "~/.omniroute/server.env";
 
   return (
     <div

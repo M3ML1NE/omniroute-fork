@@ -14,7 +14,6 @@ import { startSpendBatchWriter } from "./lib/spend/batchWriter";
 import { registerDefaultGuardrails } from "./lib/guardrails";
 import { ensurePersistentManagementPasswordHash } from "./lib/auth/managementPassword";
 import { createLogger } from "./shared/utils/logger";
-import { getKeyStore } from "@omniroute/open-sse/services/keyStore.ts";
 import { clearPool as clearMtlsPool } from "@omniroute/open-sse/services/mtlsAgent.ts";
 
 const startupLog = createLogger("server-init");
@@ -95,32 +94,14 @@ async function startServer() {
     startReasoningCacheCleanupJob();
     startRuntimeConfigHotReload();
 
-    if (process.env["OMNIROUTE_KEYSTORE_PATH"]) {
-      try {
-        const ks = getKeyStore();
-        await ks.load();
-        ks.watch();
-        startupLog.info(
-          { entries: ks.list().length, path: process.env["OMNIROUTE_KEYSTORE_PATH"] },
-          "[T25] keyStore loaded and watching for changes",
-        );
-      } catch (err) {
-        startupLog.warn(
-          { err: getErrorMessage(err) },
-          "[T25] keyStore load failed; continuing without mTLS support",
-        );
-      }
-    }
-
     const shutdown = (signal: string) => {
       try {
-        getKeyStore().stop();
         clearMtlsPool();
-        startupLog.info({ signal }, "[T25] keyStore stopped and mTLS pool cleared");
+        startupLog.info({ signal }, "mTLS dispatcher pool cleared");
       } catch (err) {
         startupLog.warn(
           { err: getErrorMessage(err) },
-          "[T25] Error during keyStore/mTLS shutdown",
+          "Error during mTLS pool shutdown",
         );
       }
       process.exit(0);

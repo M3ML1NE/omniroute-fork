@@ -3,12 +3,24 @@ import { PROVIDERS } from "../config/constants.ts";
 import { getRegistryEntry } from "../config/providerRegistry.ts";
 
 const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
+const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
 const OPENAI_COMPATIBLE_DEFAULTS = {
   baseUrl: "https://api.openai.com/v1",
 };
 
+export function isGigachatCompatible(provider) {
+  return typeof provider === "string" && provider.startsWith(GIGACHAT_COMPATIBLE_PREFIX);
+}
+
+// GigaChat-compatible nodes speak the OpenAI wire format and share all custom-node
+// plumbing (psd.baseUrl, /chat/completions, /models); only the GigaChat request
+// transform and mTLS-only auth differ, gated separately on isGigachatCompatible.
 function isOpenAICompatible(provider) {
-  return typeof provider === "string" && provider.startsWith(OPENAI_COMPATIBLE_PREFIX);
+  return (
+    typeof provider === "string" &&
+    (provider.startsWith(OPENAI_COMPATIBLE_PREFIX) ||
+      provider.startsWith(GIGACHAT_COMPATIBLE_PREFIX))
+  );
 }
 
 export function getOpenAICompatibleType(

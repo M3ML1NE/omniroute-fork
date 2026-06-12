@@ -110,7 +110,25 @@ export function normalizeProviderSpecificData(
     delete normalized.excluded_models;
   }
 
+  if ("mtls" in normalized) {
+    const mtls = normalizeMtlsPaths(normalized.mtls);
+    if (mtls) {
+      normalized.mtls = mtls;
+    } else {
+      delete normalized.mtls;
+    }
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeMtlsPaths(value: unknown): JsonRecord | undefined {
+  const record = asRecord(value);
+  const cert = typeof record.cert_path === "string" ? record.cert_path.trim() : "";
+  const key = typeof record.key_path === "string" ? record.key_path.trim() : "";
+  const ca = typeof record.ca_path === "string" ? record.ca_path.trim() : "";
+  if (!cert || !key || !ca) return undefined;
+  return { cert_path: cert, key_path: key, ca_path: ca };
 }
 
 export function sanitizeProviderSpecificDataForResponse(value: unknown): JsonRecord | undefined {
@@ -176,5 +194,3 @@ export function getProviderRequestDefaults(
 ): JsonRecord {
   return normalizeRequestDefaults(provider, asRecord(providerSpecificData).requestDefaults) || {};
 }
-
-

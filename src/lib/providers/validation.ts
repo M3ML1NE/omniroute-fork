@@ -12,7 +12,7 @@ import {
   safeOutboundFetch,
 } from "@/shared/network/safeOutboundFetch";
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
-import { getGigachatAccessToken } from "@omniroute/open-sse/services/gigachatAuth.ts";
+import { getMtlsDispatcher, resolveMtlsConfig } from "@omniroute/open-sse/services/mtlsAgent.ts";
 
 const OPENAI_LIKE_FORMATS = new Set(["openai", "openai-responses"]);
 const GEMINI_LIKE_FORMATS = new Set(["gemini", "gemini-cli"]);
@@ -523,39 +523,48 @@ async function validateGeminiLikeProvider({
   }
 }
 
-// ── Specialty providers (non-standard APIs) ──
-
-async function validateGigachatProvider({ apiKey, providerSpecificData = {} }: any) {
-  const baseUrl =
-    normalizeBaseUrl(providerSpecificData.baseUrl) || "https://gigachat.devices.sberbank.ru/api/v1";
-
-  let token;
-  try {
-    token = await getGigachatAccessToken({ credentials: apiKey });
-  } catch (error: any) {
-    if (String(error?.message || "").match(/\b(401|403)\b/)) {
-      return { valid: false, error: "Invalid API key" };
-    }
-    return toValidationErrorResult(error);
+async function validateMtlsProvider({ providerSpecificData = {} }: any) {
+  const mtls = resolveMtlsConfig(providerSpecificData.mtls);
+  if (!mtls) {
+    return { valid: false, error: "mTLS certificate paths are incomplete" };
   }
 
-  return validateDirectChatProvider({
-    url: normalizeGigachatChatUrl(baseUrl),
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token.accessToken}`,
-      Accept: "application/json",
-    },
-    body: {
-      model: providerSpecificData.validationModelId || "GigaChat-2-Pro",
-      messages: [{ role: "user", content: "test" }],
-      max_tokens: 1,
-    },
-    providerSpecificData,
-  });
+  const baseUrl = normalizeBaseUrl(providerSpecificData.baseUrl);
+  if (!baseUrl) {
+    return { valid: false, error: "No base URL configured" };
+  }
+
+  let dispatcher;
+  try {
+    dispatcher = getMtlsDispatcher(mtls);
+  } catch (error: any) {
+    return { valid: false, error: error?.message || "Cannot read mTLS certificate files" };
+  }
+
+  try {
+    const res = await validationRead(`${baseUrl}/models`, {
+      method: "GET",
+      headers: applyCustomUserAgent({ Accept: "application/json" }, providerSpecificData),
+      dispatcher,
+    } as RequestInit);
+
+    if (res.ok || res.status === 429) {
+      return { valid: true, error: null, method: "models_endpoint" };
+    }
+    if (res.status === 401 || res.status === 403) {
+      return { valid: false, error: "Certificate rejected by server" };
+    }
+    return { valid: false, error: `Validation failed: ${res.status}` };
+  } catch (error: any) {
+    return toValidationErrorResult(error);
+  }
 }
 
 async function validateOpenAICompatibleProvider({ apiKey, providerSpecificData = {} }: any) {
+  if (providerSpecificData?.mtls) {
+    return validateMtlsProvider({ providerSpecificData });
+  }
+
   const baseUrl = normalizeBaseUrl(providerSpecificData.baseUrl);
   if (!baseUrl) {
     return { valid: false, error: "No base URL configured for OpenAI compatible provider" };
@@ -692,8 +701,23 @@ async function validateOpenAICompatibleProvider({ apiKey, providerSpecificData =
   }
 }
 
-export async function validateProviderApiKey({ provider, apiKey, providerSpecificData = {} }: any) {
-  const requiresApiKey = !providerAllowsOptionalApiKey(provider);
+export type ProviderValidationResult = {
+  valid: boolean;
+  error: string | null;
+  warning?: string | null;
+  method?: string | null;
+  unsupported?: boolean;
+  statusCode?: number;
+  securityBlocked?: boolean;
+};
+
+export async function validateProviderApiKey({
+  provider,
+  apiKey,
+  providerSpecificData = {},
+}: any): Promise<ProviderValidationResult> {
+  const usesMtls = Boolean(providerSpecificData?.mtls);
+  const requiresApiKey = !usesMtls && !providerAllowsOptionalApiKey(provider);
   const isLocal = isLocalProvider(provider);
 
   if (!provider || (requiresApiKey && !apiKey)) {
@@ -713,15 +737,10 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
    * These providers share a POST /chat/completions auth check pattern and differ
    * only in default baseUrl and test model name.
    */
-  function buildOpengatewayValidator(
-    defaultBaseUrl: string,
-    model: string
-  ) {
+  function buildOpengatewayValidator(defaultBaseUrl: string, model: string) {
     return async ({ apiKey, providerSpecificData }: any) => {
       try {
-        const baseUrl = normalizeBaseUrl(
-          providerSpecificData?.baseUrl || defaultBaseUrl
-        );
+        const baseUrl = normalizeBaseUrl(providerSpecificData?.baseUrl || defaultBaseUrl);
         const chatUrl = `${baseUrl.replace(/\/chat\/completions$/, "")}/chat/completions`;
         const res = await validationWrite(
           chatUrl,
@@ -755,19 +774,6 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     return Object.fromEntries(
       configs.map(([id, baseUrl, model]) => [id, buildOpengatewayValidator(baseUrl, model)])
     );
-  }
-
-  // ── Specialty provider validation ──
-  const SPECIALTY_VALIDATORS = {
-    gigachat: validateGigachatProvider,
-  };
-
-  if (SPECIALTY_VALIDATORS[provider]) {
-    try {
-      return await SPECIALTY_VALIDATORS[provider]({ apiKey, providerSpecificData });
-    } catch (error: any) {
-      return toValidationErrorResult(error);
-    }
   }
 
   const entry = getRegistryEntry(provider);

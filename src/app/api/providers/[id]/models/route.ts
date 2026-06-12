@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  isOpenAICompatibleProvider,
-  isSelfHostedChatProvider,
-} from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isSelfHostedChatProvider } from "@/shared/constants/providers";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { getStaticModelsForProvider, type LocalCatalogModel } from "@/lib/providers/staticModels";
@@ -18,6 +15,7 @@ import {
   safeOutboundFetch,
 } from "@/shared/network/safeOutboundFetch";
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
+import { getMtlsDispatcher, resolveMtlsConfig } from "@omniroute/open-sse/services/mtlsAgent.ts";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { getImageProvider } from "@omniroute/open-sse/config/imageRegistry.ts";
 import { getVideoProvider } from "@omniroute/open-sse/config/videoRegistry.ts";
@@ -133,8 +131,7 @@ type ProviderModelsConfigEntry = {
 };
 
 // Provider models endpoints configuration
-const PROVIDER_MODELS_CONFIG: Record<string, ProviderModelsConfigEntry> = {
-};
+const PROVIDER_MODELS_CONFIG: Record<string, ProviderModelsConfigEntry> = {};
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
@@ -356,7 +353,8 @@ export async function GET(
       const uniqueEndpoints = [...new Set(endpoints)];
       let models = null;
       let lastErrorStatus = null;
-      const token = apiKey || accessToken;
+      const mtlsCfg = resolveMtlsConfig(asRecord(connection.providerSpecificData).mtls);
+      const token = mtlsCfg ? null : apiKey || accessToken;
 
       for (const modelsUrl of uniqueEndpoints) {
         try {
@@ -368,7 +366,8 @@ export async function GET(
             headers: isNamedOpenAIStyleProvider(provider)
               ? buildNamedOpenAiStyleHeaders(provider, token)
               : buildOptionalBearerHeaders(token),
-          });
+            ...(mtlsCfg ? { dispatcher: getMtlsDispatcher(mtlsCfg) } : {}),
+          } as RequestInit);
 
           if (response.ok) {
             const data = await response.json();
@@ -451,7 +450,8 @@ export async function GET(
       const psd = asRecord(connection.providerSpecificData);
       const modelsPath = toNonEmptyString(psd.modelsPath) || "/models";
       const url = `${baseUrl}${modelsPath}`;
-      const token = accessToken || apiKey;
+      const mtlsCfg = resolveMtlsConfig(psd.mtls);
+      const token = mtlsCfg ? null : accessToken || apiKey;
       let response: Response;
       try {
         response = await safeOutboundFetch(url, {
@@ -461,10 +461,11 @@ export async function GET(
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            ...(apiKey ? { "x-api-key": apiKey } : {}),
+            ...(!mtlsCfg && apiKey ? { "x-api-key": apiKey } : {}),
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-        });
+          ...(mtlsCfg ? { dispatcher: getMtlsDispatcher(mtlsCfg) } : {}),
+        } as RequestInit);
       } catch (error) {
         const fallback = buildDiscoveryErrorFallbackResponse(error);
         if (fallback) return fallback;

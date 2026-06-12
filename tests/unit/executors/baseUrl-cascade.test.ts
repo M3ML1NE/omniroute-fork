@@ -5,21 +5,13 @@ const REGISTRY_DEFAULT = "https://gigachat.devices.sberbank.ru/api/v1";
 
 function resolveBaseUrl(
   credentials: { providerSpecificData?: unknown } | undefined,
-  registryDefault: string,
+  registryDefault: string
 ): string {
   return (
     ((credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["baseUrl"] as
       | string
       | undefined) ?? registryDefault
   );
-}
-
-function resolveAuthUrl(
-  credentials: { providerSpecificData?: unknown } | undefined,
-): string | undefined {
-  return (credentials?.providerSpecificData as Record<string, unknown> | undefined)?.["authUrl"] as
-    | string
-    | undefined;
 }
 
 describe("baseUrl cascade", () => {
@@ -36,22 +28,5 @@ describe("baseUrl cascade", () => {
 
   it("undefined credentials falls back to registry default", () => {
     assert.equal(resolveBaseUrl(undefined, REGISTRY_DEFAULT), REGISTRY_DEFAULT);
-  });
-});
-
-describe("authUrl cascade", () => {
-  it("providerSpecificData.authUrl overrides undefined default", () => {
-    const override = "https://mock.auth.example/oauth";
-    const credentials = { providerSpecificData: { authUrl: override } };
-    assert.equal(resolveAuthUrl(credentials), override);
-  });
-
-  it("returns undefined when no authUrl override (falls back to gigachatAuth default)", () => {
-    const credentials = { providerSpecificData: {} };
-    assert.equal(resolveAuthUrl(credentials), undefined);
-  });
-
-  it("undefined credentials returns undefined authUrl", () => {
-    assert.equal(resolveAuthUrl(undefined), undefined);
   });
 });

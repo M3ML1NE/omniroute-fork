@@ -39,7 +39,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { name, prefix, apiType, baseUrl, chatPath, modelsPath } = validation.data;
+    const { name, prefix, apiType, baseUrl, chatPath, modelsPath, mtls } = validation.data;
     const node: any = await getProviderNodeById(id);
 
     if (!node) {
@@ -72,6 +72,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (node.type === "openai-compatible") {
       updates.apiType = apiType;
     }
+    if (node.type === "gigachat-compatible" && mtls) {
+      updates.mtls = mtls;
+    }
 
     const updated = await updateProviderNode(id, updates);
 
@@ -96,6 +99,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         }
         if (node.type === "openai-compatible") {
           providerSpecificData.apiType = apiType;
+        }
+        if (updated.mtls) {
+          providerSpecificData.mtls = updated.mtls;
         }
 
         return [

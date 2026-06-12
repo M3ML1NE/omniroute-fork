@@ -20,7 +20,6 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-
 function validateProviderSpecificData(
   data: Record<string, unknown> | undefined,
   ctx: z.RefinementCtx
@@ -1821,6 +1820,12 @@ export const updateKeyPermissionsSchema = z
     }
   });
 
+export const mtlsConfigSchema = z.object({
+  cert_path: z.string().trim().min(1, "Certificate path is required").max(1024),
+  key_path: z.string().trim().min(1, "Key path is required").max(1024),
+  ca_path: z.string().trim().min(1, "CA path is required").max(1024),
+});
+
 export const createProviderNodeSchema = z
   .object({
     name: z.string().trim().min(1, "Name is required"),
@@ -1836,9 +1841,10 @@ export const createProviderNodeSchema = z
       ])
       .optional(),
     baseUrl: z.string().trim().min(1).optional(),
-    type: z.enum(["openai-compatible"]).optional(),
+    type: z.enum(["openai-compatible", "gigachat-compatible"]).optional(),
     chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
     modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
+    mtls: mtlsConfigSchema.optional(),
   })
   .superRefine((value, ctx) => {
     const nodeType = value.type || "openai-compatible";
@@ -1847,6 +1853,13 @@ export const createProviderNodeSchema = z
         code: z.ZodIssueCode.custom,
         message: "Invalid OpenAI compatible API type",
         path: ["apiType"],
+      });
+    }
+    if (nodeType === "gigachat-compatible" && !value.mtls) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "mTLS certificate paths are required for GigaChat-compatible providers",
+        path: ["mtls"],
       });
     }
   });
@@ -1867,6 +1880,7 @@ export const updateProviderNodeSchema = z.object({
   baseUrl: z.string().trim().min(1, "Base URL is required"),
   chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
   modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
+  mtls: mtlsConfigSchema.optional(),
 });
 
 export const providerNodeValidateSchema = z.object({

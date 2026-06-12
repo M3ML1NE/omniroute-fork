@@ -7,7 +7,7 @@
  */
 
 export const PROVIDER_WHITELIST = [
-  "gigachat",
+  "gigachat-compatible",
   "openai-compatible",
 ] as const;
 

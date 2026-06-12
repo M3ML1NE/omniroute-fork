@@ -2932,7 +2932,11 @@ export async function handleChatCore({
       //   - tools with a name → converted to function format in-place before translation
       //   - tools without a name AND without .function → dropped (unconvertible)
       // This must happen before translateRequest, which validates and throws on unknown types.
-      if (provider?.startsWith("openai-compatible-") && Array.isArray(translatedBody.tools)) {
+      if (
+        (provider?.startsWith("openai-compatible-") ||
+          provider?.startsWith("gigachat-compatible-")) &&
+        Array.isArray(translatedBody.tools)
+      ) {
         const before = (translatedBody.tools as unknown[]).length;
         translatedBody.tools = (translatedBody.tools as Record<string, unknown>[])
           .filter((t) => !t.type || t.type === "function" || !!t.function || !!t.name)
@@ -4581,7 +4585,7 @@ export async function handleChatCore({
     }
 
     // T24: GigaChat reverse translation - function_call -> tool_calls[]
-    if (provider === "gigachat" && translatedResponse?.choices) {
+    if (provider?.startsWith("gigachat-compatible-") && translatedResponse?.choices) {
       for (const choice of translatedResponse.choices) {
         const msg = (choice as Record<string, unknown>).message as
           | Record<string, unknown>

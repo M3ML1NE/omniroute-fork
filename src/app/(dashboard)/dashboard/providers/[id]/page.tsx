@@ -33,6 +33,7 @@ import {
   NOAUTH_PROVIDERS,
   AI_PROVIDERS,
   getProviderAlias,
+  isGigachatCompatibleProvider,
   isOpenAICompatibleProvider,
   isSelfHostedChatProvider,
   providerAllowsOptionalApiKey,
@@ -815,10 +816,16 @@ interface EditCompatibleNodeModalNode {
   id?: string;
   name?: string;
   prefix?: string;
+  type?: string;
   apiType?: string;
   baseUrl?: string;
   chatPath?: string;
   modelsPath?: string;
+  mtls?: {
+    cert_path?: string;
+    key_path?: string;
+    ca_path?: string;
+  };
 }
 
 interface EditCompatibleNodeModalProps {
@@ -6072,6 +6079,7 @@ function AddApiKeyModal({
   const t = useTranslations("providers");
   const usesBaseUrl = isBaseUrlConfigurableProvider(provider);
   const defaultBaseUrl = getProviderBaseUrlDefault(provider);
+  const isGigachat = isGigachatCompatibleProvider(provider);
   const isVertex = provider === "vertex" || provider === "vertex-partner";
   const isBedrock = provider === "bedrock";
   const showsRegion = isVertex || isBedrock;
@@ -6103,7 +6111,6 @@ function AddApiKeyModal({
   const [formData, setFormData] = useState({
     name: "",
     apiKey: "",
-    keystoreEntryId: "",
     priority: 1,
     baseUrl: defaultBaseUrl,
     cx: "",
@@ -6123,7 +6130,7 @@ function AddApiKeyModal({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedCommandCodeField, setCopiedCommandCodeField] = useState<string | null>(null);
 
-  const bulkSupported = supportsBulkApiKey(provider);
+  const bulkSupported = supportsBulkApiKey(provider) && !isGigachat;
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [bulkText, setBulkText] = useState("");
   const [bulkValidateKeys, setBulkValidateKeys] = useState(false);
@@ -6175,7 +6182,7 @@ function AddApiKeyModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider,
-          apiKey: credentialInput,
+          apiKey: isGigachat ? undefined : credentialInput,
           validationModelId: formData.validationModelId || undefined,
           customUserAgent: formData.customUserAgent.trim() || undefined,
           baseUrl: formData.baseUrl.trim() || undefined,
@@ -6238,7 +6245,7 @@ function AddApiKeyModal({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               provider,
-              apiKey: credentialInput,
+              apiKey: isGigachat ? undefined : credentialInput,
               validationModelId: formData.validationModelId || undefined,
               customUserAgent: formData.customUserAgent.trim() || undefined,
               baseUrl: formData.baseUrl.trim() || undefined,
@@ -6297,8 +6304,7 @@ function AddApiKeyModal({
 
       const payload = {
         name: formData.name,
-        apiKey: credentialInput.trim() || undefined,
-        keystoreEntryId: formData.keystoreEntryId.trim() || undefined,
+        apiKey: isGigachat ? undefined : credentialInput.trim() || undefined,
         priority: formData.priority,
         testStatus: "active",
         providerSpecificData:
@@ -6581,19 +6587,21 @@ function AddApiKeyModal({
             )}
             {!isNoAuthWebSessionCredential && (
               <div className="flex gap-2">
-                <Input
-                  label={apiCredentialLabel}
-                  type="password"
-                  value={formData.apiKey}
-                  onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                  className="flex-1"
-                  placeholder={apiCredentialPlaceholder}
-                  hint={apiCredentialHint}
-                  autoComplete="off"
-                  spellCheck={false}
-                  autoCapitalize="off"
-                />
-                <div className="pt-6">
+                {!isGigachat && (
+                  <Input
+                    label={apiCredentialLabel}
+                    type="password"
+                    value={formData.apiKey}
+                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                    className="flex-1"
+                    placeholder={apiCredentialPlaceholder}
+                    hint={apiCredentialHint}
+                    autoComplete="off"
+                    spellCheck={false}
+                    autoCapitalize="off"
+                  />
+                )}
+                <div className={isGigachat ? "" : "pt-6"}>
                   <Button
                     onClick={handleValidate}
                     disabled={
@@ -6613,15 +6621,6 @@ function AddApiKeyModal({
                 </div>
               </div>
             )}
-            <Input
-              label="Keystore Entry ID"
-              value={formData.keystoreEntryId}
-              onChange={(e) => setFormData({ ...formData, keystoreEntryId: e.target.value })}
-              placeholder="e.g. my-cert-entry"
-              hint="Optional: reference a keystore entry for mTLS credential lookup"
-              autoComplete="off"
-              spellCheck={false}
-            />
             {isGooglePse && (
               <Input
                 label={t("searchEngineIdLabel")}
@@ -7603,6 +7602,7 @@ function EditConnectionModal({ isOpen, connection, onSave, onClose }: EditConnec
 
 function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatibleNodeModalProps) {
   const t = useTranslations("providers");
+  const isGigachatNode = node?.type === "gigachat-compatible";
   const [formData, setFormData] = useState({
     name: "",
     prefix: "",
@@ -7610,6 +7610,9 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
     baseUrl: "https://api.openai.com/v1",
     chatPath: "",
     modelsPath: "",
+    certPath: "",
+    keyPath: "",
+    caPath: "",
   });
   const [saving, setSaving] = useState(false);
   const [checkKey, setCheckKey] = useState("");
@@ -7623,9 +7626,16 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
         name: node.name || "",
         prefix: node.prefix || "",
         apiType: node.apiType || "chat",
-        baseUrl: node.baseUrl || "https://api.openai.com/v1",
+        baseUrl:
+          node.baseUrl ||
+          (node.type === "gigachat-compatible"
+            ? "https://gigachat.devices.sberbank.ru/api/v1"
+            : "https://api.openai.com/v1"),
         chatPath: node.chatPath || "",
         modelsPath: node.modelsPath || "",
+        certPath: node.mtls?.cert_path || "",
+        keyPath: node.mtls?.key_path || "",
+        caPath: node.mtls?.ca_path || "",
       });
       setShowAdvanced(!!(node.chatPath || node.modelsPath));
     }
@@ -7642,6 +7652,12 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
 
   const handleSubmit = async () => {
     if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
+    if (
+      isGigachatNode &&
+      (!formData.certPath.trim() || !formData.keyPath.trim() || !formData.caPath.trim())
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       const payload: any = {
@@ -7650,8 +7666,16 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
         baseUrl: formData.baseUrl,
         chatPath: formData.chatPath || "",
         modelsPath: formData.modelsPath,
-        apiType: formData.apiType,
       };
+      if (isGigachatNode) {
+        payload.mtls = {
+          cert_path: formData.certPath.trim(),
+          key_path: formData.keyPath.trim(),
+          ca_path: formData.caPath.trim(),
+        };
+      } else {
+        payload.apiType = formData.apiType;
+      }
       await onSave(payload);
     } finally {
       setSaving(false);
@@ -7686,7 +7710,7 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
   return (
     <Modal
       isOpen={isOpen}
-      title={t("editCompatibleTitle", { type: t("openai") })}
+      title={t("editCompatibleTitle", { type: isGigachatNode ? t("gigachat") : t("openai") })}
       onClose={onClose}
     >
       <div className="flex flex-col gap-4">
@@ -7695,7 +7719,7 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           placeholder={t("compatibleProdPlaceholder", {
-            type: t("openai"),
+            type: isGigachatNode ? t("gigachat") : t("openai"),
           })}
           hint={t("nameHint")}
         />
@@ -7703,24 +7727,57 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
           label={t("prefixLabel")}
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
-          placeholder={t("openaiPrefixPlaceholder")}
+          placeholder={
+            isGigachatNode ? t("gigachatPrefixPlaceholder") : t("openaiPrefixPlaceholder")
+          }
           hint={t("prefixHint")}
         />
-        <Select
-          label={t("apiTypeLabel")}
-          options={apiTypeOptions}
-          value={formData.apiType}
-          onChange={(e) => setFormData({ ...formData, apiType: e.target.value })}
-        />
+        {!isGigachatNode && (
+          <Select
+            label={t("apiTypeLabel")}
+            options={apiTypeOptions}
+            value={formData.apiType}
+            onChange={(e) => setFormData({ ...formData, apiType: e.target.value })}
+          />
+        )}
         <Input
           label={t("baseUrlLabel")}
           value={formData.baseUrl}
           onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
-          placeholder={t("openaiBaseUrlPlaceholder")}
+          placeholder={
+            isGigachatNode
+              ? "https://gigachat.devices.sberbank.ru/api/v1"
+              : t("openaiBaseUrlPlaceholder")
+          }
           hint={t("compatibleBaseUrlHint", {
-            type: t("openai"),
+            type: isGigachatNode ? t("gigachat") : t("openai"),
           })}
         />
+        {isGigachatNode && (
+          <>
+            <Input
+              label={t("mtlsCertLabel")}
+              value={formData.certPath}
+              onChange={(e) => setFormData({ ...formData, certPath: e.target.value })}
+              placeholder="/tmp/secrets/crt.cert"
+              hint={t("mtlsCertHint")}
+            />
+            <Input
+              label={t("mtlsKeyLabel")}
+              value={formData.keyPath}
+              onChange={(e) => setFormData({ ...formData, keyPath: e.target.value })}
+              placeholder="/tmp/secrets/crt.key"
+              hint={t("mtlsKeyHint")}
+            />
+            <Input
+              label={t("mtlsCaLabel")}
+              value={formData.caPath}
+              onChange={(e) => setFormData({ ...formData, caPath: e.target.value })}
+              placeholder="/tmp/secrets/ca.pem"
+              hint={t("mtlsCaHint")}
+            />
+          </>
+        )}
         <button
           type="button"
           className="text-sm text-text-muted hover:text-text-primary flex items-center gap-1"
@@ -7754,24 +7811,26 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
             />
           </div>
         )}
-        <div className="flex gap-2">
-          <Input
-            label={t("apiKeyForCheck")}
-            type="password"
-            value={checkKey}
-            onChange={(e) => setCheckKey(e.target.value)}
-            className="flex-1"
-          />
-          <div className="pt-6">
-            <Button
-              onClick={handleValidate}
-              disabled={!checkKey || validating || !formData.baseUrl.trim()}
-              variant="secondary"
-            >
-              {validating ? t("checking") : t("check")}
-            </Button>
+        {!isGigachatNode && (
+          <div className="flex gap-2">
+            <Input
+              label={t("apiKeyForCheck")}
+              type="password"
+              value={checkKey}
+              onChange={(e) => setCheckKey(e.target.value)}
+              className="flex-1"
+            />
+            <div className="pt-6">
+              <Button
+                onClick={handleValidate}
+                disabled={!checkKey || validating || !formData.baseUrl.trim()}
+                variant="secondary"
+              >
+                {validating ? t("checking") : t("check")}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
         {validationResult && (
           <Badge variant={validationResult === "success" ? "success" : "error"}>
             {validationResult === "success" ? t("valid") : t("invalid")}
@@ -7782,7 +7841,14 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
             onClick={handleSubmit}
             fullWidth
             disabled={
-              !formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || saving
+              !formData.name.trim() ||
+              !formData.prefix.trim() ||
+              !formData.baseUrl.trim() ||
+              (isGigachatNode &&
+                (!formData.certPath.trim() ||
+                  !formData.keyPath.trim() ||
+                  !formData.caPath.trim())) ||
+              saving
             }
           >
             {saving ? t("saving") : t("save")}
