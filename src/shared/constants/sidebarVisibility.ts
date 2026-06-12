@@ -11,19 +11,15 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "context-caveman",
   "context-rtk",
   "context-combos",
-  // OmniProxy > Integrations
-  "api-endpoints",
   // Analytics
   "analytics",
   "analytics-combo-health",
-  "analytics-utilization",
   "costs",
   "cache",
   "analytics-compression",
   "analytics-evals",
   // Monitoring — flat
   "logs",
-  "logs-proxy",
   "logs-console",
   "logs-activity",
   "health",
@@ -174,22 +170,7 @@ const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
   ],
 };
 
-const INTEGRATIONS_GROUP: SidebarItemGroup = {
-  type: "group",
-  id: "integrations",
-  titleKey: "integrationsGroup",
-  titleFallback: "Integrations",
-  items: [
-    {
-      id: "api-endpoints",
-      href: "/dashboard/api-endpoints",
-      i18nKey: "apiEndpoints",
-      subtitleKey: "apiEndpointsSubtitle",
-      icon: "api",
-    },
-    // Webhook subsystem removed — see Wave 1 cleanup
-  ],
-};
+
 
 const ANALYTICS_ITEMS: readonly SidebarItemDefinition[] = [
   {
@@ -205,13 +186,6 @@ const ANALYTICS_ITEMS: readonly SidebarItemDefinition[] = [
     i18nKey: "analyticsComboHealth",
     subtitleKey: "analyticsComboHealthSubtitle",
     icon: "monitor_heart",
-  },
-  {
-    id: "analytics-utilization",
-    href: "/dashboard/analytics/utilization",
-    i18nKey: "analyticsUtilization",
-    subtitleKey: "analyticsUtilizationSubtitle",
-    icon: "bar_chart",
   },
   {
     id: "costs",
@@ -250,13 +224,6 @@ const MONITORING_ITEMS: readonly SidebarItemDefinition[] = [
     i18nKey: "logs",
     subtitleKey: "logsSubtitle",
     icon: "description",
-  },
-  {
-    id: "logs-proxy",
-    href: "/dashboard/logs/proxy",
-    i18nKey: "logsProxy",
-    subtitleKey: "logsProxySubtitle",
-    icon: "lan",
   },
   {
     id: "logs-console",
@@ -429,7 +396,6 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     children: [
       ...OMNI_PROXY_ITEMS,
       COMPRESSION_CONTEXT_GROUP,
-      INTEGRATIONS_GROUP,
     ],
     defaultPinned: true,
   },
@@ -506,7 +472,6 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "context-caveman",
   "context-rtk",
   "context-combos",
-  "api-endpoints",
   "analytics",
   "analytics-combo-health",
   "costs",
@@ -529,7 +494,6 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "combos",
   "analytics",
   "analytics-combo-health",
-  "analytics-utilization",
   "costs",
   "costs-pricing",
   "costs-budget",

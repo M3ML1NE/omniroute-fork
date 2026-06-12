@@ -52,17 +52,14 @@ const HEADER_DESCRIPTIONS: Partial<Record<HideableSidebarItemId, string>> = {
   audit: "auditDescription",
   // Webhook subsystem removed — see Wave 1 cleanup
   health: "healthDescription",
-  "api-endpoints": "apiEndpointsDescription",
   // Analytics sub-pages
   "analytics-evals": "analyticsEvalsDescription",
-  "analytics-utilization": "analyticsUtilizationDescription",
   "analytics-combo-health": "analyticsComboHealthDescription",
   "analytics-compression": "analyticsCompressionDescription",
   // Costs sub-pages
   "costs-budget": "costsBudgetDescription",
   "costs-pricing": "costsPricingDescription",
   // Logs sub-pages
-  "logs-proxy": "logsProxyDescription",
   "logs-console": "logsConsoleDescription",
   "logs-activity": "logsActivityDescription",
   // Settings sub-pages

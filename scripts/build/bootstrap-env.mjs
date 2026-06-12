@@ -100,6 +100,18 @@ function writeEnvFile(filePath, env) {
   writeFileSync(filePath, lines.join("\n"), "utf8");
 }
 
+function mergeEnvLayers(...layers) {
+  const result = {};
+  for (const layer of layers) {
+    if (!layer) continue;
+    for (const [key, value] of Object.entries(layer)) {
+      if (typeof value === "string" && value.trim().length === 0) continue;
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 // ── Main bootstrap function ──────────────────────────────────────────────────
 /**
  * @param {{ dataDirOverride?: string; quiet?: boolean }} options
@@ -118,7 +130,12 @@ export function bootstrapEnv({ dataDirOverride, quiet = false } = {}) {
 
   // ── Layer 2: Load the same preferred .env that the CLI wrapper uses ───────
   // This keeps run-next / run-standalone consistent with `bin/omniroute.mjs`.
-  const merged = { ...persisted, ...preferredEnv, ...process.env };
+  // Higher-priority layers override lower ones, but an empty/whitespace-only
+  // value is treated as "unset" and falls through. This prevents an empty
+  // `STORAGE_ENCRYPTION_KEY=` in .env from clobbering the stable key persisted
+  // in server.env, which previously caused the key to be regenerated on every
+  // restart and rendered already-encrypted credentials undecryptable.
+  const merged = mergeEnvLayers(persisted, preferredEnv, process.env);
 
   // ── Auto-generate required secrets ────────────────────────────────────────
   let needsPersist = false;
