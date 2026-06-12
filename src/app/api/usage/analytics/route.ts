@@ -658,7 +658,7 @@ export async function GET(request: Request) {
         GROUP BY account, LOWER(usage_history.provider), LOWER(usage_history.model), serviceTier
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(paramsForHistory) as Array<Record<string, unknown>>;
 
     const accountRows = await db
       .prepare(
@@ -679,7 +679,7 @@ export async function GET(request: Request) {
         LIMIT 50
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(paramsForHistory) as Array<Record<string, unknown>>;
 
     const apiKeyWhereClause = appendWhereCondition(
       whereClause,
@@ -706,7 +706,7 @@ export async function GET(request: Request) {
         GROUP BY COALESCE(NULLIF(api_key_id, ''), NULLIF(api_key_name, ''), 'unknown'), NULLIF(api_key_id, ''), LOWER(provider), LOWER(model), serviceTier
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(paramsForHistory) as Array<Record<string, unknown>>;
 
     const serviceTierRows = await db
       .prepare(
@@ -744,7 +744,7 @@ export async function GET(request: Request) {
         ORDER BY lastUsed DESC
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(paramsForHistory) as Array<Record<string, unknown>>;
 
     const apiKeyMetadata = new Map<string, { latestName: string; aliases: Set<string> }>();
     for (const row of apiKeyMetadataRows) {
@@ -812,7 +812,7 @@ export async function GET(request: Request) {
         ${whereClause}
       `
       )
-      .get(params) as Record<string, unknown>;
+      .get(paramsForHistory) as Record<string, unknown>;
 
     const summary = {
       totalRequests: Number(summaryRow?.totalRequests || 0),
