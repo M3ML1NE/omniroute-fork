@@ -112,6 +112,7 @@ type LocalProviderMetadata = {
 
 function buildCompatMap(rows: CompatModelRow[]): CompatModelMap {
   const m = new Map<string, CompatModelRow>();
+  if (!Array.isArray(rows)) return m;
   for (const r of rows) if (r.id) m.set(r.id, r);
   return m;
 }
@@ -6256,7 +6257,10 @@ function AddApiKeyModal({
           const data = await res.json();
           isValid = !!data.valid;
           if (!isValid && data.error) {
-            validationError = data.error;
+            validationError =
+              typeof data.error === "string"
+                ? data.error
+                : data.error?.message || credentialValidationFailedMessage;
           }
           setValidationResult(isValid ? "success" : "failed");
         } catch {

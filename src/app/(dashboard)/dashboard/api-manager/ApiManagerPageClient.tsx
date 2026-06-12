@@ -72,6 +72,16 @@ function validateKeyName(
   return { valid: true };
 }
 
+// API error responses may be a plain string or a Zod-style envelope
+// ({ message, details }); coerce to a string so it can render as text.
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") {
+    return (error as { message: string }).message;
+  }
+  return fallback;
+}
+
 interface AccessSchedule {
   enabled: boolean;
   from: string;
@@ -379,7 +389,7 @@ export default function ApiManagerPageClient() {
         setNewKeyAccountQuotaEnabled(false);
         setShowAddModal(false);
       } else {
-        setCreateError(data.error || t("failedCreateKey"));
+        setCreateError(extractErrorMessage(data.error, t("failedCreateKey")));
       }
     } catch (error) {
       console.error("Error creating key:", error);
@@ -406,7 +416,7 @@ export default function ApiManagerPageClient() {
         setKeys((prev) => prev.filter((k) => k.id !== id));
       } else {
         const data = await res.json();
-        setPageError(data.error || t("failedDeleteKey"));
+        setPageError(extractErrorMessage(data.error, t("failedDeleteKey")));
       }
     } catch (error) {
       console.error("Error deleting key:", error);
@@ -430,7 +440,7 @@ export default function ApiManagerPageClient() {
         setCreatedKey(data.key);
         await fetchData();
       } else {
-        setPageError(data.error || t("failedRegenerateKey"));
+        setPageError(extractErrorMessage(data.error, t("failedRegenerateKey")));
       }
     } catch (error) {
       console.error("Error regenerating key:", error);
@@ -550,7 +560,7 @@ export default function ApiManagerPageClient() {
         setEditingKey(null);
       } else {
         const data = await res.json();
-        setPageError(data.error || t("failedUpdatePermissions"));
+        setPageError(extractErrorMessage(data.error, t("failedUpdatePermissions")));
       }
     } catch (error) {
       console.error("Error updating permissions:", error);
