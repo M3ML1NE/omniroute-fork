@@ -1353,6 +1353,34 @@ export function checkFallbackError(
     return buildRetryableFallback(RateLimitReason.SERVER_ERROR);
   }
 
+  // 404 — model not found. A missing/unknown model is permanent for THIS target
+  // (e.g. GigaChat "No such model"), not an account problem. Fall back to the
+  // next combo target without locking the account in a transient cooldown — a
+  // transient cooldown would otherwise make every following request report
+  // "all accounts rate limited" and loop. cooldownMs:0 keeps the account usable.
+  if (status === HTTP_STATUS.NOT_FOUND) {
+    const structuredCode =
+      typeof structuredError?.code === "string" ? structuredError.code.toLowerCase() : "";
+    const structuredType =
+      typeof structuredError?.type === "string" ? structuredError.type.toLowerCase() : "";
+    const looksLikeModelNotFound =
+      MODEL_ACCESS_DENIED_CODES.has(structuredCode) ||
+      MODEL_ACCESS_DENIED_TYPES.has(structuredType) ||
+      MODEL_ACCESS_DENIED_PATTERNS.some((p) => p.test(errorStr)) ||
+      /\bno such model\b/i.test(errorStr) ||
+      /\bunknown model\b/i.test(errorStr);
+    if (looksLikeModelNotFound) {
+      return {
+        shouldFallback: true,
+        cooldownMs: 0,
+        reason: RateLimitReason.MODEL_CAPACITY,
+      };
+    }
+    // A bare 404 that is not about the model (e.g. wrong path) is not
+    // account-fallback-worthy; let combo orchestration try another target.
+    return { shouldFallback: false, cooldownMs: 0, reason: RateLimitReason.UNKNOWN };
+  }
+
   // 400 — context overflow / malformed request / model access denied
   if (status === HTTP_STATUS.BAD_REQUEST) {
     // Check structured error codes first (more reliable, no false positives)

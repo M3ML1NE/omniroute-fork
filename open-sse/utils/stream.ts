@@ -1001,6 +1001,18 @@ export function createSSEStream(options: StreamOptions = {}) {
     controller.enqueue(encoder.encode(output));
   };
 
+  // Enqueue that tolerates a controller already closed by a client disconnect
+  // (ResponseAborted). Terminal flush writes are best-effort once the client is
+  // gone; swallowing the "Controller is already closed" error here is what lets
+  // the flush handler still reach onComplete() and persist usage/analytics.
+  const safeEnqueue = (controller: TransformStreamDefaultController, chunk: Uint8Array): void => {
+    try {
+      controller.enqueue(chunk);
+    } catch {
+      // Controller already closed (client disconnected) — drop the chunk.
+    }
+  };
+
   const emitFinalSseMetadata = async (
     controller: TransformStreamDefaultController,
     finalUsage: UsageTokenRecord | Record<string, unknown> | null | undefined
@@ -1016,7 +1028,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     });
     if (!comment) return;
     reqLogger?.appendConvertedChunk?.(comment);
-    controller.enqueue(encoder.encode(comment));
+    safeEnqueue(controller, encoder.encode(comment));
   };
 
   const getResponsesReasoningKey = (payload: Record<string, unknown>): string | null => {
@@ -1915,7 +1927,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               }
               output = maybePrefixPendingPassthroughEvent(output, buffer);
               reqLogger?.appendConvertedChunk?.(output);
-              controller.enqueue(encoder.encode(output));
+              safeEnqueue(controller, encoder.encode(output));
             }
 
             if (shouldInjectClaudeEmptyResponseOnFlush(claudeEmptyResponseLifecycle)) {
@@ -1956,7 +1968,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                 clientPayloadCollector.push({ done: true });
                 const doneOutput = "data: [DONE]\n\n";
                 reqLogger?.appendConvertedChunk?.(doneOutput);
-                controller.enqueue(encoder.encode(doneOutput));
+                safeEnqueue(controller, encoder.encode(doneOutput));
               }
             }
             // Notify caller for call log persistence (include full response body with accumulated content)
@@ -2175,7 +2187,7 @@ export function createSSEStream(options: StreamOptions = {}) {
               clientPayloadCollector.push({ done: true });
               const doneOutput = "data: [DONE]\n\n";
               reqLogger?.appendConvertedChunk?.(doneOutput);
-              controller.enqueue(encoder.encode(doneOutput));
+              safeEnqueue(controller, encoder.encode(doneOutput));
             }
           }
 
