@@ -4133,6 +4133,8 @@
     "corsAllowedOriginsDesc": "Список браузеров, разделенных запятыми, которым разрешено вызывать этот сервер. Пустой список = нет доступа к CORS браузера (между серверами все еще работает). Используйте CORS_ALLOW_ALL=true env var только для разработки.",
     "blockedProviders": "Заблокированные провайдеры",
     "blockedProvidersDesc": "Скройте конкретных поставщиков из ответа /v1/models. Заблокированные поставщики не будут отображаться в списках моделей.",
+    "disableGigachatCompatible": "Отключить GigaChat-совместимые провайдеры",
+    "disableGigachatCompatibleDesc": "Скрыть все провайдеры gigachat-compatible-* из списка моделей и исключить их из маршрутизации.",
     "providersBlocked": "Поставщик(и) {count} заблокирован в /models",
     "blockProviderTitle": "Блок {provider}",
     "unblockProviderTitle": "Разблокировать {provider}",

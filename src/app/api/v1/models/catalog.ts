@@ -1,5 +1,9 @@
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
-import { AI_PROVIDERS, NOAUTH_PROVIDERS } from "@/shared/constants/providers";
+import {
+  AI_PROVIDERS,
+  NOAUTH_PROVIDERS,
+  GIGACHAT_COMPATIBLE_PREFIX,
+} from "@/shared/constants/providers";
 import {
   getProviderConnections,
   getCombos,
@@ -285,6 +289,13 @@ export async function getUnifiedModelsResponse(
     const blockedProviders: Set<string> = new Set(
       Array.isArray(settings.blockedProviders) ? settings.blockedProviders : []
     );
+    // Security setting: hide ALL gigachat-compatible-* nodes when disabled.
+    const gigachatCompatibleDisabled = settings.disableGigachatCompatible === true;
+    const isBlocked = (id: string): boolean =>
+      blockedProviders.has(id) ||
+      (gigachatCompatibleDisabled &&
+        typeof id === "string" &&
+        id.startsWith(GIGACHAT_COMPATIBLE_PREFIX));
 
     // Get active provider connections
     let connections = [];
@@ -632,7 +643,7 @@ export async function getUnifiedModelsResponse(
       const canonicalProviderId = resolveCanonicalProviderId(alias, providerId);
 
       // Skip blocked providers (Issue #96)
-      if (blockedProviders.has(alias) || blockedProviders.has(canonicalProviderId)) continue;
+      if (isBlocked(alias) || isBlocked(canonicalProviderId)) continue;
 
       // Only include models from providers with active connections
       if (!activeAliases.has(alias) && !activeAliases.has(canonicalProviderId)) {
@@ -687,7 +698,7 @@ export async function getUnifiedModelsResponse(
       // here protects the for-loop / model processing from unexpected errors.
       for (const [providerId, syncedModels] of Object.entries(syncedModelsByProvider)) {
         if (!Array.isArray(syncedModels) || syncedModels.length === 0) continue;
-        if (blockedProviders.has(providerId)) continue;
+        if (isBlocked(providerId)) continue;
         if (providerId === "reka") continue;
 
         const prefix = providerIdToPrefix[providerId];
@@ -803,11 +814,7 @@ export async function getUnifiedModelsResponse(
       const canonicalProviderId = resolveCanonicalProviderId(alias, provider);
 
       // FIX #1752: Ensure blocked providers are not returned for non-chat models
-      if (
-        blockedProviders.has(alias) ||
-        blockedProviders.has(canonicalProviderId) ||
-        blockedProviders.has(provider)
-      ) {
+      if (isBlocked(alias) || isBlocked(canonicalProviderId) || isBlocked(provider)) {
         return false;
       }
 
@@ -1073,7 +1080,7 @@ export async function getUnifiedModelsResponse(
     for (const conn of connections) {
       const providerId = typeof conn.provider === "string" ? conn.provider : null;
       if (!providerId) continue;
-      if (blockedProviders.has(providerId)) continue;
+      if (isBlocked(providerId)) continue;
 
       const fallbackModels = getCompatibleFallbackModels(providerId);
       if (!Array.isArray(fallbackModels) || fallbackModels.length === 0) continue;

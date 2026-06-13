@@ -300,6 +300,20 @@ export default function SecurityTab() {
             />
           </div>
 
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t("disableGigachatCompatible")}</p>
+              <p className="text-sm text-text-muted">{t("disableGigachatCompatibleDesc")}</p>
+            </div>
+            <Toggle
+              checked={settings.disableGigachatCompatible === true}
+              onChange={() =>
+                updateSetting("disableGigachatCompatible", !(settings.disableGigachatCompatible === true))
+              }
+              disabled={loading}
+            />
+          </div>
+
           <div>
             <div className="mb-2">
               <p className="font-medium">{t("corsAllowedOrigins")}</p>
