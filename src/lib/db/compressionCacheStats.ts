@@ -19,7 +19,7 @@ export interface CacheStatsSummary {
   byProvider: Record<string, { count: number; avgNetSavings: number; cacheHitRate: number }>;
 }
 
-export function recordCacheStats(entry: CacheStatsEntry): void {
+export async function recordCacheStats(entry: CacheStatsEntry): Promise<void> {
   if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
 
@@ -34,7 +34,7 @@ export function recordCacheStats(entry: CacheStatsEntry): void {
     net_savings
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-  db.prepare(sql).run(
+  await db.prepare(sql).run(
     entry.provider,
     entry.model ?? "",
     entry.compressionMode,
@@ -46,55 +46,46 @@ export function recordCacheStats(entry: CacheStatsEntry): void {
   );
 }
 
-export function getCacheStatsSummary(since?: Date): CacheStatsSummary {
+export async function getCacheStatsSummary(since?: Date): Promise<CacheStatsSummary> {
   if (nonCriticalDbDisabled()) return { totalRequests: 0, avgNetSavings: 0, cacheHitRate: 0, byProvider: {} };
   const db = getDbInstance();
-  const whereClause = since ? "WHERE created_at >= ?" : "";
-  const params = since ? [since.toISOString()] : [];
 
   // Global aggregates
-  const globalRow = since
-    ? (db
+  const globalRow = (since
+    ? await db
         .prepare(
           `SELECT COUNT(*) as totalRequests, AVG(net_savings) as avgNetSavings, SUM(estimated_cache_hit) * 1.0 / COUNT(*) as cacheHitRate FROM compression_cache_stats WHERE created_at >= ?`
         )
-        .get(since.toISOString()) as
-        | { totalRequests: number; avgNetSavings: number; cacheHitRate: number }
-        | undefined)
-    : (db
+        .get(since.toISOString())
+    : await db
         .prepare(
           `SELECT COUNT(*) as totalRequests, AVG(net_savings) as avgNetSavings, SUM(estimated_cache_hit) * 1.0 / COUNT(*) as cacheHitRate FROM compression_cache_stats`
         )
-        .get() as
-        | { totalRequests: number; avgNetSavings: number; cacheHitRate: number }
-        | undefined);
+        .get()) as
+    | { totalRequests: number; avgNetSavings: number; cacheHitRate: number }
+    | undefined;
 
   if (!globalRow || globalRow.totalRequests === 0) {
     return { totalRequests: 0, avgNetSavings: 0, cacheHitRate: 0, byProvider: {} };
   }
 
   // Per-provider aggregates
-  const providerRows = since
-    ? (db
+  const providerRows = (since
+    ? await db
         .prepare(
           `SELECT provider, COUNT(*) as count, AVG(net_savings) as avgNetSavings, SUM(estimated_cache_hit) * 1.0 / COUNT(*) as cacheHitRate FROM compression_cache_stats WHERE created_at >= ? GROUP BY provider`
         )
-        .all(since.toISOString()) as Array<{
-        provider: string;
-        count: number;
-        avgNetSavings: number;
-        cacheHitRate: number;
-      }>)
-    : (db
+        .all(since.toISOString())
+    : await db
         .prepare(
           `SELECT provider, COUNT(*) as count, AVG(net_savings) as avgNetSavings, SUM(estimated_cache_hit) * 1.0 / COUNT(*) as cacheHitRate FROM compression_cache_stats GROUP BY provider`
         )
-        .all() as Array<{
-        provider: string;
-        count: number;
-        avgNetSavings: number;
-        cacheHitRate: number;
-      }>);
+        .all()) as Array<{
+    provider: string;
+    count: number;
+    avgNetSavings: number;
+    cacheHitRate: number;
+  }>;
 
   const byProvider: Record<string, { count: number; avgNetSavings: number; cacheHitRate: number }> =
     {};

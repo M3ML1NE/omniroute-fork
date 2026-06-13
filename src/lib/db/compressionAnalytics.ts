@@ -60,7 +60,7 @@ export interface CompressionAnalyticsSummary {
 
 let columnsEnsuredForDb: unknown = null;
 
-function ensureCompressionAnalyticsColumns(): void {
+async function ensureCompressionAnalyticsColumns(): Promise<void> {
   const db = getDbInstance();
   if (columnsEnsuredForDb === db) return;
   const driverInfo = getDriverInfo();
@@ -68,12 +68,12 @@ function ensureCompressionAnalyticsColumns(): void {
     columnsEnsuredForDb = db;
     return;
   }
-  const rows = db.prepare("PRAGMA table_info(compression_analytics)").all() as Array<{
+  const rows = (await db.prepare("PRAGMA table_info(compression_analytics)").all()) as Array<{
     name: string;
   }>;
   const columns = new Set(rows.map((row) => row.name));
-  const addColumn = (name: string, sql: string) => {
-    if (!columns.has(name)) db.exec(sql);
+  const addColumn = async (name: string, sql: string) => {
+    if (!columns.has(name)) await db.exec(sql);
   };
   addColumn(
     "actual_prompt_tokens",
@@ -250,7 +250,9 @@ function appendCondition(whereClause: string, condition: string): string {
   return whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
 }
 
-export function getCompressionAnalyticsSummary(since?: string): CompressionAnalyticsSummary {
+export async function getCompressionAnalyticsSummary(
+  since?: string
+): Promise<CompressionAnalyticsSummary> {
   if (nonCriticalDbDisabled())
     return {
       totalRequests: 0,
@@ -276,7 +278,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
       mcpDescriptionCompression: { snapshots: 0, estimatedTokensSaved: 0 },
     };
   const db = getDbInstance();
-  ensureCompressionAnalyticsColumns();
+  await ensureCompressionAnalyticsColumns();
 
   let cutoff: string | null = null;
   if (since === "24h") {
@@ -291,7 +293,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
   const params = cutoff ? [cutoff] : [];
 
   type ScalarRow = { total: number; totalSaved: number; avgPct: number; avgDur: number };
-  const scalar = db
+  const scalar = await db
     .prepare(
       `
     SELECT
@@ -304,7 +306,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     )
     .get(...params) as ScalarRow | undefined;
 
-  const modeRows = db
+  const modeRows = await db
     .prepare(
       `
     SELECT mode, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved,
@@ -320,7 +322,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     byMode[r.mode] = { count: r.cnt, tokensSaved: r.saved, avgSavingsPct: Math.round(r.avgPct) };
   }
 
-  const engineRows = db
+  const engineRows = await db
     .prepare(
       `
     SELECT COALESCE(engine, mode) as engine, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved,
@@ -341,7 +343,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     };
   }
 
-  const compressionComboRows = db
+  const compressionComboRows = await db
     .prepare(
       `
     SELECT compression_combo_id as compressionComboId, COUNT(*) as cnt,
@@ -358,7 +360,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     byCompressionCombo[key] = { count: r.cnt, tokensSaved: r.saved };
   }
 
-  const provRows = db
+  const provRows = await db
     .prepare(
       `
     SELECT provider, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved
@@ -382,7 +384,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     last24hMap.set(hourStr, { hour: hourStr, count: 0, tokensSaved: 0 });
   }
 
-  const hourRows = db
+  const hourRows = await db
     .prepare(
       `
     SELECT to_char(timestamp::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:00:00"Z"') as hour,
@@ -406,7 +408,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
 
   const last24h = Array.from(last24hMap.values());
 
-  const receiptRows = db
+  const receiptRows = await db
     .prepare(
       `
     SELECT receipt_source as source, COUNT(*) as cnt,
@@ -453,7 +455,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     realUsage.bySource[source] = row.cnt;
   }
 
-  const fallbackRow = db
+  const fallbackRow = await db
     .prepare(
       `
     SELECT COUNT(*) as cnt
@@ -462,7 +464,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     )
     .get(...params) as { cnt: number } | undefined;
 
-  const mcpDescriptionRow = db
+  const mcpDescriptionRow = await db
     .prepare(
       `
     SELECT COUNT(*) as cnt, COALESCE(SUM(mcp_description_tokens_saved), 0) as saved

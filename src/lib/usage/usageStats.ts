@@ -288,7 +288,7 @@ export async function getUsageStats() {
 
   const tenMinutesAgo = new Date(currentMinuteStart.getTime() - 9 * 60 * 1000);
 
-  const modelRows = db
+  const modelRows = await db
     .prepare(
       `
         WITH usage_source AS (${sourceSql})
@@ -344,7 +344,7 @@ export async function getUsageStats() {
     }
   }
 
-  const accountRows = db
+  const accountRows = await db
     .prepare(
       `
         WITH usage_source AS (${sourceSql})
@@ -397,7 +397,7 @@ export async function getUsageStats() {
     }
   }
 
-  const apiKeyRows = db
+  const apiKeyRows = await db
     .prepare(
       `
         WITH usage_source AS (${sourceSql})
@@ -451,7 +451,7 @@ export async function getUsageStats() {
     }
   }
 
-  const recentRows = db
+  const recentRows = await db
     .prepare(
       `
         SELECT

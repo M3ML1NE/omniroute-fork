@@ -119,7 +119,7 @@ function isDeepSeekReplayTarget(provider: unknown, model: unknown): boolean {
 /** @param options.preserveDeveloperRole - undefined/true: keep developer for OpenAI format (default); false: map to system */
 /** @param options.preserveCacheControl - When true, preserve client-side cache_control markers (for Claude Code, etc.) */
 // Translate request: source -> openai -> target
-export function translateRequest(
+export async function translateRequest(
   sourceFormat,
   targetFormat,
   model,
@@ -329,7 +329,7 @@ export function translateRequest(
 
         // Try reasoning cache first
         if (firstToolUseId) {
-          const cached = lookupReasoning(firstToolUseId);
+          const cached = await lookupReasoning(firstToolUseId);
           if (cached) {
             msg.content.splice(firstToolUseIdx, 0, {
               type: "thinking",
@@ -357,7 +357,7 @@ export function translateRequest(
         ? msg.tool_calls[0]?.id
         : getAssistantMessageCacheKey(result, 0);
       if (cacheKey) {
-        const cached = lookupReasoning(cacheKey);
+        const cached = await lookupReasoning(cacheKey);
         if (cached) {
           msg.reasoning_content = cached;
           recordReplay();

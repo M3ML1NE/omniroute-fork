@@ -15,9 +15,9 @@ export function startReasoningCacheCleanupJob() {
     return timer;
   }
 
-  const run = () => {
+  const run = async () => {
     try {
-      const deleted = cleanupReasoningCache();
+      const deleted = await cleanupReasoningCache();
       if (deleted > 0) {
         console.log(`[ReasoningCache] expired entries removed=${deleted}`);
       }
@@ -26,8 +26,8 @@ export function startReasoningCacheCleanupJob() {
     }
   };
 
-  run();
-  timer = setInterval(run, getIntervalMs());
+  void run();
+  timer = setInterval(() => void run(), getIntervalMs());
   timer.unref?.();
   return timer;
 }

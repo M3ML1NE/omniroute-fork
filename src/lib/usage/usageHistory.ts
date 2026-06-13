@@ -429,7 +429,7 @@ export async function getUsageHistory(filter: any = {}) {
   }
   sql += " ORDER BY timestamp ASC";
 
-  const rows = db.prepare(sql).all(params);
+  const rows = await db.prepare(sql).all(params);
   return rows.map((row) => {
     const r = asRecord(row);
     return {
@@ -502,7 +502,7 @@ export async function getModelLatencyStats(
     latency_ms: number | null;
   };
 
-  const rows = db
+  const rows = await db
     .prepare(
       `
       SELECT provider, model, success, latency_ms
@@ -621,7 +621,7 @@ export async function getRecentLogs(limit = 200) {
   if (nonCriticalDbDisabled()) return [];
   try {
     const db = getDbInstance();
-    const rows = db
+    const rows = await db
       .prepare(
         `
         SELECT timestamp, model, provider, account, tokens_in, tokens_out, status

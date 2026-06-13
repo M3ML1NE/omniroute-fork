@@ -2263,10 +2263,11 @@ export async function handleChatCore({
           if (routingComboIds.length > 0) {
             const { getCompressionComboForRoutingCombo } =
               await import("../../src/lib/db/compressionCombos.ts");
+            const resolvedCompressionCombos = await Promise.all(
+              routingComboIds.map((id) => getCompressionComboForRoutingCombo(id))
+            );
             const assignedCompressionCombo =
-              routingComboIds
-                .map((id) => getCompressionComboForRoutingCombo(id))
-                .find((combo) => combo !== null) ?? null;
+              resolvedCompressionCombos.find((combo) => combo !== null) ?? null;
             if (
               applyCompressionComboConfig(
                 assignedCompressionCombo as RuntimeCompressionCombo | null,
@@ -2300,7 +2301,7 @@ export async function handleChatCore({
         try {
           const { getDefaultCompressionCombo } =
             await import("../../src/lib/db/compressionCombos.ts");
-          const defaultCompressionCombo = getDefaultCompressionCombo();
+          const defaultCompressionCombo = await getDefaultCompressionCombo();
           if (
             isStackedCompressionCombo(defaultCompressionCombo as RuntimeCompressionCombo | null) &&
             applyCompressionComboConfig(defaultCompressionCombo as RuntimeCompressionCombo | null)
@@ -2440,7 +2441,7 @@ export async function handleChatCore({
                   0,
                   result.stats.originalTokens - result.stats.compressedTokens
                 );
-                recordCacheStats({
+                await recordCacheStats({
                   provider: cacheContext.provider ?? provider ?? "unknown",
                   model: effectiveModel ?? "",
                   compressionMode: mode,
@@ -2807,7 +2808,7 @@ export async function handleChatCore({
           model || "",
           sourceFormat
         );
-        normalizedForCc = translateRequest(
+        normalizedForCc = await translateRequest(
           sourceFormat,
           FORMATS.OPENAI,
           model,
@@ -2975,7 +2976,7 @@ export async function handleChatCore({
         model || "",
         sourceFormat
       );
-      translatedBody = translateRequest(
+      translatedBody = await translateRequest(
         sourceFormat,
         targetFormat,
         model,

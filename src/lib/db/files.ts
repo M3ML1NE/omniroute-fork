@@ -18,7 +18,9 @@ export interface FileRecord {
 const FILE_METADATA_COLUMNS =
   "id, bytes, created_at, filename, purpose, mime_type, api_key_id, expires_at, deleted_at";
 
-export function createFile(file: Omit<FileRecord, "id" | "createdAt">): FileRecord {
+export async function createFile(
+  file: Omit<FileRecord, "id" | "createdAt">
+): Promise<FileRecord> {
   if (nonCriticalDbDisabled()) return { id: "", createdAt: 0 } as unknown as FileRecord;
   const db = getDbInstance();
   const id = "file-" + uuidv4().replaceAll("-", "").substring(0, 24);
@@ -64,26 +66,26 @@ export function createFile(file: Omit<FileRecord, "id" | "createdAt">): FileReco
   return record;
 }
 
-export function getFile(id: string): FileRecord | null {
+export async function getFile(id: string): Promise<FileRecord | null> {
   if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
-  const row = db
+  const row = await db
     .prepare(`SELECT ${FILE_METADATA_COLUMNS} FROM files WHERE id = ? AND deleted_at IS NULL`)
     .get(id);
   return row ? (rowToCamel(row) as unknown as FileRecord) : null;
 }
 
-export function getFileContent(id: string): Buffer | null {
+export async function getFileContent(id: string): Promise<Buffer | null> {
   if (nonCriticalDbDisabled()) return null;
   const db = getDbInstance();
-  const row = db
+  const row = (await db
     .prepare("SELECT content FROM files WHERE id = ? AND deleted_at IS NULL")
-    .get(id) as { content: Buffer | Uint8Array | string | null } | undefined;
+    .get(id)) as { content: Buffer | Uint8Array | string | null } | undefined;
   if (!row?.content) return null;
   return Buffer.isBuffer(row.content) ? row.content : Buffer.from(row.content);
 }
 
-export function listFiles(
+export async function listFiles(
   options: {
     apiKeyId?: string;
     purpose?: string;
@@ -91,7 +93,7 @@ export function listFiles(
     after?: string;
     order?: "asc" | "desc";
   } = {}
-): FileRecord[] {
+): Promise<FileRecord[]> {
   if (nonCriticalDbDisabled()) return [];
   const db = getDbInstance();
   const { apiKeyId, purpose, limit = 20, after, order = "desc" } = options;
@@ -111,7 +113,7 @@ export function listFiles(
 
   if (after) {
     // Get the creation time of the 'after' file to use for pagination
-    const afterFile = getFile(after);
+    const afterFile = await getFile(after);
     if (afterFile) {
       if (order === "desc") {
         query += " AND (created_at < ? OR (created_at = ? AND id < ?))";
@@ -126,11 +128,13 @@ export function listFiles(
   query += " LIMIT ?";
   params.push(limit);
 
-  const rows = db.prepare(query).all(...params);
+  const rows = await db.prepare(query).all(...params);
   return rows.map((row) => rowToCamel(row) as unknown as FileRecord);
 }
 
-export function countFiles(options: { apiKeyId?: string; purpose?: string } = {}): number {
+export async function countFiles(
+  options: { apiKeyId?: string; purpose?: string } = {}
+): Promise<number> {
   if (nonCriticalDbDisabled()) return 0;
   const db = getDbInstance();
   const { apiKeyId, purpose } = options;
@@ -144,7 +148,7 @@ export function countFiles(options: { apiKeyId?: string; purpose?: string } = {}
     query += " AND purpose = ?";
     params.push(purpose);
   }
-  const row = db.prepare(query).get(...params) as { c: number } | undefined;
+  const row = (await db.prepare(query).get(...params)) as { c: number } | undefined;
   return row ? Number(row.c) : 0;
 }
 
@@ -166,10 +170,10 @@ export function formatFileResponse(file: FileRecord) {
   };
 }
 
-export function deleteFile(id: string): boolean {
+export async function deleteFile(id: string): Promise<boolean> {
   if (nonCriticalDbDisabled()) return false;
   const db = getDbInstance();
-  const result = db
+  const result = await db
     .prepare("UPDATE files SET deleted_at = ?, content = NULL WHERE id = ?")
     .run(Math.floor(Date.now() / 1000), id);
   return result.changes > 0;
