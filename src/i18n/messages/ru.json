@@ -4134,7 +4134,7 @@
     "blockedProviders": "Заблокированные провайдеры",
     "blockedProvidersDesc": "Скройте конкретных поставщиков из ответа /v1/models. Заблокированные поставщики не будут отображаться в списках моделей.",
     "disableGigachatCompatible": "Отключить GigaChat-совместимые провайдеры",
-    "disableGigachatCompatibleDesc": "Скрыть все провайдеры gigachat-compatible-* из списка моделей и исключить их из маршрутизации.",
+    "disableGigachatCompatibleDesc": "Скрыть все провайдеры gigachat-compatible-* из списка моделей (/v1/models). Маршрутизация через комбо при этом продолжает работать.",
     "providersBlocked": "Поставщик(и) {count} заблокирован в /models",
     "blockProviderTitle": "Блок {provider}",
     "unblockProviderTitle": "Разблокировать {provider}",
