@@ -455,7 +455,7 @@ export async function getUsageStats() {
     .prepare(
       `
         SELECT
-          strftime('%Y-%m-%dT%H:%M:00.000Z', timestamp) as minute,
+          to_char(timestamp::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:00.000"Z"') as minute,
           provider,
           model,
           COALESCE(service_tier, 'standard') as service_tier,

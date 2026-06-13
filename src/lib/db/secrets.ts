@@ -20,7 +20,7 @@ export function persistSecret(key: string, value: string): void {
   try {
     const db = getDbInstance();
     db.prepare(
-      "INSERT OR IGNORE INTO key_value (namespace, key, value) VALUES ('secrets', ?, ?)"
+      "INSERT INTO key_value (namespace, key, value) VALUES ('secrets', ?, ?) ON CONFLICT (namespace, key) DO NOTHING"
     ).run(key, JSON.stringify(value));
   } catch {
     // Non-fatal: secrets still work for the current process if persistence fails.

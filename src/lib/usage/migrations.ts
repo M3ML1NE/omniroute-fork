@@ -323,7 +323,7 @@ export function migrateUsageJsonToSqlite() {
         console.log(`[usageDb] Migrating ${logs.length} call log entries from JSON → SQLite...`);
 
         const insert = db.prepare(`
-          INSERT OR IGNORE INTO call_logs (id, timestamp, method, path, status, model, requested_model, provider,
+          INSERT INTO call_logs (id, timestamp, method, path, status, model, requested_model, provider,
             account, connection_id, duration, tokens_in, tokens_out, source_format, target_format,
             api_key_id, api_key_name, combo_name, combo_step_id, combo_execution_key, error_summary,
             detail_state, artifact_relpath, artifact_size_bytes, artifact_sha256,
@@ -333,6 +333,7 @@ export function migrateUsageJsonToSqlite() {
             @apiKeyId, @apiKeyName, @comboName, @comboStepId, @comboExecutionKey, @errorSummary,
             @detailState, @artifactRelPath, @artifactSizeBytes, @artifactSha256,
             @hasRequestBody, @hasResponseBody, @hasPipelineDetails, @requestSummary)
+          ON CONFLICT (id) DO NOTHING
         `);
 
         const tx = db.transaction(() => {

@@ -385,7 +385,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
   const hourRows = db
     .prepare(
       `
-    SELECT strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour,
+    SELECT to_char(timestamp::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:00:00"Z"') as hour,
       COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved
     FROM compression_analytics
     WHERE timestamp >= ?

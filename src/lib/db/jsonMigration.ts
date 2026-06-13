@@ -56,7 +56,7 @@ export function runJsonMigration(
   domainBudgets: number;
 } {
   const insertConn = db.prepare(`
-    INSERT OR REPLACE INTO provider_connections (
+    INSERT INTO provider_connections (
       id, provider, auth_type, name, email, priority, is_active,
       access_token, refresh_token, expires_at, token_expires_at,
       scope, project_id, test_status, error_code, last_error,
@@ -75,25 +75,54 @@ export function runJsonMigration(
       @expiresIn, @displayName, @globalPriority, @defaultModel,
       @tokenType, @consecutiveUseCount, @rateLimitProtection, @lastUsedAt, @createdAt, @updatedAt
     )
+    ON CONFLICT (id) DO UPDATE SET (
+      provider, auth_type, name, email, priority, is_active,
+      access_token, refresh_token, expires_at, token_expires_at,
+      scope, project_id, test_status, error_code, last_error,
+      last_error_at, last_error_type, last_error_source, backoff_level,
+      rate_limited_until, health_check_interval, last_health_check_at,
+      last_tested, api_key, id_token, provider_specific_data,
+      expires_in, display_name, global_priority, default_model,
+      token_type, consecutive_use_count, rate_limit_protection, last_used_at, created_at, updated_at
+    ) = (
+      EXCLUDED.provider, EXCLUDED.auth_type, EXCLUDED.name, EXCLUDED.email, EXCLUDED.priority, EXCLUDED.is_active,
+      EXCLUDED.access_token, EXCLUDED.refresh_token, EXCLUDED.expires_at, EXCLUDED.token_expires_at,
+      EXCLUDED.scope, EXCLUDED.project_id, EXCLUDED.test_status, EXCLUDED.error_code, EXCLUDED.last_error,
+      EXCLUDED.last_error_at, EXCLUDED.last_error_type, EXCLUDED.last_error_source, EXCLUDED.backoff_level,
+      EXCLUDED.rate_limited_until, EXCLUDED.health_check_interval, EXCLUDED.last_health_check_at,
+      EXCLUDED.last_tested, EXCLUDED.api_key, EXCLUDED.id_token, EXCLUDED.provider_specific_data,
+      EXCLUDED.expires_in, EXCLUDED.display_name, EXCLUDED.global_priority, EXCLUDED.default_model,
+      EXCLUDED.token_type, EXCLUDED.consecutive_use_count, EXCLUDED.rate_limit_protection, EXCLUDED.last_used_at, EXCLUDED.created_at, EXCLUDED.updated_at
+    )
   `);
 
   const insertNode = db.prepare(`
-    INSERT OR REPLACE INTO provider_nodes (id, type, name, prefix, api_type, base_url, created_at, updated_at)
+    INSERT INTO provider_nodes (id, type, name, prefix, api_type, base_url, created_at, updated_at)
     VALUES (@id, @type, @name, @prefix, @apiType, @baseUrl, @createdAt, @updatedAt)
+    ON CONFLICT (id) DO UPDATE SET
+      type = EXCLUDED.type, name = EXCLUDED.name, prefix = EXCLUDED.prefix,
+      api_type = EXCLUDED.api_type, base_url = EXCLUDED.base_url,
+      created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at
   `);
 
   const insertKv = db.prepare(
-    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)"
+    "INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
   );
 
   const insertCombo = db.prepare(`
-    INSERT OR REPLACE INTO combos (id, name, data, sort_order, created_at, updated_at)
+    INSERT INTO combos (id, name, data, sort_order, created_at, updated_at)
     VALUES (@id, @name, @data, @sortOrder, @createdAt, @updatedAt)
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name, data = EXCLUDED.data, sort_order = EXCLUDED.sort_order,
+      created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at
   `);
 
   const insertKey = db.prepare(`
-    INSERT OR REPLACE INTO api_keys (id, name, key, machine_id, allowed_models, no_log, created_at)
+    INSERT INTO api_keys (id, name, key, machine_id, allowed_models, no_log, created_at)
     VALUES (@id, @name, @key, @machineId, @allowedModels, @noLog, @createdAt)
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name, key = EXCLUDED.key, machine_id = EXCLUDED.machine_id,
+      allowed_models = EXCLUDED.allowed_models, no_log = EXCLUDED.no_log, created_at = EXCLUDED.created_at
   `);
 
   const migrate = db.transaction(() => {
@@ -224,7 +253,7 @@ export function runJsonMigration(
     // 7. Usage History
     if (data.usageHistory && data.usageHistory.length > 0) {
       const insertUsageHistory = db.prepare(`
-        INSERT OR REPLACE INTO usage_history (
+        INSERT INTO usage_history (
           id, provider, model, connection_id, api_key_id, api_key_name,
           tokens_input, tokens_output, tokens_cache_read, tokens_cache_creation,
           tokens_reasoning, status, success, latency_ms, ttft_ms, error_code, combo_strategy, timestamp
@@ -232,6 +261,15 @@ export function runJsonMigration(
           @id, @provider, @model, @connection_id, @api_key_id, @api_key_name,
           @tokens_input, @tokens_output, @tokens_cache_read, @tokens_cache_creation,
           @tokens_reasoning, @status, @success, @latency_ms, @ttft_ms, @error_code, @combo_strategy, @timestamp
+        )
+        ON CONFLICT (id) DO UPDATE SET (
+          provider, model, connection_id, api_key_id, api_key_name,
+          tokens_input, tokens_output, tokens_cache_read, tokens_cache_creation,
+          tokens_reasoning, status, success, latency_ms, ttft_ms, error_code, combo_strategy, timestamp
+        ) = (
+          EXCLUDED.provider, EXCLUDED.model, EXCLUDED.connection_id, EXCLUDED.api_key_id, EXCLUDED.api_key_name,
+          EXCLUDED.tokens_input, EXCLUDED.tokens_output, EXCLUDED.tokens_cache_read, EXCLUDED.tokens_cache_creation,
+          EXCLUDED.tokens_reasoning, EXCLUDED.status, EXCLUDED.success, EXCLUDED.latency_ms, EXCLUDED.ttft_ms, EXCLUDED.error_code, EXCLUDED.combo_strategy, EXCLUDED.timestamp
         )
       `);
       for (const row of data.usageHistory) {
@@ -261,11 +299,13 @@ export function runJsonMigration(
     // 8. Domain Cost History
     if (data.domainCostHistory && data.domainCostHistory.length > 0) {
       const insertCostHistory = db.prepare(`
-        INSERT OR REPLACE INTO domain_cost_history (
+        INSERT INTO domain_cost_history (
           id, api_key_id, cost, timestamp
         ) VALUES (
           @id, @api_key_id, @cost, @timestamp
         )
+        ON CONFLICT (id) DO UPDATE SET
+          api_key_id = EXCLUDED.api_key_id, cost = EXCLUDED.cost, timestamp = EXCLUDED.timestamp
       `);
       for (const row of data.domainCostHistory) {
         insertCostHistory.run({
@@ -279,7 +319,7 @@ export function runJsonMigration(
     // 9. Domain Budgets
     if (data.domainBudgets && data.domainBudgets.length > 0) {
       const insertBudgets = db.prepare(`
-        INSERT OR REPLACE INTO domain_budgets (
+        INSERT INTO domain_budgets (
           api_key_id, daily_limit_usd, weekly_limit_usd, monthly_limit_usd,
           warning_threshold, reset_interval, reset_time, budget_reset_at,
           last_budget_reset_at, warning_emitted_at, warning_period_start
@@ -287,6 +327,15 @@ export function runJsonMigration(
           @api_key_id, @daily_limit_usd, @weekly_limit_usd, @monthly_limit_usd,
           @warning_threshold, @reset_interval, @reset_time, @budget_reset_at,
           @last_budget_reset_at, @warning_emitted_at, @warning_period_start
+        )
+        ON CONFLICT (api_key_id) DO UPDATE SET (
+          daily_limit_usd, weekly_limit_usd, monthly_limit_usd,
+          warning_threshold, reset_interval, reset_time, budget_reset_at,
+          last_budget_reset_at, warning_emitted_at, warning_period_start
+        ) = (
+          EXCLUDED.daily_limit_usd, EXCLUDED.weekly_limit_usd, EXCLUDED.monthly_limit_usd,
+          EXCLUDED.warning_threshold, EXCLUDED.reset_interval, EXCLUDED.reset_time, EXCLUDED.budget_reset_at,
+          EXCLUDED.last_budget_reset_at, EXCLUDED.warning_emitted_at, EXCLUDED.warning_period_start
         )
       `);
       for (const row of data.domainBudgets) {

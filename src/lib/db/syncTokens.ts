@@ -57,8 +57,8 @@ function ensureSyncTokensTable(db: DbLike) {
       sync_api_key_id TEXT,
       revoked_at TEXT,
       last_used_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      updated_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
     );
 
     CREATE INDEX IF NOT EXISTS idx_sync_tokens_created_at ON sync_tokens(created_at);
@@ -73,7 +73,7 @@ export async function listSyncTokens() {
   ensureSyncTokensTable(db);
   const rows = db
     .prepare(
-      "SELECT * FROM sync_tokens ORDER BY datetime(created_at) DESC, name COLLATE NOCASE ASC"
+      "SELECT * FROM sync_tokens ORDER BY created_at DESC, LOWER(name) ASC"
     )
     .all();
 

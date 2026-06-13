@@ -162,11 +162,11 @@ export function recordHookExecution(name: string, error?: string): void {
   const db = getDbInstance() as any;
   if (error) {
     db.prepare(
-      "UPDATE middleware_hooks SET run_count = run_count + 1, last_error = ?, updated_at = datetime('now') WHERE name = ?"
+      "UPDATE middleware_hooks SET run_count = run_count + 1, last_error = ?, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE name = ?"
     ).run(error, name);
   } else {
     db.prepare(
-      "UPDATE middleware_hooks SET run_count = run_count + 1, last_error = NULL, updated_at = datetime('now') WHERE name = ?"
+      "UPDATE middleware_hooks SET run_count = run_count + 1, last_error = NULL, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE name = ?"
     ).run(name);
   }
 }

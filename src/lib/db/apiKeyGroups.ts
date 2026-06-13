@@ -106,7 +106,7 @@ export async function updateKeyGroup(
   }
 
   if (sets.length === 0) return existing;
-  sets.push("updated_at = datetime('now')");
+  sets.push("updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')");
 
   await db.prepare(`UPDATE key_groups SET ${sets.join(", ")} WHERE id = @id`).run(params);
   return getKeyGroup(id);

@@ -121,15 +121,15 @@ function ensureCompressionComboTables(): void {
       output_mode INTEGER DEFAULT 0,
       output_mode_intensity TEXT DEFAULT 'full',
       is_default INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+      updated_at TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
     );
 
     CREATE TABLE IF NOT EXISTS compression_combo_assignments (
       id TEXT PRIMARY KEY,
       compression_combo_id TEXT NOT NULL REFERENCES compression_combos(id) ON DELETE CASCADE,
       routing_combo_id TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
       UNIQUE(routing_combo_id)
     );
 
@@ -142,10 +142,11 @@ function ensureCompressionComboTables(): void {
   `);
   db.prepare(
     `
-    INSERT OR IGNORE INTO compression_combos (
+    INSERT INTO compression_combos (
       id, name, description, pipeline, language_packs, output_mode, output_mode_intensity, is_default
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (id) DO NOTHING
   `
   ).run(
     DEFAULT_COMPRESSION_COMBO_ID,
@@ -219,7 +220,7 @@ export function listCompressionCombos(): CompressionCombo[] {
   ensureCompressionComboTables();
   const db = getDbInstance();
   return db
-    .prepare("SELECT * FROM compression_combos ORDER BY is_default DESC, name COLLATE NOCASE ASC")
+    .prepare("SELECT * FROM compression_combos ORDER BY is_default DESC, LOWER(name) ASC")
     .all()
     .map(rowToCompressionCombo)
     .filter((combo): combo is CompressionCombo => combo !== null);
@@ -377,10 +378,14 @@ export function assignRoutingCombo(compressionComboId: string, routingComboId: s
   getDbInstance()
     .prepare(
       `
-      INSERT OR REPLACE INTO compression_combo_assignments (
+      INSERT INTO compression_combo_assignments (
         id, compression_combo_id, routing_combo_id, created_at
       )
       VALUES (?, ?, ?, ?)
+      ON CONFLICT (routing_combo_id) DO UPDATE SET
+        id = EXCLUDED.id,
+        compression_combo_id = EXCLUDED.compression_combo_id,
+        created_at = EXCLUDED.created_at
     `
     )
     .run(uuidv4(), compressionComboId, routingComboId.trim(), new Date().toISOString());
