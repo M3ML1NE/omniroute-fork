@@ -7,6 +7,8 @@
  * @module shared/utils/fetchTimeout
  */
 
+import { proxyFetch } from "@omniroute/open-sse/utils/proxyFetch.ts";
+
 const DEFAULT_TIMEOUT_MS =
   parseInt(process.env.OMNIROUTE_DEFAULT_FETCH_TIMEOUT_MS || "", 10) || 120000; // 2 minutes
 const FETCH_TIMEOUT_MS = parseInt(process.env.FETCH_TIMEOUT_MS || "", 10) || DEFAULT_TIMEOUT_MS;
@@ -31,7 +33,9 @@ export async function fetchWithTimeout(url: string | URL, options: FetchTimeoutO
   }
 
   try {
-    const response = await fetch(url, {
+    // T41: Explicitly use proxyFetch instead of ambient fetch to bypass Next.js 
+    // caching wrapper, which silently strips the non-standard 'dispatcher' option.
+    const response = await proxyFetch(url, {
       ...fetchOptions,
       signal: controller.signal,
     });

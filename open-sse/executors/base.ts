@@ -11,6 +11,7 @@ import {
 import type { ProviderRequestDefaults } from "../services/providerRequestDefaults.ts";
 import { sanitizeResponsesInputItems } from "../services/responsesInputSanitizer.ts";
 import { getMtlsDispatcher, resolveMtlsConfig } from "../services/mtlsAgent.ts";
+import { proxyFetch } from "../utils/proxyFetch.ts";
 
 /**
  * Sanitizes a custom API path to prevent path traversal attacks.
@@ -499,7 +500,8 @@ export class BaseExecutor {
         signal: activeSignal || undefined,
       };
       if (ctMtlsCfg) ctFetchOptions.dispatcher = getMtlsDispatcher(ctMtlsCfg);
-      const response = await fetch(url, ctFetchOptions);
+      // Bypass ambient fetch to ensure 'dispatcher' option survives Next.js wrapping
+      const response = await proxyFetch(url, ctFetchOptions);
 
       const text = await response.text();
       if (!response.ok) {
@@ -694,7 +696,8 @@ export class BaseExecutor {
 
         let response;
         try {
-          response = await fetch(url, fetchOptions);
+          // Bypass ambient fetch to ensure 'dispatcher' option survives Next.js wrapping
+          response = await proxyFetch(url, fetchOptions);
         } finally {
           if (timeoutId) {
             clearTimeout(timeoutId);
