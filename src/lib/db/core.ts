@@ -16,8 +16,14 @@ import { getPool, query, closePool, withTransaction } from "./postgres";
 
 // ──────────────── Environment Detection ────────────────
 
+// True only on a real edge/serverless runtime (Cloudflare Workers, Vercel
+// Edge). Node 22+ and the Next.js production Node server define globalThis.caches
+// too, so testing `caches` alone wrongly flagged a plain Node/VPS deployment as
+// cloud — which disabled disk persistence (shouldPersistToDisk) and the global
+// fetch patch. A real edge runtime has no `process.versions.node`.
+const hasNodeRuntime = typeof process !== "undefined" && Boolean(process.versions?.node);
 export const isCloud =
-  typeof globalThis.caches === "object" && globalThis.caches !== null;
+  !hasNodeRuntime && typeof globalThis.caches === "object" && globalThis.caches !== null;
 
 export const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
 

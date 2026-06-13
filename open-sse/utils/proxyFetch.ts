@@ -30,7 +30,16 @@ type PatchState = {
   isPatched: boolean;
 };
 
-const isCloud = typeof caches !== "undefined" && typeof caches === "object";
+// Detect a true edge/serverless runtime (Cloudflare Workers, Vercel Edge),
+// where the global fetch must NOT be monkeypatched. The old heuristic keyed off
+// `typeof caches === "object"`, but Node 22+ and the Next.js production Node
+// server now define globalThis.caches too — which made isCloud=true on a plain
+// Node/VPS deployment, so the fetch patch was skipped and `dispatcher` (mTLS
+// client cert, undici proxy) was silently dropped by native fetch -> 401. A
+// real edge runtime has no `process.versions.node`; a Node server always does.
+const hasNodeRuntime =
+  typeof process !== "undefined" && Boolean(process.versions?.node);
+const isCloud = !hasNodeRuntime && typeof caches !== "undefined" && typeof caches === "object";
 const PATCH_STATE_KEY = Symbol.for("omniroute.proxyFetch.state");
 
 function getPatchState(): PatchState {
