@@ -40,6 +40,9 @@ export function parseSSELine(line) {
 export function hasValuableContent(chunk, format) {
   // OpenAI format
   if (format === FORMATS.OPENAI) {
+    // A chunk with a valid usage block is always valuable
+    if (chunk.usage && typeof chunk.usage === "object") return true;
+
     if (!chunk.choices?.[0]?.delta) return false;
     const delta = chunk.choices[0].delta;
     if (typeof delta.content === "string" && delta.content.length > 0) return true;
