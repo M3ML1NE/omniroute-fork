@@ -778,7 +778,7 @@ export async function GET(request: Request) {
           FROM ${unifiedSource} AS _u
           ${unifiedWhere}
           GROUP BY DATE(timestamp), EXTRACT(DOW FROM timestamp::timestamptz)
-        )
+        ) AS _daily
         GROUP BY dayOfWeek
         ORDER BY dayOfWeek ASC
       `
