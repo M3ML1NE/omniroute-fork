@@ -10,12 +10,22 @@ describe("minimalDb flag", () => {
     else process.env["OMNIROUTE_MINIMAL_DB"] = orig;
   });
 
-  it("defaults to true (enabled) when unset", () => {
+  it("defaults to false (disabled) when unset — migration complete", () => {
     delete process.env["OMNIROUTE_MINIMAL_DB"];
+    assert.equal(isMinimalDb(), false);
+  });
+
+  it("true when explicitly 'true'", () => {
+    process.env["OMNIROUTE_MINIMAL_DB"] = "true";
     assert.equal(isMinimalDb(), true);
   });
 
-  it("false when explicitly 'false'", () => {
+  it("true when '1'", () => {
+    process.env["OMNIROUTE_MINIMAL_DB"] = "1";
+    assert.equal(isMinimalDb(), true);
+  });
+
+  it("false when 'false'", () => {
     process.env["OMNIROUTE_MINIMAL_DB"] = "false";
     assert.equal(isMinimalDb(), false);
   });
@@ -25,9 +35,9 @@ describe("minimalDb flag", () => {
     assert.equal(isMinimalDb(), false);
   });
 
-  it("true when 'true'", () => {
-    process.env["OMNIROUTE_MINIMAL_DB"] = "true";
-    assert.equal(isMinimalDb(), true);
+  it("false for unrecognized values (only true/1 enable)", () => {
+    process.env["OMNIROUTE_MINIMAL_DB"] = "yes";
+    assert.equal(isMinimalDb(), false);
   });
 
   it("nonCriticalDbDisabled mirrors isMinimalDb", () => {

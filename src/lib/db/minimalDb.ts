@@ -42,25 +42,27 @@
  *
  * | Value              | isMinimalDb() |
  * |--------------------|---------------|
- * | unset (default)    | true  (ON)    |
- * | "true" / "1" / *   | true  (ON)    |
- * | "false"            | false (OFF)   |
- * | "0"                | false (OFF)   |
+ * | unset (default)    | false (OFF)   |
+ * | "true" / "1"       | true  (ON)    |
+ * | "false" / "0" / *  | false (OFF)   |
  *
- * Set OMNIROUTE_MINIMAL_DB=false only when ALL DB modules have been migrated
- * to Postgres-compatible async code.
+ * The default flipped to OFF once every non-critical module
+ * (usage/usageHistory, compression*, relay*, files, detailedLogs,
+ * reasoningCache, etc.) was converted to Postgres-compatible async code, so
+ * usage/logs/analytics now persist by default. Set OMNIROUTE_MINIMAL_DB=true
+ * only to deliberately suppress non-critical DB writes again.
  */
 
 /**
  * Returns true when Minimal-DB mode is active.
  *
- * Default: true (enabled) — safe for this fork where only critical-path
- * modules are Postgres-ready.
+ * Default: false (disabled) — the SQLite→Postgres migration of non-critical
+ * modules is complete, so they execute real queries by default.
  */
 export function isMinimalDb(): boolean {
   const v = process.env["OMNIROUTE_MINIMAL_DB"];
-  if (v === undefined) return true; // default ON
-  return v !== "false" && v !== "0";
+  if (v === undefined) return false; // default OFF — migration complete
+  return v === "true" || v === "1";
 }
 
 /**
