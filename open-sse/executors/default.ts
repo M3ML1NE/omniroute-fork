@@ -271,6 +271,15 @@ export class DefaultExecutor extends BaseExecutor {
             if (firstCall && firstCall.function) {
               const fn = { ...firstCall.function };
               if (fn.name) fn.name = String(fn.name).replace(/-/g, "_");
+              
+              // GigaChat expects 'arguments' to be a JSON object, not a string
+              if (typeof fn.arguments === "string") {
+                try {
+                  fn.arguments = JSON.parse(fn.arguments);
+                } catch {
+                  fn.arguments = {};
+                }
+              }
               newMsg.function_call = fn;
             }
             delete newMsg.tool_calls;
