@@ -53,4 +53,39 @@ describe("gigachat-compatible executor", () => {
     assert.equal(body.tool_choice, undefined, "tool_choice removed");
     assert.equal(body.stream_options, undefined, "stream_options stripped in cert mode");
   });
+
+  it("transformRequest normalizes nested object params so GigaChat accepts them (#422)", () => {
+    const exec = new DefaultExecutor(NODE_ID);
+    const body = exec.transformRequest(
+      "GigaChat-2-Max",
+      {
+        model: "GigaChat-2-Max",
+        messages: [{ role: "user", content: "hi" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "edit",
+              description: "d",
+              parameters: {
+                type: "object",
+                properties: { inline: { type: "object" } },
+                required: ["inline"],
+              },
+            },
+          },
+        ],
+      },
+      false,
+      { providerSpecificData: { mtls: MTLS } }
+    ) as Record<string, unknown>;
+
+    const fn = (body.functions as { parameters: Record<string, unknown> }[])[0];
+    const inline = (fn.parameters.properties as Record<string, Record<string, unknown>>).inline;
+    assert.deepEqual(
+      inline.properties,
+      {},
+      "nested object must gain properties:{} to satisfy GigaChat"
+    );
+  });
 });

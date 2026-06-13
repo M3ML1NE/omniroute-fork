@@ -4,6 +4,7 @@ import { resolveKeyForRequest } from "../services/apiKeyRotator.ts";
 import { getRegistryEntry } from "../config/providerRegistry.ts";
 import { applyProviderRequestDefaults } from "../services/providerRequestDefaults.ts";
 import { detectFormat, getTargetFormat } from "../services/provider.ts";
+import { normalizeGigaChatToolSchema } from "./gigachatSchema.ts";
 
 const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
 
@@ -239,7 +240,7 @@ export class DefaultExecutor extends BaseExecutor {
             return {
               name: String(fn["name"]).replace(/-/g, "_"),
               description: fn["description"],
-              parameters: fn["parameters"],
+              parameters: normalizeGigaChatToolSchema(fn["parameters"]),
             };
           }
         );
