@@ -122,17 +122,23 @@ function handleRequest(
       }
 
       // Non-streaming — handle functions (GigaChat uses functions[] not tools[])
-      let message: Record<string, unknown> = { role: "assistant", content: "mock-reply" };
+      let message: Record<string, unknown> = {
+        role: "assistant",
+        content: "mock-reply",
+        // GigaChat-style reasoning field echoed so reasoning conversion is testable.
+        reasoning_content: "mock reasoning: deciding what to do",
+      };
       if (functions && functions.length > 0) {
         const fn = functions[0] as Record<string, unknown>;
         message = {
           role: "assistant",
           content: null,
+          reasoning_content: "mock reasoning: the user asked, calling the tool",
           tool_calls: [
             {
               id: "call_mock_1",
               type: "function",
-              function: { name: fn["name"], arguments: "{}" },
+              function: { name: fn["name"], arguments: '{"city":"Moscow"}' },
             },
           ],
         };

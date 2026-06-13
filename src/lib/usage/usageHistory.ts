@@ -296,25 +296,27 @@ export async function getUsageDb(sinceIso?: string | null, limit?: number, curso
     // Cursor-based pagination (next page after cursor)
     // Use > cursor to get rows after the last timestamp of previous page (ASC order)
     rows = sinceIso
-      ? db
+      ? await db
           .prepare(
             `SELECT * FROM usage_history WHERE timestamp >= ? AND timestamp > ? ORDER BY timestamp ASC LIMIT ?`
           )
           .all(sinceIso, cursor, maxRows)
-      : db
+      : await db
           .prepare(`SELECT * FROM usage_history WHERE timestamp > ? ORDER BY timestamp ASC LIMIT ?`)
           .all(cursor, maxRows);
   } else if (sinceIso) {
     // Initial query with date filter
-    rows = db
+    rows = await db
       .prepare(`SELECT * FROM usage_history WHERE timestamp >= ? ORDER BY timestamp ASC LIMIT ?`)
       .all(sinceIso, maxRows);
   } else {
     // No filter - get all (with limit)
-    rows = db.prepare(`SELECT * FROM usage_history ORDER BY timestamp ASC LIMIT ?`).all(maxRows);
+    rows = await db
+      .prepare(`SELECT * FROM usage_history ORDER BY timestamp ASC LIMIT ?`)
+      .all(maxRows);
   }
 
-  const history = rows.map((row) => {
+  const history = (rows as unknown[]).map((row) => {
     const r = asRecord(row);
     return {
       provider: toStringOrNull(r.provider),
@@ -359,7 +361,7 @@ export async function saveRequestUsage(entry: any) {
     const timestamp = entry.timestamp || new Date().toISOString();
     const serviceTier = normalizeServiceTier(entry.serviceTier ?? entry.service_tier);
 
-    db.prepare(
+    await db.prepare(
       `
       INSERT INTO usage_history (provider, model, connection_id, api_key_id, api_key_name,
         tokens_input, tokens_output, tokens_cache_read, tokens_cache_creation, tokens_reasoning,
@@ -387,7 +389,8 @@ export async function saveRequestUsage(entry: any) {
           ? Number(entry.latencyMs)
           : 0,
       entry.errorCode || null,
-      entry.comboStrategy || entry.combo_strategy || null,
+      // combo_strategy is NOT NULL; default non-combo requests to "direct".
+      entry.comboStrategy || entry.combo_strategy || "direct",
       timestamp
     );
   } catch (error) {
