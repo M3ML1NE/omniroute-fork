@@ -744,7 +744,7 @@ export async function pruneStaleSyncedAvailableModelsForProvider(
   if (allowedConnectionIds.length === 0) {
     return deleteSyncedAvailableModelsForProvider(providerId);
   }
-  const placeholders = allowedConnectionIds.map((_, i) => `$${i + 3}`).join(",");
+  const placeholders = allowedConnectionIds.map((_, i) => `$${i + 2}`).join(",");
   const keyPrefix = `${providerId}:`;
   const allowedKeys = allowedConnectionIds.map((id) => `${providerId}:${id}`);
   const result = await db
