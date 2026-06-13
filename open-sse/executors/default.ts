@@ -259,6 +259,63 @@ export class DefaultExecutor extends BaseExecutor {
         delete requestBody["tool_choice"];
       }
       delete requestBody["stream_options"];
+
+      if (Array.isArray(requestBody["messages"])) {
+        requestBody["messages"] = requestBody["messages"].map((msg: any) => {
+          if (!msg || typeof msg !== "object") return msg;
+          const newMsg = { ...msg };
+
+          // 1. Convert OpenAI assistant tool_calls -> GigaChat function_call
+          if (newMsg.role === "assistant" && Array.isArray(newMsg.tool_calls) && newMsg.tool_calls.length > 0) {
+            const firstCall = newMsg.tool_calls[0];
+            if (firstCall && firstCall.function) {
+              const fn = { ...firstCall.function };
+              if (fn.name) fn.name = String(fn.name).replace(/-/g, "_");
+              newMsg.function_call = fn;
+            }
+            delete newMsg.tool_calls;
+          }
+
+          // 2. Convert OpenAI tool result -> GigaChat function result
+          if (newMsg.role === "tool" || newMsg.role === "function") {
+            newMsg.role = "function";
+
+            // GigaChat requires a valid JSON object string for content.
+            // If it's a raw string like "25" or "Sunny", GigaChat throws 422 INVALID_PARAMS.
+            let contentStr = typeof newMsg.content === "string" ? newMsg.content.trim() : JSON.stringify(newMsg.content ?? {});
+            let isObj = false;
+            if (contentStr.startsWith("{") && contentStr.endsWith("}")) {
+              try {
+                const parsed = JSON.parse(contentStr);
+                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                  isObj = true;
+                }
+              } catch {
+                isObj = false;
+              }
+            }
+            if (!isObj) {
+              contentStr = JSON.stringify({ result: contentStr });
+            }
+            newMsg.content = contentStr;
+
+            if (newMsg.name) {
+              newMsg.name = String(newMsg.name).replace(/-/g, "_");
+            } else if (newMsg.tool_call_id) {
+              // GigaChat requires 'name'. If missing, fallback to sanitized ID
+              newMsg.name = String(newMsg.tool_call_id).replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 64) || "tool_result";
+            } else {
+              newMsg.name = "tool_result";
+            }
+            delete newMsg.tool_call_id;
+          } else {
+            // GigaChat strictly rejects the 'name' field on non-function roles
+            delete newMsg.name;
+          }
+
+          return newMsg;
+        });
+      }
     }
 
     return withDefaults;
