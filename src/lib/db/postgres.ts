@@ -45,7 +45,7 @@ export function getSchema(): string {
 }
 
 function poolConfigFor(host: HostSpec, cfg: PgRuntimeConfig): pg.PoolConfig {
-  return {
+  const config: pg.PoolConfig = {
     host: host.host,
     port: host.port,
     user: cfg.user,
@@ -55,6 +55,14 @@ function poolConfigFor(host: HostSpec, cfg: PgRuntimeConfig): pg.PoolConfig {
     max: cfg.max,
     connectionTimeoutMillis: cfg.connectionTimeoutMillis,
   };
+  if (cfg.applyRoleSearchPath) {
+    // Startup-packet search_path (sent on every physical backend) survives a
+    // transaction-mode pooler that would strand a post-connect SET. cfg.schema
+    // is a validated bare identifier (resolveSchema), so inlining is safe.
+    (config as pg.PoolConfig & { options?: string }).options =
+      `-c search_path=${cfg.schema},public`;
+  }
+  return config;
 }
 
 function makePool(config: pg.PoolConfig, cfg: PgRuntimeConfig): pg.Pool {
