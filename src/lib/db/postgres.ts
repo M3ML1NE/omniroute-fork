@@ -308,15 +308,47 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
 ): Promise<pg.QueryResult<T>> {
   const args = (params as unknown[]) ?? [];
   try {
-    const pool = await getPool();
-    return await pool.query<T>(sql, args);
+    return await executeWithSearchPath<T>(sql, args);
   } catch (err) {
     if (isReadOnlyError(err) || isConnectionError(err)) {
       await invalidateWritePool();
-      const pool = await getPool();
-      return await pool.query<T>(sql, args);
+      return await executeWithSearchPath<T>(sql, args);
     }
     throw err;
+  }
+}
+
+async function executeWithSearchPath<T extends pg.QueryResultRow>(
+  sql: string,
+  args: unknown[]
+): Promise<pg.QueryResult<T>> {
+  const cfg = getConfig();
+  const pool = await getPool();
+  
+  if (!cfg.applyRoleSearchPath) {
+    return await pool.query<T>(sql, args);
+  }
+
+  const client = await pool.connect();
+  try {
+    // In transaction-mode poolers (like PgBouncer), a connection is leased to a client
+    // only for the duration of a transaction (or a single auto-committed statement).
+    // If we send `SET search_path` outside of a transaction block, the pooler will
+    // immediately return the backend connection to the pool after the SET completes.
+    // The subsequent `SELECT` could be routed to a DIFFERENT backend connection
+    // that still has the default `public` search_path.
+    // By wrapping it in BEGIN/COMMIT, we force PgBouncer to pin the physical backend
+    // connection to our client for both the SET LOCAL and the actual query.
+    await client.query("BEGIN");
+    await client.query(`SET LOCAL search_path TO ${cfg.schema}, public`);
+    const result = await client.query<T>(sql, args);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
@@ -361,7 +393,11 @@ async function runTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Pro
   const pool = await getPool();
   const client = await pool.connect();
   try {
+    const cfg = getConfig();
     await client.query("BEGIN");
+    if (cfg.applyRoleSearchPath) {
+      await client.query(`SET LOCAL search_path TO ${cfg.schema}, public`);
+    }
     const result = await fn(client);
     await client.query("COMMIT");
     return result;
