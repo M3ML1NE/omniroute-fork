@@ -407,29 +407,6 @@ function getTargetProvider(modelStr: string, providerId?: string | null): string
   return providerId || parsed.provider || parsed.providerAlias || "unknown";
 }
 
-const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
-
-/**
- * Honor the Security setting `disableGigachatCompatible`: drop every combo
- * target routed to a gigachat-compatible-* provider so routing matches the
- * models catalog (which already hides them). Uses the cached settings reader to
- * avoid a DB hit on the hot routing path.
- */
-async function filterDisabledGigachatTargets(
-  targets: ResolvedComboTarget[]
-): Promise<ResolvedComboTarget[]> {
-  try {
-    const { getCachedSettings } = await import("../../src/lib/db/readCache");
-    const settings = await getCachedSettings();
-    if (settings?.disableGigachatCompatible !== true) return targets;
-    return targets.filter(
-      (t) => !getTargetProvider(t.modelStr, t.providerId).startsWith(GIGACHAT_COMPATIBLE_PREFIX)
-    );
-  } catch {
-    return targets;
-  }
-}
-
 function isStreamReadinessFailureErrorBody(errorBody: unknown): boolean {
   if (!errorBody || typeof errorBody !== "object") return false;
   const error = (errorBody as Record<string, unknown>).error;
@@ -2021,7 +1998,6 @@ export async function handleComboChat({
       ? resolveWeightedTargets(combo, allCombos)?.orderedTargets || []
       : resolveComboTargets(combo, allCombos);
 
-  orderedTargets = await filterDisabledGigachatTargets(orderedTargets);
   orderedTargets = await applyRequestTagRouting(orderedTargets, body, log);
 
   if (strategy === "weighted") {
@@ -3085,9 +3061,7 @@ async function handleRoundRobinCombo({
   const retryDelayMs = resolveDelayMs(config.retryDelayMs, 2000);
   const fallbackDelayMs = resolveDelayMs(config.fallbackDelayMs, 0);
 
-  const orderedTargets = await filterDisabledGigachatTargets(
-    resolveComboTargets(combo, allCombos)
-  );
+  const orderedTargets = resolveComboTargets(combo, allCombos);
   const tagFilteredTargets = await applyRequestTagRouting(orderedTargets, body, log);
   const evalRankedTargets = orderTargetsByEvalScores(tagFilteredTargets, config.evalRouting, log);
   const filteredTargets = filterTargetsByRequestCompatibility(
