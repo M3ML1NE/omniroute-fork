@@ -1569,6 +1569,40 @@ export function createSSEStream(options: StreamOptions = {}) {
 
                   const delta = parsed.choices?.[0]?.delta;
                   let textualToolCallConverted = false;
+                  let gigachatToolCallConverted = false;
+
+                  // GigaChat compatibility: translate legacy function_call back to tool_calls
+                  // because we translated tools to functions in the request.
+                  if (
+                    provider?.startsWith("gigachat-compatible-") &&
+                    delta?.function_call &&
+                    !delta?.tool_calls
+                  ) {
+                    const fc = delta.function_call;
+                    const rawName = fc.name || "";
+                    const callName =
+                      (toolNameMap instanceof Map ? toolNameMap.get(rawName) : null) ?? rawName;
+                    const callArgs =
+                      typeof fc.arguments === "object" && fc.arguments !== null
+                        ? JSON.stringify(fc.arguments)
+                        : typeof fc.arguments === "string"
+                          ? fc.arguments
+                          : "";
+
+                    delta.tool_calls = [
+                      {
+                        index: 0,
+                        ...(callName ? { id: `call_${callName}`, type: "function" } : {}),
+                        function: {
+                          name: callName,
+                          arguments: callArgs,
+                        },
+                      },
+                    ];
+                    delete delta.function_call;
+                    passthroughHasToolCalls = true;
+                    gigachatToolCallConverted = true;
+                  }
 
                   // Extract <think> tags from streaming content
                   if (delta?.content && typeof delta.content === "string") {
@@ -1605,7 +1639,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                   // Track whether we need to re-serialize (separate from injectedUsage
                   // to avoid blocking subsequent finish_reason / usage mutations)
                   const needsReserialization =
-                    hadReasoningAlias || (delta?.content === "" && delta?.reasoning_content);
+                    hadReasoningAlias || (delta?.content === "" && delta?.reasoning_content) || gigachatToolCallConverted;
 
                   // T18: Track if we saw tool calls & accumulate for call log
                   if (delta?.tool_calls && delta.tool_calls.length > 0) {

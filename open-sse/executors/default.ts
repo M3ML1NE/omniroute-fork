@@ -234,17 +234,26 @@ export class DefaultExecutor extends BaseExecutor {
     ) {
       const requestBody = withDefaults as Record<string, unknown>;
       if (Array.isArray(requestBody["tools"])) {
+        const toolNameMap = new Map<string, string>();
         requestBody["functions"] = (requestBody["tools"] as Record<string, unknown>[]).map(
           (tool: Record<string, unknown>) => {
             const fn = tool["function"] as Record<string, unknown>;
+            const originalName = String(fn["name"] || "");
+            const safeName = originalName.replace(/-/g, "_");
+            if (originalName !== safeName) {
+              toolNameMap.set(safeName, originalName);
+            }
             return {
-              name: String(fn["name"]).replace(/-/g, "_"),
+              name: safeName,
               description: fn["description"],
               parameters: normalizeGigaChatToolSchema(fn["parameters"]),
             };
           }
         );
         delete requestBody["tools"];
+        if (toolNameMap.size > 0) {
+          requestBody["_toolNameMap"] = toolNameMap;
+        }
       }
       if (requestBody["tool_choice"] !== undefined) {
         delete requestBody["tool_choice"];

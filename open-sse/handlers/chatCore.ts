@@ -4645,6 +4645,40 @@ export async function handleChatCore({
       translatedResponse = sanitizeResponsesApiResponse(translatedResponse);
     } else if (clientResponseFormat === FORMATS.OPENAI) {
       translatedResponse = sanitizeOpenAIResponse(translatedResponse);
+
+      // GigaChat compatibility: translate function_call back to tool_calls
+      if (provider?.startsWith("gigachat-compatible-")) {
+        const msg = translatedResponse?.choices?.[0]?.message;
+        if (msg && msg.function_call && !msg.tool_calls) {
+          const rawName = msg.function_call.name || "";
+          const executorToolNameMap =
+            translatedToolNameMap instanceof Map
+              ? (translatedToolNameMap as Map<string, string>)
+              : null;
+          const callName = executorToolNameMap?.get(rawName) ?? rawName;
+          const callArgs =
+            typeof msg.function_call.arguments === "object" && msg.function_call.arguments !== null
+              ? JSON.stringify(msg.function_call.arguments)
+              : typeof msg.function_call.arguments === "string"
+                ? msg.function_call.arguments
+                : "";
+
+          msg.tool_calls = [
+            {
+              id: callName ? `call_${callName}` : `call_0`,
+              type: "function",
+              function: {
+                name: callName,
+                arguments: callArgs,
+              },
+            },
+          ];
+          delete msg.function_call;
+          if (translatedResponse.choices[0].finish_reason === "function_call") {
+            translatedResponse.choices[0].finish_reason = "tool_calls";
+          }
+        }
+      }
     }
 
     // Add buffer and filter usage for client (to prevent CLI context errors)
