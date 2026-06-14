@@ -3824,7 +3824,19 @@
     "mtlsCaLabel": "MTLS CA",
     "mtlsCertHint": "Путь к файлу сертификата клиента",
     "mtlsKeyHint": "Путь к файлу приватного ключа",
-    "mtlsCaHint": "Путь к файлу корневого сертификата (CA)"
+    "mtlsCaHint": "Путь к файлу корневого сертификата (CA)",
+    "mlproxy": "ML Proxy",
+    "mlproxyLoginLabel": "Логин",
+    "mlproxyPasswordLabel": "Пароль",
+    "mlproxyBaseHostLabel": "Базовый хост",
+    "mlproxyProxyIdLabel": "ID прокси",
+    "mlproxyRefreshIntervalLabel": "Интервал обновления (мин)",
+    "mlproxyCaPathLabel": "Путь к CA",
+    "mlproxyTlsInsecureLabel": "Небезопасный TLS",
+    "mlproxySaveButton": "Сохранить",
+    "mlproxyTestButton": "Проверить",
+    "mlproxySavedToast": "Соединение ML Proxy сохранено",
+    "mlproxyErrorToast": "Ошибка сохранения соединения ML Proxy"
   },
   "settings": {
     "title": "Настройки",

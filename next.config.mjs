@@ -162,7 +162,7 @@ const nextConfig = {
     "process",
   ],
   transpilePackages: ["@omniroute/open-sse", "@lobehub/icons"],
-  allowedDevOrigins: ["localhost", "127.0.0.1", "192.168.0.250", "172.20.190.31"],
+  allowedDevOrigins: ["localhost", "127.0.0.1", "10.0.0.0", "172.20.190.31"],
   typescript: {
     // TODO: Re-enable after fixing all sub-component useTranslations scope issues
     ignoreBuildErrors: true,

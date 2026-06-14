@@ -27,7 +27,17 @@ export interface ProviderRiskNoticeFields {
 export const FREE_PROVIDERS = {};
 
 // No-auth Providers
-export const NOAUTH_PROVIDERS = {};
+export const NOAUTH_PROVIDERS = {
+  mlproxy: {
+    id: "mlproxy",
+    name: "ML Proxy",
+    alias: "mlproxy",
+    icon: "proxy",
+    color: "#6B7280",
+    format: "openai",
+    requiresApiKey: false,
+  },
+};
 
 export const FREE_APIKEY_PROVIDER_IDS = new Set<string>([]);
 
@@ -75,6 +85,10 @@ export const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
 
 export function isGigachatCompatibleProvider(providerId: unknown): providerId is string {
   return typeof providerId === "string" && providerId.startsWith(GIGACHAT_COMPATIBLE_PREFIX);
+}
+
+export function isMlproxyProvider(providerId: unknown): providerId is string {
+  return providerId === "mlproxy";
 }
 
 // Both prefixes are custom DB-node providers that speak the OpenAI wire format
@@ -240,6 +254,8 @@ export interface AiProviderDefinition {
   color?: string;
   textIcon?: string;
   website?: string;
+  format?: string;
+  requiresApiKey?: boolean;
 }
 
 // Auth methods
