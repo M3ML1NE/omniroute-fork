@@ -14,7 +14,11 @@ import { getCliRuntimeStatus } from "@/shared/services/cliRuntime";
 // Use the shared open-sse token refresh with built-in dedup/race-condition cache
 import { getAccessToken } from "@omniroute/open-sse/services/tokenRefresh.ts";
 import { saveCallLog } from "@/lib/usageDb";
-import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch.ts";
+import { runWithProxyContext, proxyFetch } from "@omniroute/open-sse/utils/proxyFetch.ts";
+import { getExecutor } from "@omniroute/open-sse/executors/index.ts";
+import { getMlproxyDispatcher } from "@omniroute/open-sse/executors/mlproxyAgent.ts";
+import { resolveMlproxyConfig } from "@omniroute/open-sse/executors/mlproxyConfig.ts";
+import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 const buildGitLabOAuthEndpoints = (baseUrl: string) => ({
   tokenUrl: `${baseUrl}/oauth/token`,
   authorizationUrl: `${baseUrl}/oauth/authorize`,
@@ -343,6 +347,87 @@ async function syncToCloudIfEnabled() {
 }
 
 /**
+ * Test MLProxy cookie-based connection.
+ *
+ * Sends a minimal chat completion request through the MLProxy gateway to verify
+ * the stored cookie is valid. Uses the mlproxy-specific TLS dispatcher, not the
+ * general proxy system.
+ *
+ * @returns {{ valid: boolean, error: string|null }}
+ */
+async function testMlproxyConnection(connection: Record<string, unknown>) {
+  const executor = getExecutor("mlproxy");
+  const psd = (
+    typeof connection.providerSpecificData === "string"
+      ? connection.providerSpecificData
+      : connection.providerSpecificData
+  ) as Record<string, unknown> | undefined;
+
+  const cfg = resolveMlproxyConfig(psd);
+  if (!cfg) {
+    return {
+      valid: false,
+      error: "Missing MLproxy configuration (baseHost / proxyId / login)",
+    };
+  }
+
+  const credentials = {
+    accessToken: typeof connection.accessToken === "string" ? connection.accessToken : "",
+    refreshToken: typeof connection.refreshToken === "string" ? connection.refreshToken : "",
+    providerSpecificData: psd ?? {},
+    connectionId:
+      typeof connection.id === "string" ? connection.id : String(connection.id ?? ""),
+  };
+
+  if (!credentials.accessToken) {
+    return {
+      valid: false,
+      error: "No cookie — authenticate the connection first",
+    };
+  }
+
+  const dispatcher = getMlproxyDispatcher({ caPath: cfg.caPath, tlsInsecure: cfg.tlsInsecure });
+  const url = executor.buildUrl("test", false, 0, credentials);
+  const headers = executor.buildHeaders(credentials, false, null);
+
+  const body = JSON.stringify({
+    messages: [{ role: "user", content: "test" }],
+    max_tokens: 1,
+  });
+
+  try {
+    const fetchOptions: RequestInit & { dispatcher?: unknown } = {
+      method: "POST",
+      headers,
+      body,
+      dispatcher,
+    };
+    const res = await proxyFetch(url, fetchOptions);
+
+    if (res.ok) {
+      return { valid: true, error: null };
+    }
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        valid: false,
+        error: "Cookie is invalid or expired",
+        statusCode: res.status,
+      };
+    }
+
+    return {
+      valid: false,
+      error: `Upstream returned ${res.status}`,
+      statusCode: res.status,
+    };
+  } catch (err) {
+    const msg = sanitizeErrorMessage(err instanceof Error ? err : new Error(String(err)));
+    return { valid: false, error: `Connection failed: ${msg}`, statusCode: null };
+  }
+}
+
+/**
  * Test OAuth connection by calling provider API
  * Auto-refreshes token if expired
  * @returns {{ valid: boolean, error: string|null, refreshed: boolean, newTokens: object|null }}
@@ -637,6 +722,8 @@ export async function testSingleConnection(connectionId: string, validationModel
       refreshed: false,
       diagnosis: (runtime as any).diagnosis,
     };
+  } else if (provider === "mlproxy") {
+    result = await testMlproxyConnection(connection);
   } else if (connection.authType === "apikey") {
     const enrichedConnection = validationModelId
       ? {

@@ -16,6 +16,11 @@ import {
 } from "@/shared/network/safeOutboundFetch";
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
 import { getMtlsDispatcher, resolveMtlsConfig } from "@omniroute/open-sse/services/mtlsAgent.ts";
+import { getExecutor } from "@omniroute/open-sse/executors/index.ts";
+import { MlproxyExecutor } from "@omniroute/open-sse/executors/mlproxy.ts";
+import { proxyFetch } from "@omniroute/open-sse/utils/proxyFetch.ts";
+import { getMlproxyDispatcher } from "@omniroute/open-sse/executors/mlproxyAgent.ts";
+import { resolveMlproxyConfig } from "@omniroute/open-sse/executors/mlproxyConfig.ts";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { getImageProvider } from "@omniroute/open-sse/config/imageRegistry.ts";
 import { getVideoProvider } from "@omniroute/open-sse/config/videoRegistry.ts";
@@ -486,6 +491,90 @@ export async function GET(
       const data = await response.json();
       const models = data.data || data.models || [];
 
+      return buildApiDiscoveryResponse(models);
+    }
+
+    // ── MLProxy — cookie‑based auth with executor‑driven URL ─────────────
+    if (provider === "mlproxy") {
+      const cachedResponse = maybeReturnCachedDiscovery();
+      if (cachedResponse) return cachedResponse;
+
+      const autoFetchDisabledResponse = maybeReturnAutoFetchDisabled();
+      if (autoFetchDisabledResponse) return autoFetchDisabledResponse;
+
+      const executor = getExecutor("mlproxy") as MlproxyExecutor;
+      const creds = {
+        accessToken: accessToken || undefined,
+        providerSpecificData: asRecord(connection.providerSpecificData),
+        connectionId,
+      };
+
+      let modelsUrl: string;
+      try {
+        modelsUrl = executor.modelsUrl(creds);
+      } catch (err) {
+        const fallback = buildDiscoveryFallbackResponse({
+          cacheWarning: "Invalid MLProxy config — using cached catalog",
+          localWarning: "Invalid MLProxy config — using local catalog",
+        });
+        if (fallback) return fallback;
+        return NextResponse.json(
+          {
+            error: sanitizeErrorMessage(
+              err instanceof Error ? err.message : "Invalid MLProxy configuration"
+            ),
+          },
+          { status: 400 }
+        );
+      }
+
+      const headers = executor.buildHeaders(creds, false);
+      const cfg = resolveMlproxyConfig(connection.providerSpecificData);
+      const dispatcher = getMlproxyDispatcher({
+        caPath: cfg?.caPath,
+        tlsInsecure: cfg?.tlsInsecure,
+      });
+
+      let response: Response;
+      try {
+        response = await proxyFetch(modelsUrl, {
+          method: "GET",
+          headers,
+          dispatcher,
+        } as RequestInit & { dispatcher?: unknown });
+      } catch (error) {
+        const fallback = buildDiscoveryErrorFallbackResponse(error);
+        if (fallback) return fallback;
+        return NextResponse.json(
+          {
+            error: sanitizeErrorMessage(
+              error instanceof Error ? error.message : "Failed to fetch MLProxy models"
+            ),
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log("Error fetching MLProxy models from provider", {
+          provider,
+          status: response.status,
+          errorText: errorText.slice(0, 200),
+        });
+        const fallback = buildDiscoveryFallbackResponse({
+          cacheWarning: `MLProxy API error (${response.status}) — using cached catalog`,
+          localWarning: `MLProxy API error (${response.status}) — using local catalog`,
+        });
+        if (fallback) return fallback;
+        return NextResponse.json(
+          { error: `Failed to fetch MLProxy models: ${response.status}` },
+          { status: response.status >= 500 ? 502 : response.status }
+        );
+      }
+
+      const data = await response.json();
+      const models = data.data || data.models || [];
       return buildApiDiscoveryResponse(models);
     }
 

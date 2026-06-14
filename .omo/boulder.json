@@ -14,15 +14,15 @@
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "src/shared/constants/providers.ts: register `mlproxy` provider + `isMlproxyProvider()` predicate",
-      "session_id": "opencode:ses_13c95428cffexJU1V0p3eSbKjk",
+      "task_title": "Remove `as any` casts in `src/app/api/providers/[id]/models/route.ts` (mlproxy branch).",
+      "session_id": "opencode:ses_13c6b64caffeWgNnw9ka2VU5up",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-06-14T00:17:25.276Z",
       "started_at": "2026-06-14T00:01:32.050Z",
+      "ended_at": "2026-06-14T00:46:32.952Z",
+      "elapsed_ms": 2700902,
       "status": "completed",
-      "ended_at": "2026-06-14T00:17:25.276Z",
-      "elapsed_ms": 953226
+      "updated_at": "2026-06-14T00:46:32.952Z"
     },
     "todo:4": {
       "task_key": "todo:4",
@@ -49,6 +49,19 @@
       "status": "completed",
       "ended_at": "2026-06-14T00:29:25.129Z",
       "elapsed_ms": 30073
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "Initial login on connection create (seed cookie)",
+      "session_id": "opencode:ses_13c770c40ffeQgB3FFD071SFFU",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-06-14T00:47:20.746Z",
+      "started_at": "2026-06-14T00:37:53.338Z",
+      "status": "completed",
+      "ended_at": "2026-06-14T00:47:20.746Z",
+      "elapsed_ms": 567408
     }
   },
   "schema_version": 2,
@@ -106,7 +119,7 @@
       "plan_name": "mlproxy-provider",
       "status": "active",
       "started_at": "2026-06-13T23:38:55.323Z",
-      "updated_at": "2026-06-14T00:29:25.129Z",
+      "updated_at": "2026-06-14T00:47:20.746Z",
       "session_ids": [
         "opencode:ses_142755740ffewnY9g3BkNXSS4M",
         "opencode:ses_13ca50379ffeg3B2x9a1DmsMcw"
@@ -120,15 +133,15 @@
         "todo:1": {
           "task_key": "todo:1",
           "task_label": "1",
-          "task_title": "src/shared/constants/providers.ts: register `mlproxy` provider + `isMlproxyProvider()` predicate",
-          "session_id": "opencode:ses_13c95428cffexJU1V0p3eSbKjk",
+          "task_title": "Remove `as any` casts in `src/app/api/providers/[id]/models/route.ts` (mlproxy branch).",
+          "session_id": "opencode:ses_13c6b64caffeWgNnw9ka2VU5up",
           "agent": "Sisyphus-Junior",
           "category": "quick",
-          "updated_at": "2026-06-14T00:17:25.276Z",
           "started_at": "2026-06-14T00:01:32.050Z",
+          "ended_at": "2026-06-14T00:46:32.952Z",
+          "elapsed_ms": 2700902,
           "status": "completed",
-          "ended_at": "2026-06-14T00:17:25.276Z",
-          "elapsed_ms": 953226
+          "updated_at": "2026-06-14T00:46:32.952Z"
         },
         "todo:4": {
           "task_key": "todo:4",
@@ -155,12 +168,25 @@
           "status": "completed",
           "ended_at": "2026-06-14T00:29:25.129Z",
           "elapsed_ms": 30073
+        },
+        "todo:11": {
+          "task_key": "todo:11",
+          "task_label": "11",
+          "task_title": "Initial login on connection create (seed cookie)",
+          "session_id": "opencode:ses_13c770c40ffeQgB3FFD071SFFU",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-06-14T00:47:20.746Z",
+          "started_at": "2026-06-14T00:37:53.338Z",
+          "status": "completed",
+          "ended_at": "2026-06-14T00:47:20.746Z",
+          "elapsed_ms": 567408
         }
       }
     }
   },
   "active_work_id": "mlproxy-provider-72e48350",
-  "updated_at": "2026-06-14T00:29:25.129Z",
+  "updated_at": "2026-06-14T00:47:20.746Z",
   "status": "active",
   "agent": "atlas"
 }

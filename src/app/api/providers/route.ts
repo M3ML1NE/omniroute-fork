@@ -7,6 +7,7 @@ import {
 import {
   getProviderConnections,
   createProviderConnection,
+  updateProviderConnection,
   deleteProviderConnections,
   getProviderNodeById,
   isCloudEnabled,
@@ -26,7 +27,18 @@ import {
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { isManagedProviderConnectionId } from "@/lib/providers/catalog";
 import { isApiKeyRevealEnabled, maskStoredApiKey } from "@/lib/apiKeyExposure";
-import { resolveMlproxyConfig } from "@omniroute/open-sse/executors/mlproxyConfig";
+import {
+  resolveMlproxyConfig,
+  computeCookieExpiry,
+  type MlproxyConfig,
+} from "@omniroute/open-sse/executors/mlproxyConfig";
+import { getMlproxyDispatcher } from "@omniroute/open-sse/executors/mlproxyAgent";
+import { parseSetCookies } from "@omniroute/open-sse/executors/mlproxyCookies";
+import { proxyFetch } from "@omniroute/open-sse/utils/proxyFetch";
+import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
+import pino from "pino";
+
+const logger = pino({ name: "providers-api" });
 
 // GET /api/providers - List all connections
 export async function GET(request: Request) {
@@ -97,6 +109,10 @@ export async function POST(request: Request) {
       process.env.ALLOW_MULTI_CONNECTIONS_PER_COMPAT_NODE === "true";
     let extraConnectionFields: Record<string, unknown> = {};
 
+    // Captured for mlproxy initial login after connection creation
+    let mlproxyConfig: MlproxyConfig | null = null;
+    let mlproxyPassword: string | null = null;
+
     if (isOpenAICompatibleProvider(provider)) {
       const node: any = await getProviderNodeById(provider);
       if (!node) {
@@ -117,7 +133,7 @@ export async function POST(request: Request) {
         ...(node.mtls ? { mtls: node.mtls } : {}),
       };
     } else if (isMlproxyProvider(provider)) {
-      const mlproxyConfig = resolveMlproxyConfig(incomingPsd);
+      mlproxyConfig = resolveMlproxyConfig(incomingPsd);
       if (!mlproxyConfig) {
         return NextResponse.json(
           { error: "Invalid mlproxy configuration" },
@@ -134,6 +150,7 @@ export async function POST(request: Request) {
         );
       }
       extraConnectionFields = { refreshToken: password };
+      mlproxyPassword = password;
 
       providerSpecificData = {
         login: mlproxyConfig.login,
@@ -170,6 +187,69 @@ export async function POST(request: Request) {
       result.providerSpecificData = sanitizeProviderSpecificDataForResponse(
         result.providerSpecificData
       );
+    }
+
+    // ── MLProxy initial login (seed cookie) ─────────────────────────────────
+    // Perform a login round-trip so the connection has a valid cookie before
+    // the first chat request. On failure the connection is still created but
+    // the response carries a warning flag so the UI can prompt the user.
+    if (isMlproxyProvider(provider) && mlproxyConfig && mlproxyPassword) {
+      try {
+        const authUrl = `${mlproxyConfig.baseHost.replace(/\/$/, "")}/auth`;
+        const dispatcher = getMlproxyDispatcher({
+          caPath: mlproxyConfig.caPath,
+          tlsInsecure: mlproxyConfig.tlsInsecure,
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+        try {
+          const fetchOptions: RequestInit & { dispatcher?: unknown } = {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({ login: mlproxyConfig.login, password: mlproxyPassword }),
+            dispatcher,
+            signal: controller.signal,
+          };
+          const res = await proxyFetch(authUrl, fetchOptions);
+
+          if (res.ok) {
+            const cookie = parseSetCookies(res);
+            if (cookie) {
+              const expiresAt = computeCookieExpiry(mlproxyConfig.refreshIntervalMinutes);
+              await updateProviderConnection(newConnection.id as string, {
+                accessToken: cookie,
+                expiresAt,
+              });
+            } else {
+              result.needsInitialLogin = true;
+            }
+          } else {
+            result.needsInitialLogin = true;
+            logger.info(
+              `MLproxy initial login to ${authUrl} returned ${res.status} — connection created without cookie`
+            );
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } catch (error) {
+        const message = sanitizeErrorMessage(
+          error instanceof Error ? error : new Error(String(error))
+        );
+        logger.warn(`MLproxy initial login failed: ${message}`);
+        result.needsInitialLogin = true;
+      }
+    }
+
+    // mlproxy: never return accessToken or refreshToken in the response
+    if (isMlproxyProvider(provider)) {
+      delete result.accessToken;
+      delete result.refreshToken;
     }
 
     // Auto sync to Cloud if enabled
