@@ -62,6 +62,17 @@
       "status": "completed",
       "ended_at": "2026-06-14T00:47:20.746Z",
       "elapsed_ms": 567408
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "opencode:ses_13c58cc3bffe3J3T4ZM56iyRwc",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "started_at": "2026-06-14T00:54:13.423Z",
+      "status": "running",
+      "updated_at": "2026-06-14T01:20:48.384Z"
     }
   },
   "schema_version": 2,
@@ -119,7 +130,7 @@
       "plan_name": "mlproxy-provider",
       "status": "active",
       "started_at": "2026-06-13T23:38:55.323Z",
-      "updated_at": "2026-06-14T00:47:20.746Z",
+      "updated_at": "2026-06-14T01:20:48.382Z",
       "session_ids": [
         "opencode:ses_142755740ffewnY9g3BkNXSS4M",
         "opencode:ses_13ca50379ffeg3B2x9a1DmsMcw"
@@ -181,12 +192,23 @@
           "status": "completed",
           "ended_at": "2026-06-14T00:47:20.746Z",
           "elapsed_ms": 567408
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "**Plan Compliance Audit** — `oracle`",
+          "session_id": "opencode:ses_13c58cc3bffe3J3T4ZM56iyRwc",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "started_at": "2026-06-14T00:54:13.423Z",
+          "status": "running",
+          "updated_at": "2026-06-14T01:20:48.384Z"
         }
       }
     }
   },
   "active_work_id": "mlproxy-provider-72e48350",
-  "updated_at": "2026-06-14T00:47:20.746Z",
+  "updated_at": "2026-06-14T01:20:48.382Z",
   "status": "active",
   "agent": "atlas"
 }
