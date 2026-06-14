@@ -67,12 +67,27 @@
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "opencode:ses_13c58cc3bffe3J3T4ZM56iyRwc",
+      "session_id": "opencode:ses_13c41d09effea84XqDSxnzSOdG",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
+      "category": "unspecified-low",
       "started_at": "2026-06-14T00:54:13.423Z",
-      "status": "running",
-      "updated_at": "2026-06-14T01:20:48.384Z"
+      "status": "completed",
+      "updated_at": "2026-06-14T01:48:26.251Z",
+      "ended_at": "2026-06-14T01:48:26.251Z",
+      "elapsed_ms": 3252828
+    },
+    "final-wave:f4": {
+      "task_key": "final-wave:f4",
+      "task_label": "F4",
+      "task_title": "**Scope Fidelity Check** — `deep`",
+      "session_id": "opencode:ses_13c2e9680ffeHnnu31dSO3tPJe",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-low",
+      "updated_at": "2026-06-14T01:54:16.020Z",
+      "started_at": "2026-06-14T01:53:57.034Z",
+      "status": "completed",
+      "ended_at": "2026-06-14T01:54:16.020Z",
+      "elapsed_ms": 18986
     }
   },
   "schema_version": 2,
@@ -128,9 +143,9 @@
       "work_id": "mlproxy-provider-72e48350",
       "active_plan": "/root/omniroute-fork/.omo/plans/mlproxy-provider.md",
       "plan_name": "mlproxy-provider",
-      "status": "active",
+      "status": "completed",
       "started_at": "2026-06-13T23:38:55.323Z",
-      "updated_at": "2026-06-14T01:20:48.382Z",
+      "updated_at": "2026-06-14T01:55:43.003Z",
       "session_ids": [
         "opencode:ses_142755740ffewnY9g3BkNXSS4M",
         "opencode:ses_13ca50379ffeg3B2x9a1DmsMcw"
@@ -197,18 +212,37 @@
           "task_key": "final-wave:f1",
           "task_label": "F1",
           "task_title": "**Plan Compliance Audit** — `oracle`",
-          "session_id": "opencode:ses_13c58cc3bffe3J3T4ZM56iyRwc",
+          "session_id": "opencode:ses_13c41d09effea84XqDSxnzSOdG",
           "agent": "Sisyphus-Junior",
-          "category": "unspecified-high",
+          "category": "unspecified-low",
           "started_at": "2026-06-14T00:54:13.423Z",
-          "status": "running",
-          "updated_at": "2026-06-14T01:20:48.384Z"
+          "status": "completed",
+          "updated_at": "2026-06-14T01:48:26.251Z",
+          "ended_at": "2026-06-14T01:48:26.251Z",
+          "elapsed_ms": 3252828
+        },
+        "final-wave:f4": {
+          "task_key": "final-wave:f4",
+          "task_label": "F4",
+          "task_title": "**Scope Fidelity Check** — `deep`",
+          "session_id": "opencode:ses_13c2e9680ffeHnnu31dSO3tPJe",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-low",
+          "updated_at": "2026-06-14T01:54:16.020Z",
+          "started_at": "2026-06-14T01:53:57.034Z",
+          "status": "completed",
+          "ended_at": "2026-06-14T01:54:16.020Z",
+          "elapsed_ms": 18986
         }
-      }
+      },
+      "ended_at": "2026-06-14T01:55:43.003Z",
+      "elapsed_ms": 8207680
     }
   },
   "active_work_id": "mlproxy-provider-72e48350",
-  "updated_at": "2026-06-14T01:20:48.382Z",
-  "status": "active",
-  "agent": "atlas"
+  "updated_at": "2026-06-14T01:55:43.003Z",
+  "status": "completed",
+  "agent": "atlas",
+  "ended_at": "2026-06-14T01:55:43.003Z",
+  "elapsed_ms": 8207680
 }
