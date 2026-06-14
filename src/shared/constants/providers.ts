@@ -124,7 +124,8 @@ export function providerAllowsOptionalApiKey(providerId: unknown): boolean {
   return (
     isLocalProvider(providerId) ||
     isSelfHostedChatProvider(providerId) ||
-    isOpenAICompatibleProvider(providerId)
+    isOpenAICompatibleProvider(providerId) ||
+    isMlproxyProvider(providerId)
   );
 }
 

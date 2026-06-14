@@ -11,7 +11,10 @@ import {
   getProviderNodeById,
   isCloudEnabled,
 } from "@/models";
-import { isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import {
+  isOpenAICompatibleProvider,
+  isMlproxyProvider,
+} from "@/shared/constants/providers";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { syncToCloud } from "@/lib/cloudSync";
 import { createProviderSchema } from "@/shared/validation/schemas";
@@ -23,6 +26,7 @@ import {
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { isManagedProviderConnectionId } from "@/lib/providers/catalog";
 import { isApiKeyRevealEnabled, maskStoredApiKey } from "@/lib/apiKeyExposure";
+import { resolveMlproxyConfig } from "@omniroute/open-sse/executors/mlproxyConfig";
 
 // GET /api/providers - List all connections
 export async function GET(request: Request) {
@@ -80,7 +84,9 @@ export async function POST(request: Request) {
 
     // Business validation
     const isValidProvider =
-      isManagedProviderConnectionId(provider) || isOpenAICompatibleProvider(provider);
+      isManagedProviderConnectionId(provider) ||
+      isOpenAICompatibleProvider(provider) ||
+      isMlproxyProvider(provider);
 
     if (!isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -89,6 +95,7 @@ export async function POST(request: Request) {
     let providerSpecificData = incomingPsd || null;
     const allowMultipleCompatibleConnections =
       process.env.ALLOW_MULTI_CONNECTIONS_PER_COMPAT_NODE === "true";
+    let extraConnectionFields: Record<string, unknown> = {};
 
     if (isOpenAICompatibleProvider(provider)) {
       const node: any = await getProviderNodeById(provider);
@@ -109,6 +116,33 @@ export async function POST(request: Request) {
         ...(node.modelsPath ? { modelsPath: node.modelsPath } : {}),
         ...(node.mtls ? { mtls: node.mtls } : {}),
       };
+    } else if (isMlproxyProvider(provider)) {
+      const mlproxyConfig = resolveMlproxyConfig(incomingPsd);
+      if (!mlproxyConfig) {
+        return NextResponse.json(
+          { error: "Invalid mlproxy configuration" },
+          { status: 400 }
+        );
+      }
+
+      const password =
+        typeof incomingPsd?.password === "string" ? incomingPsd.password.trim() : "";
+      if (!password) {
+        return NextResponse.json(
+          { error: "Password is required for mlproxy" },
+          { status: 400 }
+        );
+      }
+      extraConnectionFields = { refreshToken: password };
+
+      providerSpecificData = {
+        login: mlproxyConfig.login,
+        baseHost: mlproxyConfig.baseHost,
+        proxyId: mlproxyConfig.proxyId,
+        refreshIntervalMinutes: mlproxyConfig.refreshIntervalMinutes,
+        ...(mlproxyConfig.caPath ? { caPath: mlproxyConfig.caPath } : {}),
+        ...(mlproxyConfig.tlsInsecure !== undefined ? { tlsInsecure: mlproxyConfig.tlsInsecure } : {}),
+      };
     }
 
     providerSpecificData = normalizeProviderSpecificData(provider, providerSpecificData) || null;
@@ -122,6 +156,7 @@ export async function POST(request: Request) {
       globalPriority: globalPriority || null,
       defaultModel: defaultModel || null,
       providerSpecificData,
+      ...extraConnectionFields,
       isActive: true,
       testStatus: testStatus || "unknown",
     });

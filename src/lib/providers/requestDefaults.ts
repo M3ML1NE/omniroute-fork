@@ -76,6 +76,25 @@ export function normalizeProviderSpecificData(
     }
   }
 
+  if (provider === "mlproxy") {
+    for (const key of ["baseHost", "proxyId", "login", "caPath"]) {
+      if (key in normalized && typeof normalized[key] !== "string") {
+        delete normalized[key];
+      }
+    }
+    if ("refreshIntervalMinutes" in normalized) {
+      const rim = Number(normalized.refreshIntervalMinutes);
+      if (Number.isFinite(rim) && rim > 0) {
+        normalized.refreshIntervalMinutes = rim;
+      } else {
+        delete normalized.refreshIntervalMinutes;
+      }
+    }
+    if ("tlsInsecure" in normalized && typeof normalized.tlsInsecure !== "boolean") {
+      delete normalized.tlsInsecure;
+    }
+  }
+
   if ("tag" in normalized) {
     if (typeof normalized.tag === "string") {
       const trimmedTag = normalized.tag.trim();

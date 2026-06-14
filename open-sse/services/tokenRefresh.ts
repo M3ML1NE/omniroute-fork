@@ -40,6 +40,9 @@ export const REFRESH_LEAD_MS: Record<string, number> = {
   // Google OAuth refresh_tokens are permanent (non-rotating) — longer lead
   // is safe and reduces unnecessary upstream chatter.
   "gemini-cli": 15 * 60 * 1000,
+  // ML Proxy — short lead; credentials expire on an interval and need
+  // proactive refresh.
+  mlproxy: 60_000,
 };
 
 /**
@@ -264,6 +267,7 @@ export function supportsTokenRefresh(provider) {
     "windsurf",
     "devin-cli",
     "gitlab-duo",
+    "mlproxy",
   ]);
   if (explicitlySupported.has(provider)) return true;
   const config = PROVIDERS[provider];

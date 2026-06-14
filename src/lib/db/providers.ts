@@ -161,6 +161,12 @@ export async function createProviderConnection(data: JsonRecord) {
           "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'apikey' AND name = ?"
         )
         .get(data.provider, data.name)) as JsonRecord | undefined) || null;
+  } else if (data.provider === "mlproxy") {
+    // mlproxy enforces exactly one connection — upsert the existing row
+    existing =
+      ((await db
+        .prepare("SELECT * FROM provider_connections WHERE provider = 'mlproxy'")
+        .get()) as JsonRecord | undefined) || null;
   }
 
   if (existing) {
