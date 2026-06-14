@@ -36,6 +36,19 @@
       "status": "completed",
       "ended_at": "2026-06-14T00:26:58.926Z",
       "elapsed_ms": 276861
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "open-sse/executors/index.ts: dispatch `mlproxy` → `MlproxyExecutor`",
+      "session_id": "opencode:ses_13c790890ffeHdxrKBAnaxogTC",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-14T00:29:25.129Z",
+      "started_at": "2026-06-14T00:28:55.056Z",
+      "status": "completed",
+      "ended_at": "2026-06-14T00:29:25.129Z",
+      "elapsed_ms": 30073
     }
   },
   "schema_version": 2,
@@ -93,7 +106,7 @@
       "plan_name": "mlproxy-provider",
       "status": "active",
       "started_at": "2026-06-13T23:38:55.323Z",
-      "updated_at": "2026-06-14T00:26:58.926Z",
+      "updated_at": "2026-06-14T00:29:25.129Z",
       "session_ids": [
         "opencode:ses_142755740ffewnY9g3BkNXSS4M",
         "opencode:ses_13ca50379ffeg3B2x9a1DmsMcw"
@@ -129,12 +142,25 @@
           "status": "completed",
           "ended_at": "2026-06-14T00:26:58.926Z",
           "elapsed_ms": 276861
+        },
+        "todo:8": {
+          "task_key": "todo:8",
+          "task_label": "8",
+          "task_title": "open-sse/executors/index.ts: dispatch `mlproxy` → `MlproxyExecutor`",
+          "session_id": "opencode:ses_13c790890ffeHdxrKBAnaxogTC",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "updated_at": "2026-06-14T00:29:25.129Z",
+          "started_at": "2026-06-14T00:28:55.056Z",
+          "status": "completed",
+          "ended_at": "2026-06-14T00:29:25.129Z",
+          "elapsed_ms": 30073
         }
       }
     }
   },
   "active_work_id": "mlproxy-provider-72e48350",
-  "updated_at": "2026-06-14T00:26:58.926Z",
+  "updated_at": "2026-06-14T00:29:25.129Z",
   "status": "active",
   "agent": "atlas"
 }
