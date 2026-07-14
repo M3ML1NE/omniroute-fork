@@ -33,6 +33,10 @@
 - 37 оригинальных MCP инструментов
 - 41 локаль (оставлена только `ru`)
 - Legacy `/v1/completions` эндпоинт
+- Cloud agents (`src/lib/cloudAgent/`, `/api/cloud/*`, Codex/Devin/Jules)
+- Cloud sync (`cloudSync`, `/api/sync/cloud`, `/api/sync/initialize`)
+- Публикация локального инстанса в интернет через сторонние relay-сервисы и связанные API-эндпоинты — подробности в CHANGELOG
+- OAuth-авторизация GigaChat — используется только mTLS + `api_key`
 
 ---
 
@@ -49,7 +53,6 @@
       "api_key": "ваш-gigachat-api-key",
       "provider": "gigachat",
       "baseUrl": "https://gigachat.devices.sberbank.ru/api/v1",
-      "authUrl": "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
       "mtls": {
         "cert_path": "/path/to/client.crt",
         "key_path": "/path/to/client.key",
@@ -61,6 +64,29 @@
 ```
 
 В admin dashboard при создании provider connection укажите `keystore_entry_id: "my-gigachat-key"`.
+
+---
+
+## GigaChat `functions_state_id` (raw-JSON extension)
+
+При function-calling GigaChat возвращает в `message` непубличное поле
+`functions_state_id` — непрозрачный токен состояния диалога, который нужно
+вернуть на следующем ходу, чтобы GigaChat продолжил цепочку вызовов функций
+без потери контекста.
+
+OmniRoute пробрасывает это поле «как есть» на пути `POST /v1/chat/completions`
+(non-streaming): оно появляется на `choices[].message.functions_state_id` в
+ответе и переносится обратно на assistant-сообщение истории в запросе к
+GigaChat на следующем ходу.
+
+**Контракт — raw-JSON extension с задокументированной деградацией.**
+`functions_state_id` не входит в стандартную схему OpenAI, поэтому строгие
+OpenAI SDK (например, Python SDK с Pydantic-валидацией) могут отбросить это
+поле при десериализации ответа. Это ожидаемая и допустимая деградация: GigaChat
+корректно работает и без `functions_state_id`, просто без сохранения состояния
+между ходами. Клиентам, которым нужно сохранение состояния, следует читать
+ответ как «сырой» JSON. Поле поддерживается **только** на `chat/completions`;
+на пути Responses API оно не пробрасывается.
 
 ---
 

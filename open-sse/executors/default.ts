@@ -1,4 +1,4 @@
-import { BaseExecutor, setUserAgentHeader } from "./base.ts";
+import { BaseExecutor, setUserAgentHeader, type ExecuteInput } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
 import { resolveKeyForRequest } from "../services/apiKeyRotator.ts";
 import { getRegistryEntry } from "../config/providerRegistry.ts";
@@ -7,6 +7,80 @@ import { detectFormat, getTargetFormat } from "../services/provider.ts";
 import { normalizeGigaChatToolSchema } from "./gigachatSchema.ts";
 
 const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
+
+/**
+ * Raised when a GigaChat request cannot be converted because a tool-result
+ * message references a `tool_call_id` that no prior assistant message emitted.
+ * `execute()` turns this into a 400 Response instead of forwarding a request
+ * GigaChat would reject with an opaque error.
+ */
+export class GigaChat400Error extends Error {
+  status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "GigaChat400Error";
+  }
+}
+
+function sanitizeGigaChatName(name: string): string {
+  return name.replace(/-/g, "_");
+}
+
+/**
+ * Convert an OpenAI `tool_choice` into GigaChat's `function_call` field.
+ * GigaChat has no "required" mode, so it is mapped to "auto" (the closest
+ * always-may-call behaviour). Returns `undefined` when the value should be
+ * dropped without emitting a `function_call` (unrecognized shapes).
+ */
+function mapGigaChatFunctionCall(toolChoice: unknown): unknown {
+  if (typeof toolChoice === "string") {
+    if (toolChoice === "auto") return "auto";
+    if (toolChoice === "none") return "none";
+    // GigaChat has no "required" — the nearest behaviour is "auto".
+    if (toolChoice === "required") return "auto"; // GigaChat has no "required"
+    return undefined;
+  }
+  if (toolChoice && typeof toolChoice === "object" && !Array.isArray(toolChoice)) {
+    const choice = toolChoice as Record<string, unknown>;
+    const fn = choice["function"];
+    if (fn && typeof fn === "object" && !Array.isArray(fn)) {
+      const name = (fn as Record<string, unknown>)["name"];
+      if (typeof name === "string" && name) {
+        return { name: sanitizeGigaChatName(name) };
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Build a map from `tool_call_id` -> (sanitized) function name by scanning the
+ * assistant messages in conversation history. GigaChat requires `role:"function"`
+ * results to carry the function `name`, but OpenAI tool-result messages only
+ * carry `tool_call_id`; this recovers the name the assistant originally used.
+ */
+function buildToolCallIdNameMap(messages: unknown[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") continue;
+    const record = msg as Record<string, unknown>;
+    if (record.role !== "assistant") continue;
+    const toolCalls = record.tool_calls;
+    if (!Array.isArray(toolCalls)) continue;
+    for (const call of toolCalls) {
+      if (!call || typeof call !== "object") continue;
+      const callRecord = call as Record<string, unknown>;
+      const id = callRecord.id;
+      const fn = callRecord.function;
+      if (typeof id !== "string" || !fn || typeof fn !== "object") continue;
+      const name = (fn as Record<string, unknown>).name;
+      if (typeof name === "string" && name) {
+        map.set(id, sanitizeGigaChatName(name));
+      }
+    }
+  }
+  return map;
+}
 
 function hasMtls(credentials: any): boolean {
   return Boolean(
@@ -40,9 +114,148 @@ const OPENAI_COMPATIBLE_FALLBACK_CONFIG = {
   baseUrl: "https://api.openai.com/v1",
 };
 
+/**
+ * Reverse conversion for a GigaChat non-streaming response: rewrite each choice's
+ * `message.function_call{name, arguments:<object>}` into OpenAI's
+ * `tool_calls[{id, type:"function", function:{name, arguments:<json-string>}}]`
+ * and normalize `finish_reason "function_call" -> "tool_calls"`. Names are
+ * un-sanitized back to their original hyphenated form via `toolNameMap` when known.
+ *
+ * GigaChat's `message.functions_state_id` (an opaque conversation-state token used
+ * to continue multi-turn function-calling flows) is passed through verbatim onto the
+ * OpenAI-format message as a non-standard extension field. See T4.2: this is a
+ * documented raw-JSON extension — strict OpenAI SDKs may strip it, and that is an
+ * accepted degradation because GigaChat also works without it.
+ *
+ * Returns true when the payload was mutated.
+ */
+function convertGigaChatNonStreamResponse(
+  payload: unknown,
+  toolNameMap: Map<string, string> | null
+): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const root = payload as Record<string, unknown>;
+
+  let mutated = false;
+
+  // T4.3: map GigaChat's `usage.precached_prompt_tokens` onto OpenAI's
+  // `usage.prompt_tokens_details.cached_tokens` so cached-prompt hits surface
+  // through the standard OpenAI usage shape.
+  const usage = root["usage"];
+  if (usage && typeof usage === "object" && !Array.isArray(usage)) {
+    const usageRecord = usage as Record<string, unknown>;
+    const precached = usageRecord["precached_prompt_tokens"];
+    if (typeof precached === "number") {
+      const details =
+        usageRecord["prompt_tokens_details"] &&
+        typeof usageRecord["prompt_tokens_details"] === "object" &&
+        !Array.isArray(usageRecord["prompt_tokens_details"])
+          ? (usageRecord["prompt_tokens_details"] as Record<string, unknown>)
+          : {};
+      details["cached_tokens"] = precached;
+      usageRecord["prompt_tokens_details"] = details;
+      mutated = true;
+    }
+  }
+
+  const choices = root["choices"];
+  if (!Array.isArray(choices)) return mutated;
+
+  for (let i = 0; i < choices.length; i++) {
+    const choice = choices[i];
+    if (!choice || typeof choice !== "object") continue;
+    const choiceRecord = choice as Record<string, unknown>;
+    const message = choiceRecord["message"];
+    if (!message || typeof message !== "object") continue;
+    const messageRecord = message as Record<string, unknown>;
+    const hasStateId = typeof messageRecord["functions_state_id"] === "string";
+    const functionCall = messageRecord["function_call"];
+    if (!functionCall || typeof functionCall !== "object" || Array.isArray(functionCall)) {
+      if (hasStateId) mutated = true;
+      continue;
+    }
+
+    const fc = functionCall as Record<string, unknown>;
+    const sanitizedName = typeof fc["name"] === "string" ? fc["name"] : "";
+    const restoredName = toolNameMap?.get(sanitizedName) ?? sanitizedName;
+    const args = fc["arguments"];
+    const argsString = typeof args === "string" ? args : JSON.stringify(args ?? {});
+
+    messageRecord["tool_calls"] = [
+      {
+        id: `call_${restoredName || "function"}_${i}`,
+        type: "function",
+        function: { name: restoredName, arguments: argsString },
+      },
+    ];
+    delete messageRecord["function_call"];
+    if (messageRecord["content"] === "" || messageRecord["content"] == null) {
+      messageRecord["content"] = null;
+    }
+
+    if (choiceRecord["finish_reason"] === "function_call") {
+      choiceRecord["finish_reason"] = "tool_calls";
+    }
+    mutated = true;
+  }
+  return mutated;
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider: string) {
     super(provider, PROVIDERS[provider] || OPENAI_COMPATIBLE_FALLBACK_CONFIG);
+  }
+
+  async execute(input: ExecuteInput) {
+    if (
+      !this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) ||
+      input.stream
+    ) {
+      return super.execute(input);
+    }
+
+    try {
+      const result = await super.execute(input);
+      const { response, transformedBody } = result;
+      if (!response.ok || response.status !== 200) return result;
+
+      const mapCandidate =
+        transformedBody && typeof transformedBody === "object"
+          ? (transformedBody as Record<string, unknown>)["_toolNameMap"]
+          : null;
+      const toolNameMap =
+        mapCandidate instanceof Map ? (mapCandidate as Map<string, string>) : null;
+
+      const raw = await response.text();
+      const responseInit: ResponseInit = {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      };
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return { ...result, response: new Response(raw, responseInit) };
+      }
+
+      const mutated = convertGigaChatNonStreamResponse(parsed, toolNameMap);
+      const bodyString = mutated ? JSON.stringify(parsed) : raw;
+      return { ...result, response: new Response(bodyString, responseInit) };
+    } catch (error) {
+      if (error instanceof GigaChat400Error) {
+        return {
+          response: new Response(
+            JSON.stringify({ error: { message: error.message, type: "invalid_request_error" } }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+          ),
+          url: this.buildUrl(input.model, input.stream, 0, input.credentials),
+          headers: {},
+          transformedBody: null,
+        };
+      }
+      throw error;
+    }
   }
 
   buildUrl(model: string, stream: boolean, urlIndex = 0, credentials: any = null): string {
@@ -50,7 +263,7 @@ export class DefaultExecutor extends BaseExecutor {
     void stream;
     void urlIndex;
 
-    if (this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX)) {
+    if (this.provider === "gigachat" || this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX)) {
       const psd = credentials?.providerSpecificData;
       const baseUrl = psd?.baseUrl || "https://gigachat.devices.sberbank.ru/api/v1";
       return normalizeGigachatChatUrl(baseUrl);
@@ -165,6 +378,20 @@ export class DefaultExecutor extends BaseExecutor {
           headers[headerName] = value;
         }
       }
+
+      // T4.3: GigaChat X-Session-ID is client-passthrough only — forward the
+      // incoming client header verbatim; never generate one server-side.
+      const isGigachat =
+        this.provider === "gigachat" ||
+        this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) === true;
+      if (isGigachat) {
+        const sessionId = Object.entries(clientHeaders).find(
+          ([key]) => key.toLowerCase() === "x-session-id"
+        )?.[1];
+        if (sessionId) {
+          headers["X-Session-ID"] = sessionId;
+        }
+      }
     }
 
     return headers;
@@ -254,14 +481,43 @@ export class DefaultExecutor extends BaseExecutor {
         if (toolNameMap.size > 0) {
           requestBody["_toolNameMap"] = toolNameMap;
         }
+      } else if (Array.isArray(requestBody["functions"])) {
+        // Legacy clients send functions[] directly; pass them through but still
+        // apply GigaChat schema normalization to each function's parameters.
+        const toolNameMap = new Map<string, string>();
+        requestBody["functions"] = (requestBody["functions"] as Record<string, unknown>[]).map(
+          (fn: Record<string, unknown>) => {
+            if (!fn || typeof fn !== "object") return fn;
+            const originalName = String(fn["name"] || "");
+            const safeName = sanitizeGigaChatName(originalName);
+            if (originalName !== safeName) {
+              toolNameMap.set(safeName, originalName);
+            }
+            return {
+              ...fn,
+              name: safeName,
+              parameters: normalizeGigaChatToolSchema(fn["parameters"]),
+            };
+          }
+        );
+        if (toolNameMap.size > 0) {
+          requestBody["_toolNameMap"] = toolNameMap;
+        }
       }
       if (requestBody["tool_choice"] !== undefined) {
+        const mapped = mapGigaChatFunctionCall(requestBody["tool_choice"]);
+        if (mapped !== undefined) {
+          requestBody["function_call"] = mapped;
+        }
         delete requestBody["tool_choice"];
       }
       delete requestBody["stream_options"];
 
       if (Array.isArray(requestBody["messages"])) {
-        requestBody["messages"] = requestBody["messages"].map((msg: any) => {
+        const messages = requestBody["messages"] as unknown[];
+        const toolCallIdToName = buildToolCallIdNameMap(messages);
+
+        requestBody["messages"] = messages.map((msg: any) => {
           if (!msg || typeof msg !== "object") return msg;
           const newMsg = { ...msg };
 
@@ -270,8 +526,8 @@ export class DefaultExecutor extends BaseExecutor {
             const firstCall = newMsg.tool_calls[0];
             if (firstCall && firstCall.function) {
               const fn = { ...firstCall.function };
-              if (fn.name) fn.name = String(fn.name).replace(/-/g, "_");
-              
+              if (fn.name) fn.name = sanitizeGigaChatName(String(fn.name));
+
               // GigaChat expects 'arguments' to be a JSON object, not a string
               if (typeof fn.arguments === "string") {
                 try {
@@ -283,6 +539,12 @@ export class DefaultExecutor extends BaseExecutor {
               newMsg.function_call = fn;
             }
             delete newMsg.tool_calls;
+          }
+
+          // T4.2: forward a functions_state_id carried by a prior assistant turn
+          // back to GigaChat so multi-turn function-calling state is preserved.
+          if (newMsg.role === "assistant" && typeof msg.functions_state_id === "string") {
+            newMsg.functions_state_id = msg.functions_state_id;
           }
 
           // 2. Convert OpenAI tool result -> GigaChat function result
@@ -308,13 +570,24 @@ export class DefaultExecutor extends BaseExecutor {
             }
             newMsg.content = contentStr;
 
+            // GigaChat requires 'name' on function results. Prefer an explicit
+            // name, otherwise resolve it from the tool_call_id emitted by the
+            // originating assistant message. An unresolvable id is a malformed
+            // history — fail loudly with a 400 rather than sending a bad request.
             if (newMsg.name) {
-              newMsg.name = String(newMsg.name).replace(/-/g, "_");
+              newMsg.name = sanitizeGigaChatName(String(newMsg.name));
             } else if (newMsg.tool_call_id) {
-              // GigaChat requires 'name'. If missing, fallback to sanitized ID
-              newMsg.name = String(newMsg.tool_call_id).replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 64) || "tool_result";
+              const resolved = toolCallIdToName.get(String(newMsg.tool_call_id));
+              if (!resolved) {
+                throw new GigaChat400Error(
+                  `Unresolvable tool_call_id "${String(newMsg.tool_call_id)}": no prior assistant message emitted a matching tool_call. Cannot map to a GigaChat function name.`
+                );
+              }
+              newMsg.name = resolved;
             } else {
-              newMsg.name = "tool_result";
+              throw new GigaChat400Error(
+                "GigaChat function result message is missing both 'name' and 'tool_call_id'; cannot determine the function name."
+              );
             }
             delete newMsg.tool_call_id;
           } else {

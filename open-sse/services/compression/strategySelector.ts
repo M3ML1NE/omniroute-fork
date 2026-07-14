@@ -9,6 +9,7 @@ import { applyLiteCompression } from "./lite.ts";
 import { cavemanCompress } from "./caveman.ts";
 import { compressAggressive } from "./aggressive.ts";
 import { ultraCompress } from "./ultra.ts";
+import { applyHardBudget } from "./hardBudget.ts";
 import { createCompressionStats } from "./stats.ts";
 import { registerBuiltinCompressionEngines } from "./engines/index.ts";
 import { getCompressionEngine } from "./engines/registry.ts";
@@ -19,6 +20,8 @@ import {
   getCacheAwareStrategy,
   type CachingDetectionContext,
 } from "./cachingAware.ts";
+import { makeMemoKey, memoLookup, memoStore, isDeterministicMode } from "./resultMemo.ts";
+import { resolveQuantumLock, quantumCachingContext, withQuantumLock } from "./quantumLock/index.ts";
 
 export function checkComboOverride(
   config: CompressionConfig,
@@ -69,10 +72,53 @@ export function selectCompressionStrategy(
 export function applyCompression(
   body: Record<string, unknown>,
   mode: CompressionMode,
-  options?: { model?: string; supportsVision?: boolean | null; config?: CompressionConfig }
+  options?: {
+    model?: string;
+    supportsVision?: boolean | null;
+    config?: CompressionConfig;
+    cachingContext?: CachingDetectionContext;
+  }
 ): CompressionResult {
   if (mode === "off") {
     return { body, compressed: false, stats: null };
+  }
+  // QuantumLock pre-pass (#5260): opt-in, caching-provider-gated. Rewrites volatile
+  // system-prompt fragments to a stable prefix before compression runs. Default off.
+  const ql = resolveQuantumLock(options);
+  if (ql) {
+    return withQuantumLock(body, ql, quantumCachingContext(body, options), (lockedBody) =>
+      runCompression(lockedBody, mode, options)
+    );
+  }
+  return runCompression(body, mode, options);
+}
+
+function runCompression(
+  body: Record<string, unknown>,
+  mode: CompressionMode,
+  options?: {
+    model?: string;
+    supportsVision?: boolean | null;
+    config?: CompressionConfig;
+    cachingContext?: CachingDetectionContext;
+  }
+): CompressionResult {
+  // Opt-in result memoization (#5286): cache (input, config, model) → result for
+  // deterministic (pure, stateless) modes only. Default off → zero behavior change.
+  if (
+    options?.config?.memoizeCompressionResults === true &&
+    isDeterministicMode(mode, options.config)
+  ) {
+    const key = makeMemoKey(body, mode, options.config, options.model, options.supportsVision);
+    const hit = memoLookup(key);
+    if (hit) return hit;
+    // Recompute with memoization OFF to avoid re-entering this branch, then store.
+    const result = runCompression(body, mode, {
+      ...options,
+      config: { ...options.config, memoizeCompressionResults: false },
+    });
+    memoStore(key, result);
+    return memoLookup(key)!;
   }
   if (mode === "rtk") {
     return applyRtkCompression(body, {
@@ -249,6 +295,24 @@ export function applyStackedCompression(
     }
     if (result.compressed) {
       currentBody = result.body;
+      compressed = true;
+    }
+  }
+
+  // Hard-budget post-pass (#5288): runs after all engines, before finalize.
+  // Gated on targetTokens/targetRatio != null so an explicit 0 still engages;
+  // absent → off by default.
+  if (options?.config?.targetTokens != null || options?.config?.targetRatio != null) {
+    const hbResult = applyHardBudget(currentBody, {
+      targetTokens: options.config.targetTokens,
+      targetRatio: options.config.targetRatio,
+    });
+    if (hbResult.stats) {
+      hbResult.stats.techniquesUsed.forEach((technique) => techniques.add(technique));
+      hbResult.stats.validationWarnings?.forEach((warning) => validationWarnings.add(warning));
+    }
+    if (hbResult.compressed) {
+      currentBody = hbResult.body;
       compressed = true;
     }
   }

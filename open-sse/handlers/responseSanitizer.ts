@@ -391,6 +391,14 @@ function sanitizeMessage(msg: unknown, isDeepSeekV4 = false): unknown {
     sanitized.function_call = msgRecord.function_call;
   }
 
+  // GigaChat raw-JSON extension (T4.2): functions_state_id is a non-standard,
+  // opaque conversation-state token. It is not part of the OpenAI schema, so
+  // strict SDKs may strip it downstream — an accepted degradation. When the
+  // provider supplies it we pass it through verbatim for raw-JSON clients.
+  if (typeof msgRecord.functions_state_id === "string") {
+    sanitized.functions_state_id = msgRecord.functions_state_id;
+  }
+
   return sanitized;
 }
 

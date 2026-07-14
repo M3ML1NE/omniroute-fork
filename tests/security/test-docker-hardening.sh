@@ -78,12 +78,9 @@ assert_contains() {
   FAILURES=$((FAILURES + 1))
 }
 
-echo "[4/6] Validating cloud auth guardrails"
-S1="$(curl -s -o /tmp/hardening_cloud_noauth.json -w '%{http_code}' -X POST "${BASE_URL}/api/cloud/auth")"
-assert_status "/api/cloud/auth without token" "401" "${S1}"
-
-S2="$(curl -s -o /tmp/hardening_cloud_bad.json -w '%{http_code}' -X POST "${BASE_URL}/api/cloud/auth" -H 'Authorization: Bearer sk-invalid')"
-assert_status "/api/cloud/auth invalid token" "401" "${S2}"
+echo "[4/6] Validating /api/cloud removed (404)"
+S1="$(curl -s -o /tmp/hardening_cloud_gone.json -w '%{http_code}' -X POST "${BASE_URL}/api/cloud/auth")"
+assert_status "/api/cloud/auth removed (404)" "404" "${S1}"
 
 echo "[5/6] Validating strict /v1 API key mode"
 S3="$(curl -s -o /tmp/hardening_v1_noauth.json -w '%{http_code}' -X POST "${BASE_URL}/v1/chat/completions" -H 'Content-Type: application/json' --data '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}')"
@@ -106,8 +103,6 @@ else
     echo "      PASS: /v1/chat/completions valid token accepted auth layer (${S5})"
   fi
 
-  S6="$(curl -s -o /tmp/hardening_cloud_good.json -w '%{http_code}' -X POST "${BASE_URL}/api/cloud/auth" -H "Authorization: Bearer ${API_KEY}")"
-  assert_status "/api/cloud/auth valid token" "200" "${S6}"
 fi
 
 echo "[6/6] Validating secure cookie behavior"

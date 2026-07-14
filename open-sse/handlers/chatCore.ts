@@ -180,6 +180,7 @@ import {
   stripMarkdownCodeFence,
 } from "../utils/aiSdkCompat.ts";
 import { generateRequestId } from "@/shared/utils/requestId";
+import { randomBase36 } from "@/shared/utils/secureRandom";
 import { normalizePayloadForLog } from "@/lib/logPayloads";
 import { extractFacts } from "@/lib/memory/extraction";
 import { injectMemory, shouldInjectMemory } from "@/lib/memory/injection";
@@ -1457,7 +1458,7 @@ export async function handleChatCore({
   const startTime = Date.now();
   // Per-request trace id + checkpoint helper. Lets us see exactly which await
   // a hung request was sitting on in `[STAGE_TRACE]` log lines.
-  const traceId = Math.random().toString(36).slice(2, 8);
+  const traceId = randomBase36(6);
 
   // Emit request.started event for real-time dashboard
   setImmediate(() => {
@@ -1718,19 +1719,22 @@ export async function handleChatCore({
         if (pendingWrite) await pendingWrite;
         const { attachCompressionUsageReceipt } =
           await import("../../src/lib/db/compressionAnalytics.ts");
-        attachCompressionUsageReceipt(skillRequestId, usage, source);
-      } catch {
-        // Compression analytics are best-effort and must never affect responses.
+        await attachCompressionUsageReceipt(skillRequestId, usage, source);
+      } catch (err) {
+        log?.debug?.(
+          "COMPRESSION",
+          "Compression usage receipt skipped: " +
+            (err instanceof Error ? err.message : String(err))
+        );
       }
     })();
   };
+  const clientHeaders = clientRawRequest?.headers ?? null;
   const pipelineSessionId =
-    (clientRawRequest?.headers && typeof clientRawRequest.headers.get === "function"
-      ? clientRawRequest.headers.get("x-omniroute-session-id")
-      : getHeaderValueCaseInsensitive(
-          clientRawRequest?.headers ?? null,
-          "x-omniroute-session-id"
-        )) || skillRequestId;
+    getHeaderValueCaseInsensitive(clientHeaders, "x-omniroute-session-id") || skillRequestId;
+  const callLogCorrelationId =
+    getHeaderValueCaseInsensitive(clientHeaders, "x-request-id") ||
+    getHeaderValueCaseInsensitive(clientHeaders, "x-correlation-id");
   const persistAttemptLogs = ({
     status,
     tokens,
@@ -1807,6 +1811,7 @@ export async function handleChatCore({
       requestedModel,
       provider,
       connectionId,
+      correlationId: callLogCorrelationId,
       duration: Date.now() - startTime,
       tokens: tokens || {},
       requestBody: cloneBoundedChatLogPayload(
@@ -2089,6 +2094,10 @@ export async function handleChatCore({
 
   trace("post_injection", { provider, model });
 
+  // Transparency header value (#5284): set when compression produces stats so the
+  // final Response (stream + non-stream) can advertise X-OmniRoute-Compression.
+  let compressionResponseMeta: string | null = null;
+
   // Translate request (pass reqLogger for intermediate logging)
   // ── Proactive Context Compression (Phase 4) ──
   // Check if context exceeds 70% of limit and compress proactively before sending to provider.
@@ -2121,7 +2130,8 @@ export async function handleChatCore({
     try {
       const { selectCompressionStrategy, applyCompression } =
         await import("../services/compression/strategySelector.ts");
-      const { trackCompressionStats } = await import("../services/compression/stats.ts");
+      const { trackCompressionStats, buildCompressionHeader } =
+        await import("../services/compression/stats.ts");
       let config: CompressionConfig = compressionSettings ?? {
         enabled: false,
         defaultMode: "off",
@@ -2360,6 +2370,7 @@ export async function handleChatCore({
           config,
         });
         if (result.stats) {
+          compressionResponseMeta = buildCompressionHeader(result.stats);
           if (result.compressed) {
             body = result.body as typeof body;
             estimatedTokens = result.stats.compressedTokens;
@@ -2390,7 +2401,7 @@ export async function handleChatCore({
                   },
                   { serviceTier: effectiveServiceTier }
                 );
-                insertCompressionAnalyticsRow({
+                await insertCompressionAnalyticsRow({
                   timestamp: new Date().toISOString(),
                   combo_id: comboName ?? null,
                   provider: provider ?? null,
@@ -2471,7 +2482,7 @@ export async function handleChatCore({
           try {
             const { insertCompressionAnalyticsRow } =
               await import("../../src/lib/db/compressionAnalytics.ts");
-            insertCompressionAnalyticsRow({
+            await insertCompressionAnalyticsRow({
               timestamp: new Date().toISOString(),
               combo_id: comboName ?? null,
               provider: provider ?? null,
@@ -4816,6 +4827,9 @@ export async function handleChatCore({
         headers: {
           "Content-Type": "application/json",
           [OMNIROUTE_RESPONSE_HEADERS.cache]: "MISS",
+          ...(compressionResponseMeta
+            ? { [OMNIROUTE_RESPONSE_HEADERS.compression]: compressionResponseMeta }
+            : {}),
           ...buildOmniRouteResponseMetaHeaders({
             provider,
             model,
@@ -5140,6 +5154,13 @@ export async function handleChatCore({
       shape: shapeForClientFormat(clientResponseFormat),
     })
   );
+
+  // Transparency header (#5284) is set on the mutable responseHeaders object BEFORE
+  // Response construction — i.e. before the first SSE chunk flows — so it never
+  // violates the "no headers after body" streaming protocol constraint.
+  if (compressionResponseMeta) {
+    responseHeaders[OMNIROUTE_RESPONSE_HEADERS.compression] = compressionResponseMeta;
+  }
 
   return {
     success: true,

@@ -63,18 +63,54 @@ test.after(async () => {
   }
 });
 
+test("migration 0008 purges stale tunnel key_value rows so getSettings stops returning them", async () => {
+  const db = core.getDbInstance();
+
+  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
+    "settings",
+    "hideEndpointCloudflaredTunnel",
+    "true"
+  );
+  await db
+    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run("settings", "tailscaleEnabled", "true");
+  await db
+    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run("settings", "tailscaleUrl", JSON.stringify("http://stale.example"));
+
+  const beforePurge = await settingsDb.getSettings();
+  assert.equal(beforePurge.hideEndpointCloudflaredTunnel, true);
+  assert.equal(beforePurge.tailscaleEnabled, true);
+  assert.equal(beforePurge.tailscaleUrl, "http://stale.example");
+
+  const migrationSql = fs
+    .readFileSync(
+      path.resolve("db/migrations/postgres/0008_drop_tunnel_settings.sql"),
+      "utf8"
+    )
+    .trim();
+  await db.exec(migrationSql);
+  // Idempotency: re-applying the same DELETE must not throw and must remain a no-op.
+  await db.exec(migrationSql);
+
+  const afterPurge = await settingsDb.getSettings();
+  assert.equal("hideEndpointCloudflaredTunnel" in afterPurge, false);
+  assert.equal("hideEndpointTailscaleFunnel" in afterPurge, false);
+  assert.equal("hideEndpointNgrokTunnel" in afterPurge, false);
+  assert.equal("tailscaleEnabled" in afterPurge, false);
+  assert.equal("tailscaleUrl" in afterPurge, false);
+});
+
 test("getSettings exposes defaults and updateSettings persists typed values", async () => {
   const defaults = await settingsDb.getSettings();
   const updated = await settingsDb.updateSettings({
     requireLogin: false,
-    cloudEnabled: true,
     stickyRoundRobinLimit: 7,
     requestRetry: 5,
     maxRetryIntervalSec: 12,
     label: "task-303",
   });
 
-  assert.equal(defaults.cloudEnabled, true);
   assert.equal(defaults.requireLogin, true);
   assert.deepEqual(defaults.hiddenSidebarItems, []);
   assert.equal(defaults.idempotencyWindowMs, 5000);
@@ -82,12 +118,10 @@ test("getSettings exposes defaults and updateSettings persists typed values", as
   assert.equal(defaults.maxRetryIntervalSec, 30);
   assert.equal(defaults.comboConfigMode, "guided");
   assert.equal(updated.requireLogin, false);
-  assert.equal(updated.cloudEnabled, true);
   assert.equal(updated.stickyRoundRobinLimit, 7);
   assert.equal(updated.requestRetry, 5);
   assert.equal(updated.maxRetryIntervalSec, 12);
   assert.equal(updated.label, "task-303");
-  assert.equal(await settingsDb.isCloudEnabled(), true);
 });
 
 test("INITIAL_PASSWORD marks onboarding as complete on first read", async () => {
@@ -295,7 +329,7 @@ test("settings and pricing readers skip malformed rows while merging surviving l
         all: () => [
           123,
           { key: 456, value: "true" },
-          { key: "cloudEnabled", value: "true" },
+          { key: "debugMode", value: "true" },
           { key: "requireLogin", value: null },
         ],
       };
@@ -356,7 +390,7 @@ test("settings and pricing readers skip malformed rows while merging surviving l
     const pricing = await settingsDb.getPricing();
     const modelPricing = await settingsDb.getPricingForModel("layered-provider", "model-a");
 
-    assert.equal(settings.cloudEnabled, true);
+    assert.equal(settings.debugMode, true);
     assert.equal(settings.requireLogin, true);
     assert.deepEqual(pricing["layered-provider"]["model-a"], {
       prompt: 9,
@@ -479,8 +513,9 @@ test("proxy config migrates socks5 and host-only entries while preserving plural
 
 test("proxy helpers resolve key, provider, global, and direct paths while tolerating malformed combo rows", async () => {
   const db = core.getDbInstance();
+  const providerId = "openai-compatible-proxy-resolution";
   const connection = await providersDb.createProviderConnection({
-    provider: "openai",
+    provider: providerId,
     authType: "apikey",
     name: "Proxy Resolution Target",
     apiKey: "sk-proxy-resolution",
@@ -494,7 +529,7 @@ test("proxy helpers resolve key, provider, global, and direct paths while tolera
       port: 8080,
     },
   });
-  await settingsDb.setProxyForLevel("provider", "openai", {
+  await settingsDb.setProxyForLevel("provider", providerId, {
     type: "https",
     host: "provider.local",
     port: 8443,
@@ -506,7 +541,7 @@ test("proxy helpers resolve key, provider, global, and direct paths while tolera
   });
   const combo = await combosDb.createCombo({
     name: "combo-broken",
-    models: ["openai/gpt-4o-mini"],
+    models: [`${providerId}/gpt-4o-mini`],
     strategy: "priority",
   });
   await db.prepare("UPDATE combos SET data = ? WHERE id = ?").run("{not-json", combo.id);
@@ -521,7 +556,7 @@ test("proxy helpers resolve key, provider, global, and direct paths while tolera
     port: 1080,
   });
 
-  await settingsDb.deleteProxyForLevel("provider", "openai");
+  await settingsDb.deleteProxyForLevel("provider", providerId);
 
   const globalResolved = await settingsDb.resolveProxyForConnection((connection as any).id);
 
@@ -583,7 +618,7 @@ test("proxy resolution skips combos without serialized data and falls back to pr
 
 test("proxy resolution matches combo proxies through model entries", async () => {
   const connection = await providersDb.createProviderConnection({
-    provider: "gigachat",
+    provider: "gigachat-compatible-settings",
     authType: "apikey",
     name: "Proxy Combo",
     apiKey: "sk-gigachat-combo",
@@ -591,7 +626,7 @@ test("proxy resolution matches combo proxies through model entries", async () =>
 
   const combo = await combosDb.createCombo({
     name: "combo-aliased-model",
-    models: [{ model: "gigachat/GigaChat-2-Max" }],
+    models: [{ model: "gigachat-compatible-settings/GigaChat-2-Max" }],
     strategy: "priority",
   });
   await settingsDb.setProxyForLevel("combo", (combo as any).id, {

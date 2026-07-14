@@ -8,13 +8,11 @@ import {
 /**
  * gpt2giga edge-case parity test corpus (T21).
  *
- * Mock GigaChat server (T5 fixture) is OpenAI-compatible: it accepts and emits
- * OpenAI-shaped chat completions. The DefaultExecutor's gigachat case (T9 trim)
- * does NOT perform body translation — it expects upstream to be OpenAI-compatible.
- *
- * These 20 scenarios verify the wire-level parity surface that flows through
- * default.ts (URL normalization, Bearer auth, OpenAI request/response shape)
- * by driving the mock server end-to-end.
+ * Mock GigaChat server (T5 fixture) emits true GigaChat v1 wire shapes:
+ * message.function_call with OBJECT arguments, functions_state_id, and
+ * finish_reason "function_call". Tests 03/05/06 assert the GigaChat-native
+ * response shape; the DefaultExecutor (gigachat-conversion-e2e suite) converts
+ * these back to OpenAI tool_calls for the caller.
  */
 describe("gpt2giga parity (mock GigaChat)", () => {
   let mock: MockGigachatServer;
@@ -69,7 +67,7 @@ describe("gpt2giga parity (mock GigaChat)", () => {
     );
   });
 
-  it("03: functions[] request — mock receives and echoes tool_calls", async () => {
+  it("03: functions[] request — mock receives and echoes function_call", async () => {
     const r = await chat({
       model: "GigaChat",
       messages: [{ role: "user", content: "weather?" }],
@@ -85,10 +83,10 @@ describe("gpt2giga parity (mock GigaChat)", () => {
     });
     assert.equal(r.status, 200);
     const body = (await r.json()) as {
-      choices: { message: { tool_calls?: { function: { name: string } }[] } }[];
+      choices: { message: { function_call?: { name: string } } }[];
     };
-    assert.ok(body.choices[0].message.tool_calls, "should have tool_calls");
-    assert.equal(body.choices[0].message.tool_calls?.[0].function.name, "get_weather");
+    assert.ok(body.choices[0].message.function_call, "should have function_call");
+    assert.equal(body.choices[0].message.function_call?.name, "get_weather");
   });
 
   it("04: multiple functions[] are all sent to upstream", async () => {
@@ -112,7 +110,7 @@ describe("gpt2giga parity (mock GigaChat)", () => {
     );
   });
 
-  it("05: function_call response surfaces as tool_calls[]", async () => {
+  it("05: function_call response surfaces as function_call on message", async () => {
     const r = await chat({
       model: "GigaChat",
       messages: [{ role: "user", content: "call something" }],
@@ -120,23 +118,23 @@ describe("gpt2giga parity (mock GigaChat)", () => {
     });
     const body = (await r.json()) as {
       choices: {
-        message: { tool_calls?: { id: string; type: string }[] };
+        message: { function_call?: { name: string }; functions_state_id?: string };
       }[];
     };
-    const tc = body.choices[0].message.tool_calls?.[0];
-    assert.ok(tc, "tool_calls[0] must exist");
-    assert.equal(tc?.type, "function");
-    assert.match(tc?.id ?? "", /^call_/);
+    const fc = body.choices[0].message.function_call;
+    assert.ok(fc, "function_call must exist");
+    assert.equal(fc?.name, "do_it");
+    assert.ok(body.choices[0].message.functions_state_id, "functions_state_id must be present");
   });
 
-  it("06: finish_reason becomes 'tool_calls' when functions present", async () => {
+  it("06: finish_reason becomes 'function_call' when functions present", async () => {
     const r = await chat({
       model: "GigaChat",
       messages: [{ role: "user", content: "x" }],
       functions: [{ name: "fn", parameters: {} }],
     });
     const body = (await r.json()) as { choices: { finish_reason: string }[] };
-    assert.equal(body.choices[0].finish_reason, "tool_calls");
+    assert.equal(body.choices[0].finish_reason, "function_call");
   });
 
   it("07: system message first is preserved through pipeline", async () => {
@@ -331,6 +329,257 @@ describe("gpt2giga parity (mock GigaChat)", () => {
   });
 });
 
+describe("gpt2giga parity (W4 surface)", () => {
+  /**
+   * W4 surface parity cases (T4.7).
+   *
+   * Each test spins its own mock in wire:"gigachat" mode so the suite is
+   * self-contained and does not share state with the main 01-20 block.
+   *
+   * These tests document the GigaChat v1 wire contract:
+   *   - functions[] (not tools[]) on the request body
+   *   - functions_state_id round-trip
+   *   - X-Session-ID header capture
+   *   - reasoning_content in response
+   *   - response_format json_schema passthrough
+   *   - stream delta.function_call shape + finish_reason "function_call"
+   */
+
+  it("W4-21: tools→functions wire shape — send functions[] → mock emits function_call (GigaChat wire contract)", async () => {
+    const mock = await startMockGigachat({ wire: "gigachat" });
+    try {
+      const r = await fetch(`${mock.url}/api/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat",
+          messages: [{ role: "user", content: "what is the weather?" }],
+          functions: [
+            {
+              name: "get_weather",
+              parameters: {
+                type: "object",
+                properties: { city: { type: "string" } },
+              },
+            },
+          ],
+        }),
+      });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as {
+        choices: {
+          message: {
+            function_call?: { name: string; arguments: Record<string, unknown> };
+          };
+          finish_reason: string;
+        }[];
+      };
+      // GigaChat wire: function_call on message (not tool_calls)
+      assert.ok(body.choices[0].message.function_call, "must have function_call (GigaChat wire)");
+      assert.equal(body.choices[0].message.function_call?.name, "get_weather");
+      // arguments is an OBJECT (not a JSON string) in GigaChat v1 wire
+      assert.equal(typeof body.choices[0].message.function_call?.arguments, "object");
+      // tool_calls must NOT appear on the GigaChat wire response
+      assert.ok(
+        !("tool_calls" in body.choices[0].message),
+        "tool_calls must be absent from GigaChat wire response",
+      );
+      // Captured request must have functions[] (not tools[])
+      const captured = mock.lastRequest?.body as {
+        functions?: { name: string }[];
+        tools?: unknown;
+      } | null;
+      assert.ok(Array.isArray(captured?.functions), "captured body must have functions[]");
+      assert.equal(captured?.functions?.[0].name, "get_weather");
+      assert.ok(!captured?.tools, "captured body must NOT have tools[]");
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("W4-22: functions_state_id round-trip — response carries a non-empty string token", async () => {
+    const mock = await startMockGigachat({ wire: "gigachat" });
+    try {
+      const r = await fetch(`${mock.url}/api/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat",
+          messages: [{ role: "user", content: "call a function" }],
+          functions: [{ name: "do_something", parameters: { type: "object", properties: {} } }],
+        }),
+      });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as {
+        choices: {
+          message: {
+            function_call?: { name: string };
+            functions_state_id?: string;
+          };
+          finish_reason: string;
+        }[];
+      };
+      const stateId = body.choices[0].message.functions_state_id;
+      assert.ok(typeof stateId === "string" && stateId.length > 0, "functions_state_id must be a non-empty string");
+      // Verify it looks like a UUID-style token (mock emits "0e2a1b3c-4d5e-6f70-8a9b-mockstate0001")
+      assert.ok(stateId.includes("-"), "functions_state_id must contain hyphens (UUID-style)");
+      assert.equal(body.choices[0].finish_reason, "function_call");
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("W4-23: X-Session-ID header passthrough — mock captures the header verbatim", async () => {
+    const mock = await startMockGigachat({ wire: "gigachat" });
+    try {
+      await fetch(`${mock.url}/api/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-ID": "test-session-123",
+        },
+        body: JSON.stringify({
+          model: "GigaChat",
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+      // Node.js http module lowercases header names
+      const capturedHeaders = mock.lastRequest?.headers as Record<string, string | string[] | undefined>;
+      assert.equal(
+        capturedHeaders["x-session-id"],
+        "test-session-123",
+        "mock must capture X-Session-ID header (lowercased)",
+      );
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("W4-24: reasoning_content — non-stream response includes reasoning_content string", async () => {
+    const mock = await startMockGigachat({ wire: "gigachat" });
+    try {
+      const r = await fetch(`${mock.url}/api/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat",
+          messages: [{ role: "user", content: "think about this" }],
+        }),
+      });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as {
+        choices: {
+          message: {
+            content: string;
+            reasoning_content?: string;
+          };
+          finish_reason: string;
+        }[];
+      };
+      const rc = body.choices[0].message.reasoning_content;
+      assert.ok(typeof rc === "string" && rc.length > 0, "reasoning_content must be a non-empty string");
+      assert.equal(body.choices[0].finish_reason, "stop");
+      // Content is still present alongside reasoning_content
+      assert.equal(body.choices[0].message.content, "mock-reply");
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("W4-25: structured output — response_format json_schema passes through to upstream body", async () => {
+    const mock = await startMockGigachat({ wire: "gigachat" });
+    try {
+      const r = await fetch(`${mock.url}/api/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat",
+          messages: [{ role: "user", content: "give me json" }],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "x",
+              schema: { type: "object" },
+            },
+          },
+        }),
+      });
+      assert.equal(r.status, 200);
+      const captured = mock.lastRequest?.body as {
+        response_format?: { type: string; json_schema?: { name: string } };
+      } | null;
+      assert.equal(captured?.response_format?.type, "json_schema");
+      assert.equal(captured?.response_format?.json_schema?.name, "x");
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("W4-26: stream function_call — SSE stream emits delta.function_call chunks, finish_reason 'function_call', ends [DONE]", async () => {
+    const mock = await startMockGigachat({ wire: "gigachat", streamArgsMode: "whole" });
+    try {
+      const r = await fetch(`${mock.url}/api/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat",
+          stream: true,
+          messages: [{ role: "user", content: "stream a function call" }],
+          functions: [
+            {
+              name: "stream_fn",
+              parameters: { type: "object", properties: { city: { type: "string" } } },
+            },
+          ],
+        }),
+      });
+      assert.equal(r.status, 200);
+      const text = await r.text();
+
+      // Must end with [DONE]
+      assert.ok(text.includes("[DONE]"), "stream must terminate with [DONE]");
+
+      const dataLines = text
+        .split("\n")
+        .filter((l) => l.startsWith("data: ") && !l.includes("[DONE]"));
+      assert.ok(dataLines.length >= 2, "must have at least 2 SSE data chunks");
+
+      // Parse all chunks
+      const chunks = dataLines.map((l) =>
+        JSON.parse(l.slice(6)) as {
+          choices: {
+            delta: {
+              role?: string;
+              function_call?: { name?: string; arguments?: string };
+              functions_state_id?: string;
+              tool_calls?: unknown;
+            };
+            finish_reason: string | null;
+          }[];
+        },
+      );
+
+      // First chunk: delta.function_call.name (GigaChat wire — NOT tool_calls)
+      const firstDelta = chunks[0].choices[0].delta;
+      assert.ok(firstDelta.function_call, "first chunk delta must have function_call (GigaChat wire)");
+      assert.equal(firstDelta.function_call?.name, "stream_fn");
+      assert.ok(!firstDelta.tool_calls, "delta must NOT have tool_calls on GigaChat wire");
+
+      // At least one chunk must have delta.function_call.arguments
+      const hasArgChunk = chunks.some(
+        (c) => c.choices[0].delta.function_call?.arguments !== undefined,
+      );
+      assert.ok(hasArgChunk, "at least one chunk must carry delta.function_call.arguments");
+
+      // Last data chunk before [DONE]: finish_reason === "function_call"
+      const lastChunk = chunks[chunks.length - 1];
+      assert.equal(lastChunk.choices[0].finish_reason, "function_call");
+    } finally {
+      await mock.close();
+    }
+  });
+});
+
 describe("gpt2giga parity (auxiliary endpoints)", () => {
   let mock: MockGigachatServer;
 
@@ -347,19 +596,6 @@ describe("gpt2giga parity (auxiliary endpoints)", () => {
     assert.equal(r.status, 200);
     const body = (await r.json()) as { data: { id: string }[] };
     assert.ok(body.data.some((m) => m.id === "GigaChat"));
-  });
-
-  it("AUX-2: POST /oauth/token returns Bearer access_token", async () => {
-    const r = await fetch(`${mock.url}/oauth/token`, { method: "POST" });
-    assert.equal(r.status, 200);
-    const body = (await r.json()) as {
-      access_token: string;
-      token_type: string;
-      expires_at: number;
-    };
-    assert.ok(body.access_token.startsWith("mock-token-"));
-    assert.equal(body.token_type, "Bearer");
-    assert.ok(body.expires_at > Math.floor(Date.now() / 1000));
   });
 
   it("AUX-3: POST /api/v1/embeddings returns vector + usage", async () => {

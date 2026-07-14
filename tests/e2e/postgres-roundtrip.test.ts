@@ -25,6 +25,7 @@ const coreDb = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const callLogsDb = await import("../../src/lib/usage/callLogs.ts");
+const { runMigrations } = await import("../../src/lib/db/migrationRunner.ts");
 const { getPool } = await import("../../src/lib/db/postgres.ts");
 const { handleChat } = await import("../../src/sse/handlers/chat.ts");
 const { initTranslators } = await import("../../open-sse/translator/index.ts");
@@ -32,10 +33,11 @@ const { initTranslators } = await import("../../open-sse/translator/index.ts");
 // Unique sentinels so cleanup never touches unrelated rows in the shared test DB.
 const CONNECTION_NAME = "gigachat-e2e-roundtrip";
 const API_KEY_NAME = "roundtrip-e2e-key";
+const NON_STREAM_REQUEST_ID = "roundtrip-nonstream-correlation-id";
 
 // Non-critical background writers (proxy_logs, etc.) still do fire-and-forget
-// `db.prepare(sql).run(...)` written for the old synchronous better-sqlite3
-// driver. The in-progress core.ts pg-adapter shim makes `.run()` async, so the
+// `db.prepare(sql).run(...)` calls written against the synchronous driver
+// signature. core.ts's Postgres adapter makes `.run()` async, so the
 // discarded promise rejects unhandled and node:test blames the running test.
 // Restore the original best-effort semantic by attaching a no-op catch to each
 // run() promise; `await`ing callers still see rejections via their own await.
@@ -65,8 +67,12 @@ let connectionId: string;
 let apiKeyId: string;
 let apiKeyValue: string;
 
-function buildRequest(body: unknown, authKey?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+function buildRequest(
+  body: unknown,
+  authKey?: string,
+  extraHeaders: Record<string, string> = {}
+) {
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...extraHeaders };
   if (authKey) headers.Authorization = `Bearer ${authKey}`;
   return new Request("http://localhost/v1/chat/completions", {
     method: "POST",
@@ -86,7 +92,7 @@ async function waitFor<T>(fn: () => Promise<T> | T, timeoutMs = 1500): Promise<T
 }
 
 async function getLatestGigachatCallLog() {
-  const rows = await callLogsDb.getCallLogs({ provider: "gigachat", limit: 10 });
+  const rows = await callLogsDb.getCallLogs({ provider: "gigachat-compatible-roundtrip", limit: 10 });
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return callLogsDb.getCallLogById(rows[0].id);
 }
@@ -94,17 +100,17 @@ async function getLatestGigachatCallLog() {
 /** Raw Postgres assertion — proves the row is really persisted, not just in-memory. */
 async function getLatestGigachatRowRaw() {
   const result = await (await getPool()).query(
-    "SELECT id, provider, status, model FROM call_logs WHERE provider = $1 ORDER BY timestamp DESC LIMIT 1",
-    ["gigachat"]
+    "SELECT id, provider, status, model, correlation_id FROM call_logs WHERE provider = $1 ORDER BY timestamp DESC LIMIT 1",
+    ["gigachat-compatible-roundtrip"]
   );
   return result.rows[0] ?? null;
 }
 
 async function cleanupSeededRows() {
   // call_logs first (FK-free, sentinel = provider), then the seeded connection + key.
-  await (await getPool()).query("DELETE FROM call_logs WHERE provider = $1", ["gigachat"]);
+  await (await getPool()).query("DELETE FROM call_logs WHERE provider = $1", ["gigachat-compatible-roundtrip"]);
   await (await getPool()).query("DELETE FROM provider_connections WHERE provider = $1 AND name = $2", [
-    "gigachat",
+    "gigachat-compatible-roundtrip",
     CONNECTION_NAME,
   ]);
   await (await getPool()).query("DELETE FROM api_keys WHERE name = $1", [API_KEY_NAME]);
@@ -113,6 +119,7 @@ async function cleanupSeededRows() {
 before(async () => {
   patchAdapterRunForFireAndForget();
   initTranslators();
+  await runMigrations();
 
   mock = await startMockGigachat();
 
@@ -123,11 +130,8 @@ before(async () => {
   //   buildUrl(gigachat) -> normalizeGigachatChatUrl(baseUrl): strips a trailing
   //   /chat/completions then re-appends it, so baseUrl="${mock.url}/api/v1"
   //   yields the final URL "${mock.url}/api/v1/chat/completions" — a real mock route.
-  //   authUrl points gigachat's OAuth token exchange at the mock /oauth/token so
-  //   the refreshCredentials path resolves an access_token and the request reaches
-  //   the mock with a Bearer token.
   const connection = await providersDb.createProviderConnection({
-    provider: "gigachat",
+    provider: "gigachat-compatible-roundtrip",
     authType: "apikey",
     name: CONNECTION_NAME,
     apiKey: "test-key",
@@ -135,7 +139,10 @@ before(async () => {
     testStatus: "active",
     providerSpecificData: {
       baseUrl: `${mock.url}/api/v1`,
-      authUrl: `${mock.url}/oauth/token`,
+      mtls: {
+        cert: "test-cert",
+        key: "test-key",
+      },
     },
   });
   connectionId = String((connection as Record<string, unknown>).id);
@@ -168,11 +175,15 @@ describe("GigaChat round-trip with Postgres usage logging", () => {
     mock.lastRequest = null;
 
     const response = await handleChat(
-      buildRequest({
-        model: "gigachat/GigaChat",
-        stream: false,
-        messages: [{ role: "user", content: "Hello GigaChat" }],
-      })
+      buildRequest(
+        {
+          model: "gigachat/GigaChat",
+          stream: false,
+          messages: [{ role: "user", content: "Hello GigaChat" }],
+        },
+        undefined,
+        { "x-request-id": NON_STREAM_REQUEST_ID }
+      )
     );
 
     const json = (await response.json()) as any;
@@ -192,25 +203,27 @@ describe("GigaChat round-trip with Postgres usage logging", () => {
 
     // 3. A call_logs row exists (poll for the fire-and-forget async write).
     const callLog = await waitFor(() => getLatestGigachatCallLog());
-    assert.ok(callLog, "expected a gigachat call_logs row via callLogs db module");
-    assert.equal(callLog.provider, "gigachat");
+    assert.ok(callLog, "expected a gigachat-compatible-roundtrip call_logs row via callLogs db module");
+    assert.equal(callLog.provider, "gigachat-compatible-roundtrip");
     assert.equal(callLog.path, "/v1/chat/completions");
     assert.equal(callLog.status, 200);
+    assert.equal(callLog.correlationId, NON_STREAM_REQUEST_ID);
 
     // 4. Prove the row is REALLY in Postgres via a raw pool query.
     const rawRow = await waitFor(() => getLatestGigachatRowRaw());
-    assert.ok(rawRow, "expected a gigachat call_logs row via raw getPool() query");
-    assert.equal(rawRow.provider, "gigachat");
+    assert.ok(rawRow, "expected a gigachat-compatible-roundtrip call_logs row via raw getPool() query");
+    assert.equal(rawRow.provider, "gigachat-compatible-roundtrip");
     assert.equal(rawRow.status, 200);
+    assert.equal(rawRow.correlation_id, NON_STREAM_REQUEST_ID);
   });
 
   it("streaming: streams an SSE chat response and logs usage to Postgres call_logs", async () => {
     mock.lastRequest = null;
 
-    // Snapshot how many gigachat rows exist so we can prove a NEW one is written.
+    // Snapshot how many gigachat-compatible-roundtrip rows exist so we can prove a NEW one is written.
     const beforeRows = await (await getPool()).query(
       "SELECT COUNT(*)::int AS cnt FROM call_logs WHERE provider = $1",
-      ["gigachat"]
+      ["gigachat-compatible-roundtrip"]
     );
     const beforeCount = Number(beforeRows.rows[0]?.cnt ?? 0);
 
@@ -241,17 +254,17 @@ describe("GigaChat round-trip with Postgres usage logging", () => {
     const afterRows = await waitFor(async () => {
       const result = await (await getPool()).query(
         "SELECT COUNT(*)::int AS cnt FROM call_logs WHERE provider = $1",
-        ["gigachat"]
+        ["gigachat-compatible-roundtrip"]
       );
       const cnt = Number(result.rows[0]?.cnt ?? 0);
       return cnt > beforeCount ? cnt : null;
     }, 2000);
-    assert.ok(afterRows, "expected a new gigachat call_logs row for the streaming request");
+    assert.ok(afterRows, "expected a new gigachat-compatible-roundtrip call_logs row for the streaming request");
 
-    // 4. Raw-confirm the latest gigachat row is the streamed 200.
+    // 4. Raw-confirm the latest gigachat-compatible-roundtrip row is the streamed 200.
     const rawRow = await getLatestGigachatRowRaw();
-    assert.ok(rawRow, "expected a gigachat call_logs row via raw getPool() query");
-    assert.equal(rawRow.provider, "gigachat");
+    assert.ok(rawRow, "expected a gigachat-compatible-roundtrip call_logs row via raw getPool() query");
+    assert.equal(rawRow.provider, "gigachat-compatible-roundtrip");
     assert.equal(rawRow.status, 200);
   });
 });

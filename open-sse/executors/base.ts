@@ -183,6 +183,7 @@ export function mergeAbortSignals(primary: AbortSignal, secondary: AbortSignal):
  */
 const MISTRAL_NO_REASONING_EFFORT_PATTERN = /devstral/i;
 const GITHUB_NO_REASONING_EFFORT_PATTERN = /(claude|haiku|oswe)/i;
+const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
 
 export function sanitizeReasoningEffortForProvider(
   body: unknown,
@@ -202,7 +203,9 @@ export function sanitizeReasoningEffortForProvider(
   const effortStr = typeof effort === "string" ? effort.toLowerCase() : "";
   const modelStr = model || "";
 
-  const supportsXHigh = supportsXHighEffort(provider, modelStr);
+  const isGigachat =
+    provider === "gigachat" || provider.startsWith(GIGACHAT_COMPATIBLE_PREFIX);
+  const supportsXHigh = !isGigachat && supportsXHighEffort(provider, modelStr);
   const shouldDowngradeXHigh = effortStr === "xhigh" && !supportsXHigh;
   const shouldDowngradeMax = effortStr === "max" && !supportsXHigh;
 

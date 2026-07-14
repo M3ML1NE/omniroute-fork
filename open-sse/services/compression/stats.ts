@@ -52,6 +52,32 @@ export function trackCompressionStats(stats: CompressionStats): void {
   // Compression stats tracking — no-op in production (use structured logging if needed)
 }
 
+export function formatCompressionMeta(stats: CompressionStats): string {
+  return `${stats.mode}; savings=${stats.savingsPercent}%`;
+}
+
+export function formatCompressionAnnotation(stats: CompressionStats): string {
+  const rules = stats.rulesApplied;
+  if (!rules || rules.length === 0) return "";
+
+  const counts = new Map<string, number>();
+  for (const rule of rules) {
+    counts.set(rule, (counts.get(rule) ?? 0) + 1);
+  }
+
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const agg = sorted.map(([name, n]) => `${name}x${n}`).join(", ");
+  // ASCII-only ("->" not "→", "x" not "×"): this string is appended to the
+  // X-OmniRoute-Compression HTTP header, a latin-1 ByteString — a non-ASCII char
+  // throws at Response/Headers construction (500). Keep any arrow/× in JSX, not here.
+  return `tokens=${stats.originalTokens}->${stats.compressedTokens}; rules: ${agg}`;
+}
+
+export function buildCompressionHeader(stats: CompressionStats): string {
+  const annotation = formatCompressionAnnotation(stats);
+  return annotation ? `${formatCompressionMeta(stats)}; ${annotation}` : formatCompressionMeta(stats);
+}
+
 export function getDefaultCompressionConfig(): CompressionConfig {
   return {
     ...DEFAULT_COMPRESSION_CONFIG,

@@ -7,7 +7,10 @@ import type {
   CompressionConfig,
   CompressionMode,
 } from "@omniroute/open-sse/services/compression/types";
-import { buildCompressionPreviewDiff } from "@omniroute/open-sse/services/compression/diffHelper";
+import {
+  buildCompressionPreviewDiff,
+  type HeatmapMode,
+} from "@omniroute/open-sse/services/compression/diffHelper";
 
 export const PreviewCompressionConfigSchema = compressionPreviewConfigSchema;
 
@@ -22,6 +25,7 @@ export const PreviewRequestSchema = z.object({
     .min(1),
   mode: z.enum(["off", "lite", "standard", "aggressive", "ultra", "rtk", "stacked"]),
   config: PreviewCompressionConfigSchema.optional(),
+  heatmap: z.enum(["ultra", "universal"]).optional(),
 });
 
 function countTokens(text: string): number {
@@ -56,7 +60,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { messages, mode, config } = parsed.data;
+  const { messages, mode, config, heatmap: heatmapMode } = parsed.data;
   const originalText = messagesToText(messages);
   const originalTokens = countTokens(originalText);
 
@@ -77,7 +81,13 @@ export async function POST(req: Request) {
     const tokensSaved = Math.max(0, originalTokens - compressedTokens);
     const savingsPct = originalTokens > 0 ? Math.round((tokensSaved / originalTokens) * 100) : 0;
     const techniquesUsed: string[] = result.stats?.techniquesUsed ?? [];
-    const diff = buildCompressionPreviewDiff(originalText, compressedText, result.stats);
+    const diff = buildCompressionPreviewDiff(
+      originalText,
+      compressedText,
+      result.stats,
+      {},
+      heatmapMode as HeatmapMode | undefined
+    );
 
     return NextResponse.json({
       original: originalText,
@@ -105,6 +115,7 @@ export async function POST(req: Request) {
       validationWarnings: diff.validationWarnings,
       validationErrors: diff.validationErrors,
       fallbackApplied: diff.fallbackApplied,
+      ...(diff.heatmap ? { heatmap: diff.heatmap } : {}),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

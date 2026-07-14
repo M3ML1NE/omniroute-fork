@@ -61,18 +61,17 @@ function isNextIntlExtractorDynamicImportWarning(warning) {
   );
 }
 
-// OMNIROUTE_BUILD_PROFILE=minimal physically removes four optional privileged
-// modules (MITM cert install, Zed keychain import, Cloud Sync, 9router
-// installer) from the built bundle by aliasing them to feature-disabled stubs.
-// The resulting artifact is intended to be published as `omniroute-secure`
-// for security-sensitive environments. See docs/security/SOCKET_DEV_FINDINGS.md.
+// OMNIROUTE_BUILD_PROFILE=minimal physically removes optional privileged
+// modules (MITM cert install, Zed keychain import, 9router installer) from
+// the built bundle by aliasing them to feature-disabled stubs. The resulting
+// artifact is intended to be published as `omniroute-secure` for
+// security-sensitive environments. See docs/security/SOCKET_DEV_FINDINGS.md.
 const isMinimalBuild = process.env.OMNIROUTE_BUILD_PROFILE === "minimal";
 
 const minimalBuildAliases = isMinimalBuild
   ? {
       "@/mitm/cert/install": "./src/mitm/cert/install.stub.ts",
       "@/lib/zed-oauth/keychain-reader": "./src/lib/zed-oauth/keychain-reader.stub.ts",
-      "@/lib/cloudSync": "./src/lib/cloudSync.stub.ts",
     }
   : {};
 
@@ -146,7 +145,6 @@ const nextConfig = {
     "tls-client-node",
     "koffi",
     "tough-cookie",
-    "@ngrok/ngrok",
     "child_process",
     "fs",
     "path",
@@ -218,7 +216,6 @@ const nextConfig = {
       const replacements = [
         [/^@\/mitm\/cert\/install$/, "./src/mitm/cert/install.stub.ts"],
         [/^@\/lib\/zed-oauth\/keychain-reader$/, "./src/lib/zed-oauth/keychain-reader.stub.ts"],
-        [/^@\/lib\/cloudSync$/, "./src/lib/cloudSync.stub.ts"],
         [
           /^@\/lib\/services\/installers\/ninerouter$/,
           "./src/lib/services/installers/ninerouter.stub.ts",
@@ -413,7 +410,6 @@ const nextConfig = {
         permanent: true,
       },
       { source: "/docs/sqlite-runtime", destination: "/docs/ops/sqlite-runtime", permanent: true },
-      { source: "/docs/tunnels-guide", destination: "/docs/ops/tunnels-guide", permanent: true },
       {
         source: "/docs/vm-deployment-guide",
         destination: "/docs/ops/vm-deployment-guide",

@@ -1,13 +1,15 @@
 import { createCompressionStats, estimateCompressionTokens } from "../../stats.ts";
 import { DEFAULT_RTK_CONFIG, type CompressionResult, type RtkConfig } from "../../types.ts";
-import type { CompressionEngine, EngineConfigField, EngineValidationResult } from "../types.ts";
+import type { CompressionEngine } from "../types.ts";
 import { detectCommandType } from "./commandDetector.ts";
+import { RTK_SCHEMA, validateRtkEngineConfig } from "./configSchema.ts";
 import { deduplicateRepeatedLines } from "./deduplicator.ts";
 import { matchRtkFilter } from "./filterLoader.ts";
 import { applyLineFilter } from "./lineFilter.ts";
 import { smartTruncate } from "./smartTruncate.ts";
 import { normalizeCodeLanguage, stripCode } from "./codeStripper.ts";
 import { maybePersistRtkRawOutput, type RtkRawOutputPointer } from "./rawOutput.ts";
+import { applyRenderer } from "./renderers/index.ts";
 import { isTextBlock } from "../../messageContent.ts";
 import { adaptBodyForCompression } from "../../bodyAdapter.ts";
 
@@ -16,115 +18,6 @@ type Message = {
   content?: string | Array<{ type?: string; text?: string; [key: string]: unknown }>;
   [key: string]: unknown;
 };
-
-const RTK_SCHEMA: EngineConfigField[] = [
-  {
-    key: "intensity",
-    type: "select",
-    label: "Intensity",
-    defaultValue: DEFAULT_RTK_CONFIG.intensity,
-    options: [
-      { value: "minimal", label: "minimal" },
-      { value: "standard", label: "standard" },
-      { value: "aggressive", label: "aggressive" },
-    ],
-  },
-  {
-    key: "applyToToolResults",
-    type: "boolean",
-    label: "Apply to tool results",
-    defaultValue: DEFAULT_RTK_CONFIG.applyToToolResults,
-  },
-  {
-    key: "applyToAssistantMessages",
-    type: "boolean",
-    label: "Apply to assistant messages",
-    defaultValue: DEFAULT_RTK_CONFIG.applyToAssistantMessages,
-  },
-  {
-    key: "applyToCodeBlocks",
-    type: "boolean",
-    label: "Apply to code blocks",
-    defaultValue: DEFAULT_RTK_CONFIG.applyToCodeBlocks,
-  },
-  {
-    key: "maxLinesPerResult",
-    type: "number",
-    label: "Max lines per result",
-    defaultValue: DEFAULT_RTK_CONFIG.maxLinesPerResult,
-    min: 0,
-    max: 5000,
-  },
-  {
-    key: "maxCharsPerResult",
-    type: "number",
-    label: "Max chars per result",
-    defaultValue: DEFAULT_RTK_CONFIG.maxCharsPerResult,
-    min: 0,
-    max: 500000,
-  },
-  {
-    key: "deduplicateThreshold",
-    type: "number",
-    label: "Deduplicate threshold",
-    defaultValue: DEFAULT_RTK_CONFIG.deduplicateThreshold,
-    min: 2,
-    max: 100,
-  },
-  {
-    key: "rawOutputRetention",
-    type: "select",
-    label: "Raw output retention",
-    defaultValue: DEFAULT_RTK_CONFIG.rawOutputRetention,
-    options: [
-      { value: "never", label: "never" },
-      { value: "failures", label: "failures" },
-      { value: "always", label: "always" },
-    ],
-  },
-];
-
-function validateRtkEngineConfig(config: Record<string, unknown>): EngineValidationResult {
-  const errors: string[] = [];
-  if (
-    config.intensity !== undefined &&
-    config.intensity !== "minimal" &&
-    config.intensity !== "standard" &&
-    config.intensity !== "aggressive"
-  ) {
-    errors.push("intensity must be minimal, standard, or aggressive");
-  }
-  for (const key of [
-    "enabled",
-    "applyToToolResults",
-    "applyToAssistantMessages",
-    "applyToCodeBlocks",
-  ]) {
-    if (config[key] !== undefined && typeof config[key] !== "boolean") {
-      errors.push(`${key} must be a boolean`);
-    }
-  }
-  for (const key of ["maxLinesPerResult", "maxCharsPerResult", "deduplicateThreshold"]) {
-    if (config[key] !== undefined && (typeof config[key] !== "number" || config[key] < 0)) {
-      errors.push(`${key} must be a non-negative number`);
-    }
-  }
-  if (config.enabledFilters !== undefined && !Array.isArray(config.enabledFilters)) {
-    errors.push("enabledFilters must be an array");
-  }
-  if (config.disabledFilters !== undefined && !Array.isArray(config.disabledFilters)) {
-    errors.push("disabledFilters must be an array");
-  }
-  if (
-    config.rawOutputRetention !== undefined &&
-    config.rawOutputRetention !== "never" &&
-    config.rawOutputRetention !== "failures" &&
-    config.rawOutputRetention !== "always"
-  ) {
-    errors.push("rawOutputRetention must be never, failures, or always");
-  }
-  return { valid: errors.length === 0, errors };
-}
 
 export interface RtkProcessResult {
   text: string;
@@ -298,6 +191,20 @@ export function processRtkText(
     }
   }
 
+  // #5268: semantic renderers — opt-in via enableRenderers flag (default OFF), fail-open.
+  if (config.enableRenderers) {
+    try {
+      const rendered = applyRenderer(result, detection, config);
+      if (rendered.changed) {
+        result = rendered.text;
+        techniquesUsed.push(`rtk-render:${rendered.renderer}`);
+        rulesApplied.push(`rtk:render:${rendered.renderer}`);
+      }
+    } catch {
+      // fail-open: a renderer must never bring down the request
+    }
+  }
+
   if (config.applyToCodeBlocks) {
     let strippedCodeBlocks = 0;
     result = result.replace(
@@ -440,8 +347,7 @@ export function applyRtkCompression(
       ? { enabled: true, ...options.stepConfig }
       : options.stepConfig;
   const explicitConfig = options.config && Object.keys(options.config).length > 0;
-  const baseConfig =
-    !explicitConfig && !stepConfig ? { enabled: true } : (options.config ?? {});
+  const baseConfig = !explicitConfig && !stepConfig ? { enabled: true } : (options.config ?? {});
   const config = mergeRtkConfig(baseConfig, stepConfig);
   if (!config.enabled) return { body, compressed: false, stats: null };
 

@@ -4,7 +4,6 @@ const PUBLIC_API_ROUTE_PREFIXES = [
   "/api/auth/status",
   "/api/init",
   "/api/v1/",
-  "/api/cloud/",
   "/api/sync/bundle",
   "/api/oauth/",
 ];

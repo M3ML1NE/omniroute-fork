@@ -1,5 +1,6 @@
 export const OMNIROUTE_RESPONSE_HEADERS = {
   cache: "X-OmniRoute-Cache",
+  compression: "X-OmniRoute-Compression",
   cacheHit: "X-OmniRoute-Cache-Hit",
   latencyMs: "X-OmniRoute-Latency-Ms",
   model: "X-OmniRoute-Model",

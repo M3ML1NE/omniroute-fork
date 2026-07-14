@@ -9,6 +9,8 @@
  * Phase 5: 'rtk' and 'stacked' modes (tool-output filters + multi-engine pipeline).
  */
 
+import type { QuantumLockConfig, QuantumLockStats } from "./quantumLock/quantumPatterns.ts";
+
 export type CompressionMode =
   | "off"
   | "lite"
@@ -20,7 +22,7 @@ export type CompressionMode =
 export type CavemanIntensity = "lite" | "full" | "ultra";
 export type RtkIntensity = "minimal" | "standard" | "aggressive";
 export type RtkRawOutputRetention = "never" | "failures" | "always";
-export type CompressionEngineId = "lite" | "caveman" | "aggressive" | "ultra" | "rtk";
+export type CompressionEngineId = "lite" | "caveman" | "aggressive" | "ultra" | "rtk" | "relevance";
 
 export interface CavemanRule {
   name: string;
@@ -66,6 +68,17 @@ export interface RtkConfig {
   trustProjectFilters: boolean;
   rawOutputRetention: RtkRawOutputRetention;
   rawOutputMaxBytes: number;
+  /** #5268: semantic command-output renderers (default off) */
+  enableRenderers?: boolean;
+  /** #5268: whitelist by command-type; empty/undefined = all */
+  renderers?: string[];
+}
+
+export interface RelevanceConfig {
+  enabled: boolean;
+  overlapThreshold: number;
+  budgetPercent: number;
+  boilerplateWeight: number;
 }
 
 export interface CompressionLanguageConfig {
@@ -95,9 +108,30 @@ export interface CompressionConfig {
   cavemanConfig?: CavemanConfig;
   cavemanOutputMode?: CavemanOutputModeConfig;
   rtkConfig?: RtkConfig;
+  relevanceConfig?: RelevanceConfig;
   languageConfig?: CompressionLanguageConfig;
   aggressive?: AggressiveConfig;
   ultra?: UltraConfig;
+  /**
+   * Hard-budget post-pass (#5288): compress to at most this many tokens.
+   * Runs after all stacked engines. Absent → no-op (off by default).
+   * When both targetTokens and targetRatio are set, targetTokens wins.
+   */
+  targetTokens?: number;
+  /**
+   * Hard-budget post-pass (#5288): compress to at most this fraction (0–1) of original tokens.
+   * Runs after all stacked engines. Absent → no-op (off by default).
+   * When both targetTokens and targetRatio are set, targetTokens wins.
+   */
+  targetRatio?: number;
+  /**
+   * Opt-in result memoization for deterministic (pure, stateless) modes only
+   * (#5286). Caches `(input, config, model) → result` so a repeated identical
+   * request skips recompute. Default false → zero behavior change.
+   */
+  memoizeCompressionResults?: boolean;
+  /** Opt-in QuantumLock cache-prefix stabilization (default off). */
+  quantumLock?: QuantumLockConfig;
 }
 
 export interface CompressionStats {
@@ -142,6 +176,8 @@ export interface CompressionStats {
     rulesApplied?: string[];
     durationMs?: number;
   }>;
+  /** Present only when QuantumLock stabilized ≥1 fragment this run. */
+  quantumLock?: QuantumLockStats;
 }
 
 export interface CompressionResult {
@@ -205,6 +241,14 @@ export const DEFAULT_RTK_CONFIG: RtkConfig = {
   trustProjectFilters: false,
   rawOutputRetention: "never",
   rawOutputMaxBytes: 1_048_576,
+  enableRenderers: false,
+};
+
+export const DEFAULT_RELEVANCE_CONFIG: RelevanceConfig = {
+  enabled: false,
+  overlapThreshold: 0.1,
+  budgetPercent: 0.5,
+  boilerplateWeight: 0.5,
 };
 
 export const DEFAULT_COMPRESSION_LANGUAGE_CONFIG: CompressionLanguageConfig = {
