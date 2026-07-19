@@ -20,17 +20,22 @@ const modelSync = await import("../../../src/shared/services/modelSyncScheduler.
 const ORIGINAL_JWT = process.env.JWT_SECRET;
 const ORIGINAL_INITIAL = process.env.INITIAL_PASSWORD;
 
-function reset() {
+async function reset() {
   core.resetDbInstance();
   apiKeysDb.resetApiKeyState();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
   delete process.env.JWT_SECRET;
   delete process.env.INITIAL_PASSWORD;
+  // The `settings` namespace lives in the shared Postgres key_value table, so
+  // a `setupComplete=true` row left behind by another test file running
+  // against the same DB would otherwise poison isAuthRequired()'s bootstrap
+  // branch here. Clear it explicitly rather than relying on core.resetDbInstance().
+  await core.getDbInstance().prepare("DELETE FROM key_value WHERE namespace = 'settings'").run();
 }
 
-test.beforeEach(() => {
-  reset();
+test.beforeEach(async () => {
+  await reset();
 });
 
 test.after(() => {

@@ -2,6 +2,67 @@
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes
+
+- **Cloud agents removed**: `src/lib/cloudAgent/`, `/api/cloud/*` routes, the `cloud_agent_tasks`
+  table, and the Codex/Devin/Jules integrations are gone.
+- **Cloud sync removed**: `cloudSync`, `/api/sync/cloud`, `/api/sync/initialize`, and the
+  `cloudEnabled`/`cloudUrl`/`CLOUD_URL`/`NEXT_PUBLIC_CLOUD_URL` settings/env surface.
+- **Tunnels removed**: Cloudflare Quick/Named Tunnel, ngrok, and Tailscale Funnel support
+  (`src/lib/cloudflaredTunnel.ts`, `src/lib/ngrokTunnel.ts`, `/api/tunnels/*`, and the related
+  endpoint-visibility settings toggles).
+- **GigaChat is mTLS-only**: the `keys.json` example no longer documents an `authUrl` OAuth
+  field; `baseUrl` + `mtls` (cert/key/ca) is the only supported auth path.
+- **mlproxy / mlspace removed entirely**: both provider executors
+  (`open-sse/executors/mlproxy.ts`, `mlproxyAgent.ts`, `mlproxyConfig.ts`,
+  `mlproxyCookies.ts`), the `MlproxyExecutor` factory branch, the `AddMlproxyModal.tsx`
+  dashboard UI, and every route/service reference are gone. Migration
+  `db/migrations/postgres/0012_purge_mlproxy_providers.sql` **destructively deletes** any
+  remaining `provider_connections` rows with `provider IN ('mlproxy', 'mlspace')` —
+  this is not recoverable without a pre-migration database backup.
+- **Bare `gigachat` provider identity retired in favor of per-certificate
+  `gigachat-compatible-<connection-id>`**: `PROVIDER_WHITELIST` is now
+  `["gigachat-compatible", "openai-compatible"]` and rejects the bare `gigachat`,
+  `mlproxy`, and `mlspace` identifiers outright. Migration
+  `db/migrations/postgres/0013_migrate_gigachat_to_compatible.sql` renames every
+  existing bare-`gigachat` connection to a unique `gigachat-compatible-<id>` value
+  (collision-laddered `-2`/`-3`/`-4` suffixes, idempotent, all other fields untouched)
+  the first time migrations are applied.
+- **Per-connection model isolation**: with the rename above, every GigaChat-compatible
+  connection now has a globally unique provider string, which is the key used for
+  executor caching (`getExecutor()`), discovered-model caching
+  (`providerId:connectionId`), and mTLS dispatcher caching (SHA-256 fingerprint of the
+  connection's own cert/key/ca paths) — two connections can never share an executor
+  instance, a model cache entry, or a TLS identity, even if both speak "GigaChat".
+
+### ✨ New Features
+
+- **compression (relevance):** port upstream #5289 — relevance-aware compression mode that skips compressing messages the model needs verbatim; opt-in, off by default.
+- **compression (hard-budget):** port upstream #5288 — hard token-budget enforcement mode that truncates to a configurable ceiling; opt-in, off by default.
+- **compression (memoization):** port upstream #5286 — memoize compression results for identical inputs to avoid redundant LLM calls; opt-in.
+- **compression (transparency):** port upstream #5284 — add `X-Compression-Stats` response header with per-request savings metrics.
+- **compression (saliency data-layer):** port upstream #5285 — data-layer for saliency scoring; no UI page (data-layer only per plan decision).
+- **compression (RTK renderers):** port upstream #5268 — git-diff, pytest, and terraform output renderers for RTK engine.
+- **compression (RTK splitter):** port upstream #5283 — quote-aware line splitter for RTK engine.
+- **compression (RTK QuantumLock):** port upstream #5260 — prefix-stabilization pass to prevent token boundary drift across compression runs.
+- **combo (stickiness):** port upstream #5248 — session-sticky routing that keeps a conversation on the same provider/model across turns; integrates with `sessionManager.ts`.
+- **combo (advance-on-400):** port upstream #5249 — automatically advance to the next combo target on 400-class errors instead of surfacing them to the client.
+- **security (origin-validation):** port upstream #5278 — validate `Origin` header on state-mutating requests to prevent CSRF-style mutations.
+- **GigaChat core parity (mTLS-only):** full bidirectional `tools[]`↔`functions[]` + `tool_choice`↔`function_call` conversion; `functions_state_id` raw-JSON extension passthrough on `chat/completions`; `X-Session-ID` client-passthrough; `precached_prompt_tokens`→`usage.prompt_tokens_details.cached_tokens` mapping; bidirectional reasoning (`reasoning_content`); `response_format` structured-output passthrough; streaming `delta.function_call` conversion with `hasValuableContent` guard fix.
+- **Provider whitelist invariant:** mutation-verified test locks `PROVIDER_WHITELIST` to `["gigachat-compatible", "openai-compatible"]`; rejects all 12 removed provider IDs.
+
+### 🐛 Bug Fixes
+
+- **GigaChat streaming:** fix `hasValuableContent` guard executing before `delta.function_call` conversion, causing function-call-only chunks to be silently dropped.
+- **GigaChat `functions_state_id`:** field was silently dropped by `sanitizeMessage` allowlist rebuild; added explicit preservation in `responseSanitizer.ts`.
+- **GigaChat mock fixture:** removed legacy OpenAI-shaped `tool_calls` mode; all tests now use true GigaChat wire format (`delta.function_call`, `message.function_call`).
+- **OAuth artifacts purged:** removed `/oauth/token` endpoint from mock fixture, `authUrl` seed from `postgres-roundtrip.test.ts`, and bare `provider:"gigachat"` references replaced with `gigachat-compatible-*`.
+
+### 🛠️ Maintenance
+
+- Removed the `omniroute-cli-cloud` skill and its cross-references from `skills/README.md`,
+  `skills/omniroute-cli/SKILL.md`, and `skills/omniroute/SKILL.md`.
+
 ---
 
 ## [3.9.0] — 2026-06-07
@@ -171,7 +232,7 @@
 - **warning-cleanup:** relax node engine constraint to `>=22.0.0` and clean dependencies (keeping `marked-terminal` to prevent TUI REPL crash) (#2792 — thanks @oyi77)
 - **combo:** normalize upstream Headers into a plain object before classification to avoid Node 24 / undici cross-instance `Cannot read private member #headers` crash on combo failover (#2751)
 - **translator:** silently drop `tool_search` built-in tool type instead of returning 400 — newer Codex clients send `tool_search` as a Responses API built-in with no Chat Completions equivalent (#2766)
-- **usage:** un-invert GitHub Copilot Free / limited plan quota — `limited_user_quotas` is the *remaining* count, not used, so the dashboard now shows 100% when the quota is untouched and 0% when fully exhausted (#2876 — thanks @androw)
+- **usage:** un-invert GitHub Copilot Free / limited plan quota — `limited_user_quotas` is the _remaining_ count, not used, so the dashboard now shows 100% when the quota is untouched and 0% when fully exhausted (#2876 — thanks @androw)
 - **fix(cli):** register openclaw in the CLI tool-detector so it appears in `omniroute status` alongside its existing API and config support ([#2833](https://github.com/diegosouzapw/OmniRoute/issues/2833))
 - **oauth (windsurf):** hotfix Windsurf login — drop the dead PKCE flow and promote the import-token flow as the default ([#2884](https://github.com/diegosouzapw/OmniRoute/pull/2884) — thanks @yunaamelia)
 - **antigravity:** normalize textual SSE tool calls and classify Gemini Antigravity resource exhaustion as a model lockout instead of a connection failure ([#2828](https://github.com/diegosouzapw/OmniRoute/pull/2828) — thanks @Ardem2025)
@@ -206,33 +267,33 @@
 
 A special thanks to everyone who contributed to this release. Ranked by commits since `v3.8.6` (105 commits total):
 
-| Contributor | Commits | PRs |
-| --- | ---: | --- |
-| [@diegosouzapw](https://github.com/diegosouzapw) | 38 | maintainer — releases, upstream ports & fixes |
-| [@oyi77](https://github.com/oyi77) | 10 | #2887, #2862, #2866, #2837, #2885, #2792, #2793 |
-| [@yunaamelia](https://github.com/yunaamelia) | 7 | #2884 |
-| [@herjarsa](https://github.com/herjarsa) | 6 | #2868, #2886, #2865, #2860, #2857, #2801 |
-| [@leninejunior](https://github.com/leninejunior) | 4 | #2818, #2824, #2825, #2816 |
-| [@jeferssonlemes](https://github.com/jeferssonlemes) | 3 | #2791, #2802, #2815, #2817 |
-| [@rdself](https://github.com/rdself) | 3 | #2874, #2875, #2880 |
-| Dmitry Kuznetsov | 3 | textual tool-call & lockout hardening |
-| [@apoapostolov](https://github.com/apoapostolov) | 2 | #2799, #2800 |
-| [@unitythemaker](https://github.com/unitythemaker) | 2 | #2904 |
-| Nikolay Alafuzov | 2 | reasoning interleaved gating |
-| [@Tushar49](https://github.com/Tushar49) | 2 | #2854, #2855, #2807 |
-| [@guanbear](https://github.com/guanbear) | 2 | #2908 |
-| [@soyelmismo](https://github.com/soyelmismo) | 2 | #2903, #2842 |
-| [@RajvardhanPatil07](https://github.com/RajvardhanPatil07) | 1 | #2861 |
-| [@mugnimaestra](https://github.com/mugnimaestra) | 1 | #2888 |
-| [@dhaern](https://github.com/dhaern) | 1 | #2878 |
-| [@hartmark](https://github.com/hartmark) | 1 | #2795, #2771 |
-| [@marchlhw](https://github.com/marchlhw) | 1 | #2821 |
-| [@alltomatos](https://github.com/alltomatos) | 1 | i18n pt-BR |
-| [@akarray](https://github.com/akarray) | 1 | #2796 |
-| [@gogones](https://github.com/gogones) | 1 | #2845 |
-| [@disonjer](https://github.com/disonjer) | 1 | #2840 |
-| [@nickwizard](https://github.com/nickwizard) | 1 | #2841 |
-| [@levonk](https://github.com/levonk) | 1 | #2806 |
+| Contributor                                                | Commits | PRs                                             |
+| ---------------------------------------------------------- | ------: | ----------------------------------------------- |
+| [@diegosouzapw](https://github.com/diegosouzapw)           |      38 | maintainer — releases, upstream ports & fixes   |
+| [@oyi77](https://github.com/oyi77)                         |      10 | #2887, #2862, #2866, #2837, #2885, #2792, #2793 |
+| [@yunaamelia](https://github.com/yunaamelia)               |       7 | #2884                                           |
+| [@herjarsa](https://github.com/herjarsa)                   |       6 | #2868, #2886, #2865, #2860, #2857, #2801        |
+| [@leninejunior](https://github.com/leninejunior)           |       4 | #2818, #2824, #2825, #2816                      |
+| [@jeferssonlemes](https://github.com/jeferssonlemes)       |       3 | #2791, #2802, #2815, #2817                      |
+| [@rdself](https://github.com/rdself)                       |       3 | #2874, #2875, #2880                             |
+| Dmitry Kuznetsov                                           |       3 | textual tool-call & lockout hardening           |
+| [@apoapostolov](https://github.com/apoapostolov)           |       2 | #2799, #2800                                    |
+| [@unitythemaker](https://github.com/unitythemaker)         |       2 | #2904                                           |
+| Nikolay Alafuzov                                           |       2 | reasoning interleaved gating                    |
+| [@Tushar49](https://github.com/Tushar49)                   |       2 | #2854, #2855, #2807                             |
+| [@guanbear](https://github.com/guanbear)                   |       2 | #2908                                           |
+| [@soyelmismo](https://github.com/soyelmismo)               |       2 | #2903, #2842                                    |
+| [@RajvardhanPatil07](https://github.com/RajvardhanPatil07) |       1 | #2861                                           |
+| [@mugnimaestra](https://github.com/mugnimaestra)           |       1 | #2888                                           |
+| [@dhaern](https://github.com/dhaern)                       |       1 | #2878                                           |
+| [@hartmark](https://github.com/hartmark)                   |       1 | #2795, #2771                                    |
+| [@marchlhw](https://github.com/marchlhw)                   |       1 | #2821                                           |
+| [@alltomatos](https://github.com/alltomatos)               |       1 | i18n pt-BR                                      |
+| [@akarray](https://github.com/akarray)                     |       1 | #2796                                           |
+| [@gogones](https://github.com/gogones)                     |       1 | #2845                                           |
+| [@disonjer](https://github.com/disonjer)                   |       1 | #2840                                           |
+| [@nickwizard](https://github.com/nickwizard)               |       1 | #2841                                           |
+| [@levonk](https://github.com/levonk)                       |       1 | #2806                                           |
 
 _Reviews & additional contributions: @androw, @Ardem2025, @InkshadeWoods._
 
@@ -267,7 +328,6 @@ _Reviews & additional contributions: @androw, @Ardem2025, @InkshadeWoods._
 
 A special thanks to everyone who contributed code, reviews, and tests for this release:
 @akarray, @hartmark, @hijak, @JxnLexn, @kjhq, @rdself, @thanet-s
-
 
 ---
 

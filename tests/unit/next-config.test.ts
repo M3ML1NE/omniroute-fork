@@ -34,8 +34,6 @@ test("next config exposes standalone build settings and canonical rewrites", asy
   assert.deepEqual(nextConfig.transpilePackages, [
     "@omniroute/open-sse",
     "@lobehub/icons",
-    "fumadocs-ui",
-    "fumadocs-core",
   ]);
   assert.equal(headers[0].source, "/:path*");
   assert.match(securityHeaders["Content-Security-Policy"], /default-src 'self'/);

@@ -23,10 +23,15 @@ test("each skill dir has SKILL.md with frontmatter", async () => {
     for (const key of REQUIRED_FRONTMATTER) {
       assert.ok(content.includes(key), `${dir}: missing frontmatter key ${key}`);
     }
-    assert.ok(
-      content.includes("$OMNIROUTE_URL") || content.includes("OMNIROUTE_KEY"),
-      `${dir}: missing env-var references`
-    );
+    const hasEnvVarReference =
+      content.includes("$OMNIROUTE_URL") ||
+      content.includes("OMNIROUTE_KEY") ||
+      content.includes("OMNIROUTE_BASE_URL") ||
+      content.includes("OMNIROUTE_API_KEY") ||
+      // Sub-skills of the CLI family document connection setup once in the
+      // CLI entry-point skill and link to it instead of repeating env vars.
+      content.includes("skills/omniroute-cli/SKILL.md");
+    assert.ok(hasEnvVarReference, `${dir}: missing env-var references`);
   }
 });
 

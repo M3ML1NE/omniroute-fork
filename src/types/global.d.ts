@@ -11,12 +11,10 @@ declare namespace NodeJS {
     INITIAL_PASSWORD?: string;
     AUTH_COOKIE_SECURE?: string;
     API_KEY_SECRET?: string;
-    CLOUD_URL?: string;
     BASE_URL?: string;
     NEXT_PUBLIC_BASE_URL?: string;
     PROMPT_CACHE_MAX_SIZE?: string;
     PROMPT_CACHE_TTL_MS?: string;
-    NEXT_PUBLIC_CLOUD_URL?: string;
     API_PORT?: string;
     PORT?: string;
     API_HOST?: string;

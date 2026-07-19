@@ -5,7 +5,6 @@ import path from "node:path";
 
 const providerLimitUtils =
   await import("../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.tsx");
-const providerConstants = await import("../../src/shared/constants/providers.ts");
 const settingsSchemas = await import("../../src/shared/validation/settingsSchemas.ts");
 
 test("provider plan fallbacks normalize to Unknown instead of repeating provider labels", () => {
@@ -32,18 +31,7 @@ test("paid individual tiers use non-gray badge variants", () => {
   assert.equal(providerLimitUtils.normalizePlanTier("Free").variant, "default");
 });
 
-test("Codex workspacePlanType is used when live plan is missing or unknown", () => {
-  const resolvedPlan = providerLimitUtils.resolvePlanValue("unknown", {
-    workspacePlanType: "plus",
-  });
-
-  assert.equal(resolvedPlan, "plus");
-  const tier = providerLimitUtils.normalizePlanTier(resolvedPlan);
-  assert.equal(tier.key, "plus");
-  assert.equal(tier.variant, "success");
-});
-
-test("Claude providerSpecificData plan is used when live plan is missing", () => {
+test("providerSpecificData plan is used when live plan is missing", () => {
   const resolvedPlan = providerLimitUtils.resolvePlanValue(null, {
     plan: "Pro",
   });
@@ -54,30 +42,29 @@ test("Claude providerSpecificData plan is used when live plan is missing", () =>
   assert.equal(tier.variant, "success");
 });
 
-test("Claude bootstrap rate_limit_tier maps default_claude_max_20x to Max 20x", () => {
+test("generic rate limit tiers map to max badges", () => {
   const resolvedPlan = providerLimitUtils.resolvePlanValue(null, {
-    organizationType: "default_claude_ai",
-    organizationRateLimitTier: "default_claude_max_20x",
+    organizationRateLimitTier: "default_max_20x",
   });
 
-  assert.equal(resolvedPlan, "default_claude_max_20x");
+  assert.equal(resolvedPlan, "default_max_20x");
   const tier = providerLimitUtils.normalizePlanTier(resolvedPlan);
   assert.equal(tier.key, "ultra");
-  assert.equal(tier.label, "Max 20x");
+  assert.equal(tier.label, "Max");
 });
 
-test("Claude organization_type default_claude_ai is ignored without rate_limit_tier", () => {
-  const resolvedPlan = providerLimitUtils.resolvePlanValue("Claude Code", {
-    organizationType: "default_claude_ai",
+test("organization type is used as a generic plan fallback", () => {
+  const resolvedPlan = providerLimitUtils.resolvePlanValue(null, {
+    organizationType: "enterprise",
   });
 
-  assert.equal(resolvedPlan, null);
+  assert.equal(resolvedPlan, "enterprise");
   const tier = providerLimitUtils.normalizePlanTier(resolvedPlan);
-  assert.equal(tier.label, "Unknown");
+  assert.equal(tier.label, "Enterprise");
 });
 
-test("MiniMax coding plan titles map to tier badges", () => {
-  const proTier = providerLimitUtils.normalizePlanTier("MiniMax Coding Plan Pro");
+test("generic coding plan titles map to tier badges", () => {
+  const proTier = providerLimitUtils.normalizePlanTier("Coding Plan Pro");
   assert.equal(proTier.key, "pro");
   assert.equal(proTier.label, "Pro");
 
@@ -85,8 +72,8 @@ test("MiniMax coding plan titles map to tier badges", () => {
   assert.equal(starterTier.key, "lite");
   assert.equal(starterTier.label, "Starter");
 
-  const minimaxOnly = providerLimitUtils.normalizePlanTier("MiniMax Coding Plan");
-  assert.notEqual(minimaxOnly.key, "ultra");
+  const genericOnly = providerLimitUtils.normalizePlanTier("Coding Plan");
+  assert.notEqual(genericOnly.key, "ultra");
 });
 
 test("tier token matching ignores embedded substrings", () => {
@@ -120,17 +107,11 @@ test("quota labels normalize session and weekly windows while preserving readabl
   assert.equal(providerLimitUtils.formatQuotaLabel("mcp_monthly"), "Monthly");
 });
 
-test("MiniMax providers are exposed to the limits dashboard support list", () => {
-  assert.ok(providerConstants.USAGE_SUPPORTED_PROVIDERS.includes("zai"));
-  assert.ok(providerConstants.USAGE_SUPPORTED_PROVIDERS.includes("minimax"));
-  assert.ok(providerConstants.USAGE_SUPPORTED_PROVIDERS.includes("minimax-cn"));
-});
-
-test("MiniMax quota payloads use generic provider parsing and stale resets still refill", () => {
+test("generic quota payloads use provider-agnostic parsing and stale resets still refill", () => {
   const future = new Date(Date.now() + 5 * 60_000).toISOString();
   const past = new Date(Date.now() - 5 * 60_000).toISOString();
 
-  const parsed = providerLimitUtils.parseQuotaData("minimax", {
+  const parsed = providerLimitUtils.parseQuotaData("openai-compatible-demo", {
     quotas: {
       "session (5h)": {
         used: 400,
@@ -160,8 +141,8 @@ test("MiniMax quota payloads use generic provider parsing and stale resets still
   assert.equal(providerLimitUtils.formatQuotaLabel(parsed[1].name), "Weekly");
 });
 
-test("GLM quota rows are ordered by session, weekly, then monthly", () => {
-  const parsed = providerLimitUtils.parseQuotaData("glm", {
+test("generic quota rows preserve payload order", () => {
+  const parsed = providerLimitUtils.parseQuotaData("openai-compatible-demo", {
     quotas: {
       mcp_monthly: { used: 10, total: 100, remainingPercentage: 90 },
       weekly: { used: 20, total: 100, remainingPercentage: 80 },
@@ -171,13 +152,13 @@ test("GLM quota rows are ordered by session, weekly, then monthly", () => {
 
   assert.deepEqual(
     parsed.map((quota) => quota.name),
-    ["session", "weekly", "mcp_monthly"]
+    ["mcp_monthly", "weekly", "session"]
   );
 });
 
-test("dashboard i18n keys used by OrFallback helpers exist in en.json", () => {
-  const enPath = path.resolve("src/i18n/messages/en.json");
-  const messages = JSON.parse(readFileSync(enPath, "utf8"));
+test("dashboard i18n keys used by OrFallback helpers exist in ru.json", () => {
+  const ruPath = path.resolve("src/i18n/messages/ru.json");
+  const messages = JSON.parse(readFileSync(ruPath, "utf8"));
 
   const required: Array<[string, string]> = [
     ["combos", "emailVisibilityHint"],
@@ -191,14 +172,14 @@ test("dashboard i18n keys used by OrFallback helpers exist in en.json", () => {
 
   for (const [ns, key] of required) {
     const value = messages[ns]?.[key];
-    assert.equal(typeof value, "string", `${ns}.${key} should be defined in en.json`);
+    assert.equal(typeof value, "string", `${ns}.${key} should be defined in ru.json`);
     assert.ok(!value.startsWith("__MISSING__:"), `${ns}.${key} should not be a placeholder`);
   }
 });
 
 test("usage namespace includes Provider Limits UI translation keys", () => {
-  const enPath = path.resolve("src/i18n/messages/en.json");
-  const messages = JSON.parse(readFileSync(enPath, "utf8"));
+  const ruPath = path.resolve("src/i18n/messages/ru.json");
+  const messages = JSON.parse(readFileSync(ruPath, "utf8"));
   const usage = messages.usage;
 
   for (const key of [
@@ -217,7 +198,7 @@ test("usage namespace includes Provider Limits UI translation keys", () => {
     "editCutoffs",
     "forceRefresh",
   ]) {
-    assert.equal(typeof usage[key], "string", `usage.${key} should be defined in en.json`);
+    assert.equal(typeof usage[key], "string", `usage.${key} should be defined in ru.json`);
     assert.ok(!usage[key].startsWith("__MISSING__:"), `usage.${key} should not be a placeholder`);
   }
 });

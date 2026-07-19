@@ -1,6 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import { isModelSyncInternalRequest } from "../../../shared/services/modelSyncScheduler";
-import { isAuthRequired, isDashboardSessionAuthenticated } from "../../../shared/utils/apiAuth";
+import {
+  isAuthRequired,
+  isDashboardSessionAuthenticated,
+  isLoopbackRequest as isLoopbackRequestLike,
+} from "../../../shared/utils/apiAuth";
 import { getLegacyCliTokenSync, getMachineTokenSync } from "../../../lib/machineToken";
 import type { AuthOutcome, PolicyContext, RoutePolicy } from "../context";
 import { allow, reject } from "../context";
@@ -21,9 +25,14 @@ function requestPeerAddress(ctx: PolicyContext): string | null {
   return ctx.request.ip || ctx.request.socket?.remoteAddress || null;
 }
 
+// NextRequest in this Next.js version carries no `.ip`/`.socket` — fall back
+// to the shared hostname-based loopback check (nextUrl.hostname → url →
+// Host header) used by isCliTokenAuthValid, instead of always returning
+// false when no peer address is present.
 function isLoopbackRequest(ctx: PolicyContext): boolean {
   const peerAddress = requestPeerAddress(ctx);
-  return peerAddress ? isLoopbackHost(peerAddress) : false;
+  if (peerAddress) return isLoopbackHost(peerAddress);
+  return isLoopbackRequestLike(ctx.request as unknown as Request);
 }
 
 function hasValidCliToken(ctx: PolicyContext): boolean {

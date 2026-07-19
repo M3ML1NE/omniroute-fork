@@ -78,15 +78,15 @@ describe("Settings API - persisted preferences", () => {
   });
 
   describe("hiddenSidebarItems", () => {
-    test("updateSettings with hiddenSidebarItems=['translator'] succeeds", async () => {
-      const result = await harness.updateSettings({ hiddenSidebarItems: ["translator"] });
+    test("updateSettings with hiddenSidebarItems=['providers'] succeeds", async () => {
+      const result = await harness.updateSettings({ hiddenSidebarItems: ["providers"] });
       assert.ok(result, "updateSettings should return truthy result");
 
       const settings = await harness.getSettings();
       assert.deepStrictEqual(
         settings.hiddenSidebarItems,
-        ["translator"],
-        "hiddenSidebarItems should contain translator"
+        ["providers"],
+        "hiddenSidebarItems should contain providers"
       );
     });
 
@@ -107,7 +107,7 @@ describe("Settings API - persisted preferences", () => {
     test("updateSettings with both debugMode and hiddenSidebarItems succeeds", async () => {
       const result = await harness.updateSettings({
         debugMode: true,
-        hiddenSidebarItems: ["translator"],
+        hiddenSidebarItems: ["providers"],
       });
       assert.ok(result, "updateSettings should return truthy result");
 
@@ -115,47 +115,23 @@ describe("Settings API - persisted preferences", () => {
       assert.strictEqual(settings.debugMode, true, "debugMode should be true");
       assert.deepStrictEqual(
         settings.hiddenSidebarItems,
-        ["translator"],
+        ["providers"],
         "hiddenSidebarItems should be updated"
       );
     });
 
 
-    test("PATCH /api/settings persists endpoint tunnel visibility", async () => {
-      const response = await harness.settingsRoute.PATCH(
-        await makeManagementSessionRequest("http://localhost/api/settings", {
-          method: "PATCH",
-          body: {
-            hideEndpointCloudflaredTunnel: true,
-            hideEndpointTailscaleFunnel: true,
-            hideEndpointNgrokTunnel: true,
-          },
-        })
-      );
-      const body = (await response.json()) as Record<string, unknown>;
-
-      assert.equal(response.status, 200);
-      assert.equal(body.hideEndpointCloudflaredTunnel, true);
-      assert.equal(body.hideEndpointTailscaleFunnel, true);
-      assert.equal(body.hideEndpointNgrokTunnel, true);
-
-      const settings = await harness.getSettings();
-      assert.equal(settings.hideEndpointCloudflaredTunnel, true);
-      assert.equal(settings.hideEndpointTailscaleFunnel, true);
-      assert.equal(settings.hideEndpointNgrokTunnel, true);
-    });
-
     test("PUT /api/settings reuses the PATCH update flow", async () => {
       const response = await harness.settingsRoute.PUT(
         await makeManagementSessionRequest("http://localhost/api/settings", {
           method: "PUT",
-          body: { hideEndpointCloudflaredTunnel: true },
+          body: { hideHealthCheckLogs: true },
         })
       );
       const body = (await response.json()) as Record<string, unknown>;
 
       assert.equal(response.status, 200);
-      assert.equal(body.hideEndpointCloudflaredTunnel, true);
+      assert.equal(body.hideHealthCheckLogs, true);
     });
   });
 });

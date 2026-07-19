@@ -143,7 +143,7 @@ test("builds compact Claude stream summary for detailed logs", () => {
 
   const summary = buildStreamSummaryFromEvents(
     collector.getEvents(),
-    FORMATS.CLAUDE,
+    "claude",
     "claude-sonnet-4"
   );
   const compact: any = compactStructuredStreamPayload(

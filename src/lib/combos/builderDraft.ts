@@ -3,29 +3,17 @@ import type { ComboModelStep } from "@/lib/combos/steps";
 type JsonRecord = Record<string, unknown>;
 
 export const COMBO_BUILDER_AUTO_CONNECTION = "__auto__";
-export const COMBO_BUILDER_STAGES = [
-  "basics",
-  "steps",
-  "strategy",
-  "intelligent",
-  "review",
-] as const;
+export const COMBO_BUILDER_STAGES = ["basics", "steps", "strategy", "review"] as const;
 
 export type ComboBuilderStage = (typeof COMBO_BUILDER_STAGES)[number];
 export type ComboBuilderStageOptions = {
   strategy?: string | null;
 };
 
-export function isIntelligentBuilderStrategy(strategy: unknown): boolean {
-  return strategy === "auto" || strategy === "lkgp";
-}
-
-export function getComboBuilderStages(options: ComboBuilderStageOptions = {}): ComboBuilderStage[] {
-  if (isIntelligentBuilderStrategy(options.strategy)) {
-    return [...COMBO_BUILDER_STAGES];
-  }
-
-  return COMBO_BUILDER_STAGES.filter((stage) => stage !== "intelligent");
+export function getComboBuilderStages(
+  _options: ComboBuilderStageOptions = {}
+): ComboBuilderStage[] {
+  return [...COMBO_BUILDER_STAGES];
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -181,18 +169,16 @@ export function getComboBuilderStageChecks({
   nameError,
   modelsCount,
   hasInvalidWeightedTotal,
-  hasCostOptimizedWithoutPricing,
 }: {
   name: string;
   nameError?: string | null;
   modelsCount: number;
   hasInvalidWeightedTotal?: boolean;
-  hasCostOptimizedWithoutPricing?: boolean;
 }) {
   return {
     basics: Boolean(toTrimmedString(name)) && !toTrimmedString(nameError),
     steps: modelsCount > 0,
-    strategy: !Boolean(hasInvalidWeightedTotal) && !Boolean(hasCostOptimizedWithoutPricing),
+    strategy: !Boolean(hasInvalidWeightedTotal),
     review: false,
   };
 }
@@ -207,7 +193,6 @@ export function canAccessComboBuilderStage(
   if (stage === "basics") return true;
   if (stage === "steps") return checks.basics;
   if (stage === "strategy") return checks.basics && checks.steps;
-  if (stage === "intelligent") return checks.basics && checks.steps && checks.strategy;
   if (stage === "review") return checks.basics && checks.steps;
   return false;
 }

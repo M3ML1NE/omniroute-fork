@@ -1,5 +1,4 @@
 // Server startup script
-import initializeCloudSync from "./shared/services/initializeCloudSync";
 import { enforceWebRuntimeEnv } from "./lib/env/runtimeEnv";
 import { enforceSecrets } from "./shared/utils/secretsValidator";
 import { initAuditLog, cleanupExpiredLogs, logAuditEvent } from "./lib/compliance/index";
@@ -15,6 +14,7 @@ import { registerDefaultGuardrails } from "./lib/guardrails";
 import { ensurePersistentManagementPasswordHash } from "./lib/auth/managementPassword";
 import { createLogger } from "./shared/utils/logger";
 import { clearPool as clearMtlsPool } from "@omniroute/open-sse/services/mtlsAgent.ts";
+import { scheduleCapabilityCacheRefresh } from "./lib/providerModels/capabilityCache";
 
 const startupLog = createLogger("server-init");
 
@@ -58,7 +58,7 @@ async function startServer() {
     startupLog.warn({ err }, "Log cleanup failed");
   }
 
-  startupLog.info("Starting server with cloud sync");
+  startupLog.info("Starting server");
 
   try {
     let settings = await getSettings();
@@ -84,32 +84,30 @@ async function startServer() {
       startupLog.info("Global System Prompt restored from settings");
     }
 
-    // Initialize cloud sync
     startSpendBatchWriter();
     registerDefaultGuardrails();
     startupLog.info("Spend batch writer started");
     startupLog.info("Guardrail registry initialized");
-    await initializeCloudSync();
     startBudgetResetJob();
     startReasoningCacheCleanupJob();
     startRuntimeConfigHotReload();
+
+    // Warm the capability mirror from the discovery cache (non-blocking).
+    scheduleCapabilityCacheRefresh();
 
     const shutdown = (signal: string) => {
       try {
         clearMtlsPool();
         startupLog.info({ signal }, "mTLS dispatcher pool cleared");
       } catch (err) {
-        startupLog.warn(
-          { err: getErrorMessage(err) },
-          "Error during mTLS pool shutdown",
-        );
+        startupLog.warn({ err: getErrorMessage(err) }, "Error during mTLS pool shutdown");
       }
       process.exit(0);
     };
     process.once("SIGTERM", () => shutdown("SIGTERM"));
     process.once("SIGINT", () => shutdown("SIGINT"));
 
-    startupLog.info("Server started with cloud sync initialized");
+    startupLog.info("Server started");
 
     // Log server start event to audit log
     logAuditEvent({
@@ -121,7 +119,7 @@ async function startServer() {
       details: { timestamp: new Date().toISOString() },
     });
   } catch (error) {
-    startupLog.error({ err: error }, "Error initializing cloud sync");
+    startupLog.error({ err: error }, "Error during server startup");
     process.exit(1);
   }
 

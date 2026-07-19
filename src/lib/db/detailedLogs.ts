@@ -43,10 +43,8 @@ async function requestDetailLogsTableExists(): Promise<boolean> {
 
   const db = getDbInstance();
   const row = (await db
-    .prepare(
-      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'request_detail_logs'"
-    )
-    .get()) as { name?: string } | undefined;
+    .prepare("SELECT to_regclass('request_detail_logs') AS name")
+    .get()) as { name?: string | null } | undefined;
   requestDetailLogsTableExistsCache = Boolean(row?.name);
   return requestDetailLogsTableExistsCache;
 }
@@ -72,7 +70,7 @@ export async function isDetailedLoggingEnabled(): Promise<boolean> {
 export async function saveRequestDetailLog(entry: RequestDetailLog): Promise<void> {
   if (nonCriticalDbDisabled()) return;
   const noLogEnabled =
-    Boolean(entry.no_log) || (entry.api_key_id ? isNoLog(entry.api_key_id) : false);
+    Boolean(entry.no_log) || (entry.api_key_id ? await isNoLog(entry.api_key_id) : false);
   if (noLogEnabled || !(await requestDetailLogsTableExists())) return;
 
   const db = getDbInstance();
@@ -104,6 +102,19 @@ export async function saveRequestDetailLog(entry: RequestDetailLog): Promise<voi
       entry.target_format ?? null,
       entry.duration_ms ?? 0
     );
+
+  await db
+    .prepare(
+      `
+      DELETE FROM request_detail_logs
+      WHERE id IN (
+        SELECT id FROM request_detail_logs
+        ORDER BY timestamp DESC
+        OFFSET 500
+      )
+    `
+    )
+    .run();
 }
 
 /** Fetch detailed logs (latest first) */

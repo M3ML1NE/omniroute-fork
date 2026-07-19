@@ -229,23 +229,14 @@ test("callVisionModel uses correct request body format", async () => {
   }
 });
 
-test("callVisionModel fetches remote images before Anthropic requests", async () => {
+test("callVisionModel routes non-openai providers through the OmniRoute self-loop with the full model id", async () => {
   const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
 
   globalThis.fetch = async (url: URL | RequestInfo, init?: RequestInit) => {
-    const requestUrl = String(url);
-    fetchCalls.push({ url: requestUrl, init });
-
-    if (requestUrl === "https://cdn.example.com/cat.png") {
-      return new Response(Buffer.from("cat-image-bytes"), {
-        status: 200,
-        headers: { "Content-Type": "image/png" },
-      });
-    }
-
+    fetchCalls.push({ url: String(url), init });
     return new Response(
       JSON.stringify({
-        content: [{ type: "text", text: "A cat sitting on a chair" }],
+        choices: [{ message: { content: "A cat sitting on a chair" } }],
       }),
       {
         status: 200,
@@ -255,6 +246,11 @@ test("callVisionModel fetches remote images before Anthropic requests", async ()
   };
 
   try {
+    // A non-"openai/" provider prefix (e.g. "anthropic/") can only be
+    // resolved through OmniRoute's own self-loop router, not a direct
+    // upstream endpoint — see resolveVisionBridgeBaseUrl(). Remote image
+    // URLs are passed through as-is (no separate pre-fetch) since the
+    // OpenAI-compatible vision API fetches them itself.
     const config: VisionModelConfig = {
       model: "anthropic/claude-3-haiku",
       prompt: "Describe this image",
@@ -265,15 +261,15 @@ test("callVisionModel fetches remote images before Anthropic requests", async ()
     const result = await callVisionModel("https://cdn.example.com/cat.png", config, "sk-ant");
 
     assert.strictEqual(result, "A cat sitting on a chair");
-    assert.strictEqual(fetchCalls.length, 2);
-    assert.strictEqual(fetchCalls[0].url, "https://cdn.example.com/cat.png");
-    assert.strictEqual(fetchCalls[1].url, "https://api.anthropic.com/v1/messages");
+    assert.strictEqual(fetchCalls.length, 1);
+    assert.strictEqual(fetchCalls[0].url, "http://localhost:20128/v1/chat/completions");
 
-    const anthropicBody = JSON.parse(fetchCalls[1].init?.body as string);
-    const imageSource = anthropicBody.messages[0].content[0].source;
-    assert.strictEqual(imageSource.type, "base64");
-    assert.strictEqual(imageSource.media_type, "image/png");
-    assert.strictEqual(imageSource.data, Buffer.from("cat-image-bytes").toString("base64"));
+    const requestBody = JSON.parse(fetchCalls[0].init?.body as string);
+    // Full provider-prefixed model id is kept for self-loop calls so
+    // OmniRoute can resolve the correct provider backend.
+    assert.strictEqual(requestBody.model, "anthropic/claude-3-haiku");
+    const imagePart = requestBody.messages[0].content[0] as { image_url: { url: string } };
+    assert.strictEqual(imagePart.image_url.url, "https://cdn.example.com/cat.png");
   } finally {
     globalThis.fetch = originalFetch;
   }

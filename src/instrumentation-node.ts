@@ -86,7 +86,6 @@ export async function registerNodejs(): Promise<void> {
   const [
     { initGracefulShutdown },
     { initApiBridgeServer },
-    { ensureCloudSyncInitialized },
     { startProviderLimitsSyncScheduler },
     { getSettings },
     { applyRuntimeSettings },
@@ -97,7 +96,6 @@ export async function registerNodejs(): Promise<void> {
   ] = await Promise.all([
     import("@/lib/gracefulShutdown"),
     import("@/lib/apiBridgeServer"),
-    import("@/lib/initCloudSync"),
     import("@/shared/services/providerLimitsSyncScheduler"),
     import("@/lib/db/settings"),
     import("@/lib/config/runtimeSettings"),
@@ -116,10 +114,6 @@ export async function registerNodejs(): Promise<void> {
   if (!isBackgroundServicesDisabled()) {
     startProviderLimitsSyncScheduler();
     console.log("[STARTUP] Provider limits sync scheduler started");
-    const cloudSyncInitialized = await ensureCloudSyncInitialized();
-    console.log(
-      `[STARTUP] Cloud/model sync background bootstrap ${cloudSyncInitialized ? "initialized" : "skipped"}`
-    );
   }
 
   try {

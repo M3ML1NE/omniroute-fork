@@ -53,7 +53,6 @@ test("config sync bundle is deterministic, strips auth settings, and ignores vol
     theme: "midnight",
     requireLogin: true,
     password: "hashed-password",
-    cloudEnabled: true,
   });
   const connection = await providersDb.createProviderConnection({
     provider: "openai",
@@ -78,7 +77,6 @@ test("config sync bundle is deterministic, strips auth settings, and ignores vol
   assert.deepEqual(first.bundle, second.bundle);
   assert.equal(first.bundle.settings.password, undefined);
   assert.equal(first.bundle.settings.requireLogin, undefined);
-  assert.equal(first.bundle.settings.cloudEnabled, undefined);
   assert.equal(first.bundle.providerConnections[0].apiKey, "sk-live-secret");
   assert.equal(first.bundle.modelAliases["smart-default"], "openai/gpt-4o-mini");
 

@@ -4,8 +4,6 @@
  * Automatically refreshes model lists for provider connections that have
  * autoSync enabled in their providerSpecificData, at a configurable
  * interval (default: 24h).
- *
- * Pattern mirrors cloudSyncScheduler.ts for consistency.
  */
 
 import { randomUUID } from "node:crypto";

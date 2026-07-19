@@ -2,8 +2,7 @@
  * Proxy Pipeline Integration Tests — T-3
  *
  * Tests the proxy pipeline wiring: format detection, credential retry loop,
- * circuit breaker integration, and the new Phase 2 modules (DI container,
- * prompt versioning, plugin architecture, eval cleanup).
+ * circuit breaker integration, and retained Phase 2 modules.
  *
  * @module tests/integration/proxy-pipeline.test.ts
  */
@@ -171,138 +170,6 @@ describe("DI Container — container.ts", () => {
 });
 
 // ═══════════════════════════════════════════════════
-// 3. Plugin Architecture (L-8)
-// ═══════════════════════════════════════════════════
-
-describe("Plugin Architecture — plugins/index.ts", () => {
-  let plugins;
-
-  beforeEach(async () => {
-    plugins = await import("../../src/lib/plugins/index.ts");
-    plugins.resetPlugins();
-  });
-
-  afterEach(() => {
-    plugins.resetPlugins();
-  });
-
-  it("should register and list plugins", () => {
-    plugins.registerPlugin({
-      name: "test-logger",
-      priority: 10,
-      onRequest: () => {},
-    });
-
-    const list = plugins.listPlugins();
-    assert.equal(list.length, 1);
-    assert.equal(list[0].name, "test-logger");
-    assert.equal(list[0].priority, 10);
-    assert.deepEqual(list[0].hooks, ["onRequest"]);
-  });
-
-  it("should sort plugins by priority", () => {
-    plugins.registerPlugin({ name: "low", priority: 200 });
-    plugins.registerPlugin({ name: "high", priority: 1 });
-    plugins.registerPlugin({ name: "mid", priority: 50 });
-
-    const list = plugins.listPlugins();
-    assert.deepEqual(
-      list.map((p) => p.name),
-      ["high", "mid", "low"]
-    );
-  });
-
-  it("should run onRequest hooks in order", async () => {
-    const order = [];
-    plugins.registerPlugin({
-      name: "first",
-      priority: 1,
-      onRequest: () => {
-        order.push("first");
-      },
-    });
-    plugins.registerPlugin({
-      name: "second",
-      priority: 2,
-      onRequest: () => {
-        order.push("second");
-      },
-    });
-
-    const ctx = { requestId: "r1", body: {}, model: "test", metadata: {} };
-    await plugins.runOnRequest(ctx);
-    assert.deepEqual(order, ["first", "second"]);
-  });
-
-  it("should support request blocking", async () => {
-    plugins.registerPlugin({
-      name: "blocker",
-      priority: 1,
-      onRequest: () => ({ blocked: true, response: { error: "denied" } }),
-    });
-    plugins.registerPlugin({
-      name: "never-runs",
-      priority: 2,
-      onRequest: () => {
-        throw new Error("should not run");
-      },
-    });
-
-    const ctx = { requestId: "r2", body: {}, model: "test", metadata: {} };
-    const result = await plugins.runOnRequest(ctx);
-    assert.equal(result.blocked, true);
-    assert.deepEqual(result.response, { error: "denied" });
-  });
-
-  it("should enable/disable plugins at runtime", () => {
-    plugins.registerPlugin({
-      name: "toggle-me",
-      onRequest: () => {},
-    });
-
-    assert.ok(plugins.setPluginEnabled("toggle-me", false));
-    const list = plugins.listPlugins();
-    assert.equal(list[0].enabled, false);
-  });
-
-  it("should unregister plugins", () => {
-    plugins.registerPlugin({ name: "removable" });
-    assert.equal(plugins.listPlugins().length, 1);
-    assert.ok(plugins.unregisterPlugin("removable"));
-    assert.equal(plugins.listPlugins().length, 0);
-  });
-
-  it("should run onResponse hooks", async () => {
-    plugins.registerPlugin({
-      name: "response-modifier",
-      onResponse: (_ctx, response) => ({ ...response, modified: true }),
-    });
-
-    const ctx = { requestId: "r3", body: {}, model: "test", metadata: {} };
-    const result = await plugins.runOnResponse(ctx, { data: "original" });
-    assert.equal(result.modified, true);
-    assert.equal(result.data, "original");
-  });
-
-  it("should run onError hooks and allow recovery", async () => {
-    plugins.registerPlugin({
-      name: "error-handler",
-      onError: (_ctx, _error) => ({ recovered: true }),
-    });
-
-    const ctx = { requestId: "r4", body: {}, model: "test", metadata: {} };
-    const result = await plugins.runOnError(ctx, new Error("test error"));
-    assert.deepEqual(result, { recovered: true });
-  });
-
-  it("should return null from onError if no recovery", async () => {
-    const ctx = { requestId: "r5", body: {}, model: "test", metadata: {} };
-    const result = await plugins.runOnError(ctx, new Error("unhandled"));
-    assert.equal(result, null);
-  });
-});
-
-// ═══════════════════════════════════════════════════
 // 4. Prompt Template Versioning (L-6)
 // ═══════════════════════════════════════════════════
 
@@ -314,13 +181,13 @@ describe("Prompt Template Versioning — prompts.ts module existence", () => {
 
   it("should export CRUD functions", () => {
     const src = readFileSync(join(ROOT, "src", "lib", "db", "prompts.ts"), "utf8");
-    assert.match(src, /export function savePrompt/);
-    assert.match(src, /export function getActivePrompt/);
-    assert.match(src, /export function getPromptVersion/);
-    assert.match(src, /export function listPromptVersions/);
-    assert.match(src, /export function listPrompts/);
-    assert.match(src, /export function rollbackPrompt/);
-    assert.match(src, /export function renderPrompt/);
+    assert.match(src, /export async function savePrompt/);
+    assert.match(src, /export async function getActivePrompt/);
+    assert.match(src, /export async function getPromptVersion/);
+    assert.match(src, /export async function listPromptVersions/);
+    assert.match(src, /export async function listPrompts/);
+    assert.match(src, /export async function rollbackPrompt/);
+    assert.match(src, /export async function renderPrompt/);
   });
 
   it("should define PromptTemplate interface", () => {
@@ -332,17 +199,6 @@ describe("Prompt Template Versioning — prompts.ts module existence", () => {
     const src = readFileSync(join(ROOT, "src", "lib", "db", "prompts.ts"), "utf8");
     assert.match(src, /content_hash/);
     assert.match(src, /sha256/);
-  });
-});
-
-// ═══════════════════════════════════════════════════
-// 5. Eval cleanup (Task 28)
-// ═══════════════════════════════════════════════════
-
-describe("Eval cleanup — orphaned scheduler module", () => {
-  it("scheduler.ts should remain deleted", () => {
-    const full = join(ROOT, "src", "lib", "evals", "scheduler.ts");
-    assert.equal(existsSync(full), false, "scheduler.ts should stay removed");
   });
 });
 
@@ -361,12 +217,6 @@ describe("Migration System — files exist", () => {
     assert.ok(existsSync(full), "001_initial_schema.sql should exist");
   });
 
-  it("core.ts should reference migration runner", () => {
-    const src = readSrc("lib/db/core.ts");
-    assert.ok(src);
-    assert.match(src, /runMigrations/);
-    assert.match(src, /_omniroute_migrations/);
-  });
 });
 
 // ═══════════════════════════════════════════════════

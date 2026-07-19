@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import Database from "better-sqlite3";
 
 import { bootstrapEnv } from "../../scripts/build/bootstrap-env.mjs";
 
@@ -81,44 +80,9 @@ test("bootstrapEnv strips matching quotes from env values", () => {
   });
 });
 
-test("bootstrapEnv refuses to generate a new key over encrypted data", () => {
-  withTempEnv(({ dataDir }) => {
-    process.env.DATA_DIR = dataDir;
-    fs.mkdirSync(dataDir, { recursive: true });
-    const db = new Database(path.join(dataDir, "storage.sqlite"));
-    try {
-      db.exec(`
-        CREATE TABLE provider_connections (
-          id TEXT PRIMARY KEY,
-          access_token TEXT,
-          refresh_token TEXT,
-          api_key TEXT,
-          id_token TEXT
-        );
-      `);
-      db.prepare("INSERT INTO provider_connections (id, access_token) VALUES (?, ?)").run(
-        "conn-1",
-        "enc:v1:deadbeef:feedface:cafebabe"
-      );
-    } finally {
-      db.close();
-    }
-
-    assert.throws(
-      () => bootstrapEnv({ quiet: true }),
-      /Refusing to auto-generate STORAGE_ENCRYPTION_KEY/
-    );
-  });
-});
-
-test("bootstrapEnv fails closed when existing database cannot be inspected", () => {
-  withTempEnv(({ dataDir }) => {
-    process.env.DATA_DIR = dataDir;
-    fs.mkdirSync(path.join(dataDir, "storage.sqlite"), { recursive: true });
-
-    assert.throws(() => bootstrapEnv({ quiet: true }), /Unable to inspect existing database/);
-  });
-});
+// The SQLite decrypt-probe (#1622) that used to be tested here was removed
+// from bootstrap-env.mjs during the SQLite→Postgres migration; ciphertext
+// validation now happens in the Postgres-backed encryption layer at runtime.
 
 test("bootstrapEnv ignores blank dataDirOverride values", () => {
   withTempEnv(({ dataDir }) => {

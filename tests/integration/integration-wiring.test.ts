@@ -127,14 +127,8 @@ describe("Pipeline Wiring — sse chat handler", () => {
   });
 });
 
-describe("Pipeline Wiring — middleware proxy", () => {
-  const proxySrc = readProjectFile("src/proxy.ts");
+describe("Pipeline Wiring — authz pipeline", () => {
   const pipelineSrc = readProjectFile("src/server/authz/pipeline.ts");
-
-  it("should exist and delegate to authz pipeline", () => {
-    assert.ok(proxySrc, "src/proxy.ts should exist");
-    assert.match(proxySrc, /runAuthzPipeline/);
-  });
 
   it("should generate request id for tracing in the authz pipeline", () => {
     assert.ok(pipelineSrc, "src/server/authz/pipeline.ts should exist");
@@ -157,7 +151,6 @@ describe("API Routes — existence check", () => {
     "src/app/api/cache/stats/route.ts",
     "src/app/api/telemetry/summary/route.ts",
     "src/app/api/usage/budget/route.ts",
-    "src/app/api/usage/quota/route.ts",
     "src/app/api/fallback/chains/route.ts",
     "src/app/api/compliance/audit-log/route.ts",
     "src/app/api/evals/route.ts",
@@ -183,10 +176,6 @@ describe("API Routes — export HTTP methods", () => {
 
   it("/api/usage/budget should export GET and POST", () => {
     assertRouteMethods("src/app/api/usage/budget/route.ts", ["GET", "POST"]);
-  });
-
-  it("/api/usage/quota should export GET", () => {
-    assertRouteMethods("src/app/api/usage/quota/route.ts", ["GET"]);
   });
 
   it("/api/fallback/chains should export GET, POST, DELETE", () => {
@@ -284,14 +273,6 @@ describe("API Routes — dashboard and tool consumers", () => {
     assert.doesNotMatch(activeRequests, /border-black\/10/);
   });
 
-  it("keeps usage quota wired through A2A", () => {
-    const quotaSkill = readProjectFile("src/lib/a2a/skills/quotaManagement.ts");
-
-    assert.ok(quotaSkill, "quotaManagement skill should exist");
-    assert.match(quotaSkill, /\/api\/usage\/quota/);
-    assertRouteMethods("src/app/api/usage/quota/route.ts", ["GET"]);
-  });
-
   it("keeps legacy usage history and raw request-log APIs explicitly classified", () => {
     const usageStats = readProjectFile("src/shared/components/UsageStats.tsx");
 
@@ -301,7 +282,6 @@ describe("API Routes — dashboard and tool consumers", () => {
     assertRouteMethods("src/app/api/usage/request-logs/route.ts", ["GET"]);
     assertRouteMethods("src/app/api/usage/logs/route.ts", ["GET"]);
   });
-
 });
 
 describe("API Routes — T09 /v1 catalog consistency", () => {
@@ -355,7 +335,6 @@ describe("Dashboard Wiring — T05 payload rules", () => {
     assert.match(payloadRulesTabSrc, /method:\s*"PUT"/);
     assert.match(payloadRulesTabSrc, /default-raw/);
   });
-
 });
 
 // ─── Barrel Exports ─────────────────────────────────
@@ -464,9 +443,7 @@ describe("Page Integration — cost explorer wiring", () => {
     assert.ok(costExplorerUtils, "costExplorerUtils should exist");
     assert.match(costsPage, /CostExplorerCard/);
     assert.match(costsPage, /EXPLORER_GROUP_OPTIONS/);
-    assert.match(costsPage, /byServiceTier/);
     assert.match(costExplorerUtils, /buildCostExplorerRows/);
-    assert.match(costExplorerUtils, /serviceTier/);
   });
 });
 

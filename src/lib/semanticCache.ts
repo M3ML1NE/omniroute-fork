@@ -177,7 +177,7 @@ export async function getCachedResponse(signature): Promise<unknown> {
     const db = getDbInstance();
     const row = await db
       .prepare(
-        "SELECT response, tokens_saved FROM semantic_cache WHERE signature = ? AND expires_at > NOW()"
+        "SELECT response, tokens_saved FROM semantic_cache WHERE signature = ? AND expires_at::timestamptz > NOW()"
       )
       .get(signature);
 
@@ -269,7 +269,7 @@ export async function cleanExpiredEntries(): Promise<number> {
   try {
     const db = getDbInstance();
     const result = await db
-      .prepare("DELETE FROM semantic_cache WHERE expires_at <= NOW()")
+      .prepare("DELETE FROM semantic_cache WHERE expires_at::timestamptz <= NOW()")
       .run();
     return result.changes;
   } catch {
@@ -401,7 +401,7 @@ export async function getCacheStats() {
   try {
     const db = getDbInstance();
     const row = await db
-      .prepare("SELECT COUNT(*) as count FROM semantic_cache WHERE expires_at > NOW()")
+      .prepare("SELECT COUNT(*) as count FROM semantic_cache WHERE expires_at::timestamptz > NOW()")
       .get();
     dbSize = toNumber(asRecord(row).count, 0);
   } catch {

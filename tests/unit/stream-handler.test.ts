@@ -173,7 +173,7 @@ test("createDisconnectAwareStream emits Claude SSE errors for Claude clients", a
 
   const stream = createDisconnectAwareStream(
     transformStream,
-    createStreamController({ clientResponseFormat: FORMATS.CLAUDE })
+    createStreamController({ clientResponseFormat: "claude" })
   );
   const text = await readStreamText(stream);
 
@@ -208,7 +208,7 @@ test("createDisconnectAwareStream keeps newlines escaped for Claude SSE errors",
 
   const stream = createDisconnectAwareStream(
     transformStream,
-    createStreamController({ clientResponseFormat: FORMATS.CLAUDE })
+    createStreamController({ clientResponseFormat: "claude" })
   );
   const text = await readStreamText(stream);
 

@@ -55,19 +55,20 @@ function makeCtx(
   headers: Record<string, string>,
   requestExtras: Record<string, unknown> = {}
 ) {
+  const host = headers.host ?? headers.Host ?? "localhost:20128";
   return {
     request: {
       method: "GET",
       headers: new Headers(headers),
       cookies: { get: () => undefined },
-      nextUrl: { pathname: path },
-      url: `http://localhost:20128${path}`,
+      nextUrl: { pathname: path, hostname: host.split(":")[0] },
+      url: `http://${host}${path}`,
       ...requestExtras,
     },
     classification: {
       routeClass: "MANAGEMENT" as const,
+      reason: "management_api" as const,
       normalizedPath: path,
-      method: "GET",
     },
     requestId: "test-req",
   };

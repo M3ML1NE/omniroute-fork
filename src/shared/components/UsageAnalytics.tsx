@@ -19,7 +19,6 @@ import {
   ProviderCostDonut,
   ModelOverTimeChart,
   ProviderTable,
-  ServiceTierBreakdown,
   ApiKeyFilterDropdown,
   CustomRangePicker,
 } from "./analytics";
@@ -323,12 +322,6 @@ export default function UsageAnalytics() {
                 value: `${ioRatio}x`,
                 color: "text-violet-500",
               },
-              {
-                icon: "bolt",
-                label: t("perfFastReq"),
-                value: fmt(s.fastRequests || 0),
-                color: "text-sky-500",
-              },
             ],
           },
           {
@@ -384,9 +377,6 @@ export default function UsageAnalytics() {
         <DailyTrendChart dailyTrend={analytics?.dailyTrend} />
         <ProviderCostDonut byProvider={analytics?.byProvider} />
       </div>
-
-      {/* Fast / Standard service tier split */}
-      <ServiceTierBreakdown byServiceTier={analytics?.byServiceTier} summary={s} />
 
       {/* Model Usage Over Time (stacked area) */}
       <ModelOverTimeChart

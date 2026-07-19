@@ -1,7 +1,4 @@
-import { ensureCloudSyncInitialized } from "@/lib/initCloudSync";
-
-// This API route is called automatically to initialize sync
+// This API route is called automatically as a startup/health probe.
 export async function GET() {
-  const initialized = await ensureCloudSyncInitialized();
-  return Response.json({ initialized });
+  return Response.json({ initialized: true });
 }

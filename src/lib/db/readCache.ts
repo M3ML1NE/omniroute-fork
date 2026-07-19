@@ -108,40 +108,6 @@ export async function getCachedProviderConnections(
   return value;
 }
 
-// ──────────────── LKGP Cache Wrappers ────────────────
-
-interface LKGPRecordCache {
-  provider: string;
-  connectionId?: string;
-}
-
-const lkgpCache = new TTLCache<LKGPRecordCache | null>(SETTINGS_TTL_MS);
-
-export async function getCachedLKGP(
-  comboName: string,
-  modelId: string
-): Promise<LKGPRecordCache | null> {
-  const cacheKey = `lkgp:${comboName}:${modelId}`;
-  const cached = lkgpCache.get(cacheKey);
-  if (cached !== undefined) return cached;
-
-  const { getLKGP } = await import("@/lib/db/settings");
-  const value = await getLKGP(comboName, modelId);
-  lkgpCache.set(cacheKey, value);
-  return value;
-}
-
-export async function setCachedLKGP(
-  comboName: string,
-  modelId: string,
-  providerId: string,
-  connectionId?: string
-): Promise<void> {
-  const { setLKGP } = await import("@/lib/db/settings");
-  await setLKGP(comboName, modelId, providerId, connectionId);
-  lkgpCache.invalidate(`lkgp:${comboName}:${modelId}`);
-}
-
 /**
  * Invalidate all caches (call after writes to any of: settings, pricing, connections).
  */

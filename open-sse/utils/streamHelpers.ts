@@ -56,7 +56,7 @@ export function hasValuableContent(chunk, format) {
   }
 
   // Claude format
-  if (format === FORMATS.CLAUDE) {
+  if (format === "claude") {
     const isContentBlockDelta = chunk.type === "content_block_delta";
     if (isContentBlockDelta) {
       const hasText = typeof chunk.delta?.text === "string" && chunk.delta.text.length > 0;
@@ -70,7 +70,7 @@ export function hasValuableContent(chunk, format) {
   }
 
   // Gemini / Antigravity format: filter chunks with no actual content parts
-  if ((format === FORMATS.GEMINI || format === FORMATS.ANTIGRAVITY) && chunk.candidates?.[0]) {
+  if ((format === "gemini" || format === "antigravity") && chunk.candidates?.[0]) {
     const candidate = chunk.candidates[0];
     // Keep chunks with finish reason or safety ratings (they signal completion)
     if (candidate.finishReason) return true;
@@ -133,7 +133,7 @@ export function formatSSE(data, sourceFormat) {
   data = cleanPerfMetrics(data);
 
   // Claude format
-  if (sourceFormat === FORMATS.CLAUDE && data && data.type) {
+  if (sourceFormat === "claude" && data && data.type) {
     return `event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`;
   }
 

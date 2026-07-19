@@ -1,3 +1,5 @@
+import { randomBase36 } from "@/shared/utils/secureRandom";
+
 const MAX_TRANSLATION_EVENTS = 200;
 const DEFAULT_TRANSLATION_EVENT_LIMIT = 50;
 
@@ -13,7 +15,7 @@ export function logTranslationEvent(event) {
 
   const events = ensureEventsBuffer();
   events.unshift({
-    id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `evt_${Date.now()}_${randomBase36(6)}`,
     timestamp: new Date().toISOString(),
     ...event,
   });

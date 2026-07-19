@@ -23,9 +23,6 @@ export interface Settings {
   maxBodySizeMb?: number;
   jwtSecret?: string;
   hideHealthCheckLogs?: boolean;
-  hideEndpointCloudflaredTunnel?: boolean;
-  hideEndpointTailscaleFunnel?: boolean;
-  hideEndpointNgrokTunnel?: boolean;
   autoRefreshProviderQuota?: boolean;
   autoRefreshProviderQuotaInterval?: number;
   pinProviderQuotaToHome?: boolean;

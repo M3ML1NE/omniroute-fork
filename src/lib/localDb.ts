@@ -125,11 +125,6 @@ export {
   // Settings
   getSettings,
   updateSettings,
-  isCloudEnabled,
-
-  // LKGP (Last Known Good Provider) (#919)
-  getLKGP,
-  setLKGP,
 
   // Pricing
   getPricing,
@@ -173,8 +168,6 @@ export {
   getCachedSettings,
   getCachedPricing,
   getCachedProviderConnections,
-  getCachedLKGP,
-  setCachedLKGP,
   invalidateDbCache,
 } from "./db/readCache";
 
@@ -252,14 +245,10 @@ export {
 export type { ProviderLimitsCacheEntry } from "./db/providerLimits";
 
 export {
-  getPersistedCreditBalance,
-  getAllPersistedCreditBalances,
-  persistCreditBalance,
-} from "./db/creditBalance";
-
-export {
   insertCompressionAnalyticsRow,
+  attachCompressionUsageReceipt,
   getCompressionAnalyticsSummary,
+  getPerEngineAnalytics,
 } from "./db/compressionAnalytics";
 
 export type {
@@ -277,7 +266,6 @@ export {
 
 export type { ReasoningCacheEntry, ReasoningCacheStats } from "./db/reasoningCache";
 
-
 export {
   getSessionAccountAffinity,
   upsertSessionAccountAffinity,
@@ -287,7 +275,6 @@ export {
   startSessionAccountAffinityCleanup,
   stopSessionAccountAffinityCleanupForTests,
 } from "./db/sessionAccountAffinity";
-
 
 export * from "./db/featureFlags";
 
@@ -356,7 +343,6 @@ export type {
   CreateRelayTokenInput,
   RelayTokenWithSecret,
 } from "./db/relayProxies";
-
 
 export {
   // Per-API-Key Token Limits (migration 073)

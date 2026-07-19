@@ -10,11 +10,7 @@ import {
   fmtCost,
   formatApiKeyLabel as maskApiKeyLabel,
 } from "@/shared/utils/formatting";
-import {
-  getServiceTierDisplayLabel,
-  translateCostText,
-  type TranslationFn,
-} from "@/shared/utils/formatting";
+import { translateCostText, type TranslationFn } from "@/shared/utils/formatting";
 import {
   BarChart,
   ComposedChart,
@@ -1098,101 +1094,6 @@ export function ModelTable({ byModel, summary }) {
             ))}
           </tbody>
         </table>
-      </div>
-    </Card>
-  );
-}
-
-export function ServiceTierBreakdown({ byServiceTier, summary }) {
-  const t = useTranslations("costs") as TranslationFn;
-  const data = useMemo(() => byServiceTier || [], [byServiceTier]);
-  const totalRequests = Number(summary?.totalRequests || 0);
-  const totalCost = Number(summary?.totalCost || 0);
-
-  if (!data.length) {
-    return null;
-  }
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="p-4 border-b border-border flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-          {translateCostText(t, "serviceTierBreakdownTitle", "Service Tier")}
-        </h3>
-        <span className="text-[11px] text-text-muted">
-          {translateCostText(t, "serviceTierBreakdownSubtitle", "Fast / Flex / Standard split")}
-        </span>
-      </div>
-      <div className="divide-y divide-border">
-        {data.map((tier) => {
-          const isFast = tier.serviceTier === "priority";
-          const isFlex = tier.serviceTier === "flex";
-          const tierLabel = getServiceTierDisplayLabel(t, tier.serviceTier, tier.label);
-          const requestPct =
-            totalRequests > 0
-              ? ((Number(tier.requests || 0) / totalRequests) * 100).toFixed(1)
-              : "0";
-          const costPct =
-            totalCost > 0 ? ((Number(tier.cost || 0) / totalCost) * 100).toFixed(1) : "0";
-          return (
-            <div key={tier.serviceTier} className="p-4 flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`material-symbols-outlined text-[18px] ${
-                      isFast ? "text-sky-500" : isFlex ? "text-emerald-500" : "text-text-muted"
-                    }`}
-                  >
-                    {isFast ? "bolt" : isFlex ? "savings" : "speed"}
-                  </span>
-                  <div>
-                    <div className="text-sm font-semibold text-text-main">{tierLabel}</div>
-                    <div className="text-xs text-text-muted">
-                      {fmtFull(tier.requests)} requests · {fmt(tier.totalTokens)} tokens
-                      {isFlex && Number(tier.usageSavingsTokens || 0) > 0
-                        ? ` · ${fmt(tier.usageSavingsTokens)} ${translateCostText(
-                            t,
-                            "serviceTierUsageSaved",
-                            "usage saved"
-                          )}`
-                        : ""}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div
-                    className={`font-mono text-sm font-semibold ${
-                      isFlex ? "text-emerald-500" : "text-amber-500"
-                    }`}
-                  >
-                    {fmtCost(tier.cost)}
-                  </div>
-                  <div className="text-xs text-text-muted">
-                    {isFlex && Number(tier.savings || 0) > 0
-                      ? `${fmtCost(tier.savings)} ${translateCostText(
-                          t,
-                          "serviceTierCostSaved",
-                          "saved"
-                        )}`
-                      : `${costPct}% ${translateCostText(
-                          t,
-                          "serviceTierCostShareSuffix",
-                          "of cost"
-                        )}`}
-                  </div>
-                </div>
-              </div>
-              <div className="h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${
-                    isFast ? "bg-sky-500" : isFlex ? "bg-emerald-500" : "bg-text-muted/50"
-                  }`}
-                  style={{ width: `${requestPct}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
       </div>
     </Card>
   );

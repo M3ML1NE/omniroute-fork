@@ -1,3 +1,5 @@
+import { normalizeRoutingStrategy } from "@/shared/constants/routingStrategies";
+
 type JsonRecord = Record<string, unknown>;
 
 export const COMBO_SCHEMA_VERSION = 2;
@@ -310,6 +312,8 @@ export function normalizeComboRecord<T extends JsonRecord>(
   return {
     ...combo,
     version: COMBO_SCHEMA_VERSION,
+    // Legacy-data safety: combos stored with a removed strategy degrade to priority on read.
+    strategy: normalizeRoutingStrategy(combo.strategy),
     models: normalizeComboModels(combo.models, {
       comboName,
       allCombos: options.allCombos,

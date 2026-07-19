@@ -136,7 +136,7 @@ export const AGENT_SKILLS: AgentSkill[] = [
     id: "omniroute-cli-admin",
     name: "CLI Admin",
     description:
-      "Server lifecycle (start/stop/restart), non-interactive setup, doctor diagnostics, backup/restore, autostart, and tunnels.",
+      "Server lifecycle (start/stop/restart), non-interactive setup, doctor diagnostics, backup/restore, and autostart.",
     endpoint: null,
     icon: "manage_accounts",
     category: "cli",
@@ -149,16 +149,6 @@ export const AGENT_SKILLS: AgentSkill[] = [
       "Add/test/remove provider connections, manage API keys, rotate credentials, OAuth flows, list models, and manage combos.",
     endpoint: null,
     icon: "key",
-    category: "cli",
-    isNew: true,
-  },
-  {
-    id: "omniroute-cli-cloud",
-    name: "CLI Cloud Agents",
-    description:
-      "Control Codex, Devin, and Jules cloud agents — create tasks, track status, approve plans, send messages, and view sources.",
-    endpoint: null,
-    icon: "cloud_sync",
     category: "cli",
     isNew: true,
   },

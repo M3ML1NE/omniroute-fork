@@ -33,7 +33,6 @@ through `$OMNIROUTE_URL/v1/...` with `Authorization: Bearer $OMNIROUTE_KEY`.
 | CLI entry point          | [omniroute-cli/SKILL.md](omniroute-cli/SKILL.md)                     |
 | CLI admin & lifecycle    | [omniroute-cli-admin/SKILL.md](omniroute-cli-admin/SKILL.md)         |
 | CLI providers & keys     | [omniroute-cli-providers/SKILL.md](omniroute-cli-providers/SKILL.md) |
-| CLI cloud agents         | [omniroute-cli-cloud/SKILL.md](omniroute-cli-cloud/SKILL.md)         |
 | CLI evals & benchmarks   | [omniroute-cli-eval/SKILL.md](omniroute-cli-eval/SKILL.md)           |
 
 ## Format

@@ -37,6 +37,7 @@ import {
   NOAUTH_PROVIDERS,
 } from "@/shared/constants/providers";
 import { isModelExcludedByConnection } from "@/domain/connectionModelRules";
+import { normalizeRoutingStrategy } from "@/shared/constants/routingStrategies";
 import * as log from "../utils/logger";
 import { fisherYatesShuffle, getNextFromDeckSync } from "@/shared/utils/shuffleDeck";
 
@@ -1071,7 +1072,7 @@ export async function getProviderCredentials(
     const orderedConnections = withQuota;
 
     const settings = await getSettings();
-    const strategy = settings.fallbackStrategy || "fill-first";
+    const strategy = normalizeRoutingStrategy(settings.fallbackStrategy);
 
     let connection;
     const affinityConnection = await selectSessionAffinityConnection(
@@ -1190,11 +1191,6 @@ export async function getProviderCredentials(
         const b = candidatePool[j];
         connection = compareP2CConnections(provider, a, b) <= 0 ? a : b;
       }
-    } else if (strategy === "random") {
-      // Random: Fisher-Yates-inspired random pick
-      const idx =
-        parseInt(randomUUID().replace(/-/g, "").substring(0, 8), 16) % orderedConnections.length;
-      connection = orderedConnections[idx];
     } else if (strategy === "least-used") {
       // Least Used: pick the one with oldest lastUsedAt
       const sorted = [...orderedConnections].sort((a, b) => {
@@ -1204,20 +1200,8 @@ export async function getProviderCredentials(
         return new Date(a.lastUsedAt).getTime() - new Date(b.lastUsedAt).getTime();
       });
       connection = sorted[0];
-    } else if (strategy === "cost-optimized") {
-      // Cost Optimized: sort by priority ascending (lower = cheaper/preferred)
-      // Future: can be enhanced with actual cost data per provider
-      const sorted = [...orderedConnections].sort(
-        (a, b) => (a.priority || 999) - (b.priority || 999)
-      );
-      connection = sorted[0];
-    } else if (strategy === "strict-random") {
-      // Strict Random: shuffle deck — uses each account once before reshuffling
-      const ids = orderedConnections.map((c) => c.id);
-      const selectedId = getNextFromDeckSync(`conn:${provider}`, ids);
-      connection = orderedConnections.find((c) => c.id === selectedId) || orderedConnections[0];
     } else {
-      // Default: fill-first (already sorted by priority in getProviderConnections)
+      // Default (priority/weighted/unknown): already sorted by priority in getProviderConnections.
       connection = orderedConnections[0];
     }
 

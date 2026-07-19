@@ -10,6 +10,7 @@ import { COMBO_CONFIG_MODES } from "@/shared/constants/comboConfigMode";
 import { MAX_REQUEST_BODY_LIMIT_MB, MIN_REQUEST_BODY_LIMIT_MB } from "@/shared/constants/bodySize";
 import { HIDEABLE_SIDEBAR_ITEM_IDS, SIDEBAR_SECTIONS } from "@/shared/constants/sidebarVisibility";
 import { ACCOUNT_FALLBACK_STRATEGY_VALUES } from "@/shared/constants/routingStrategies";
+import { SPAWN_CAPABLE_PREFIXES } from "@/shared/constants/spawnCapablePrefixes";
 
 export const updateSettingsSchema = z.object({
   newPassword: z.string().min(1).max(200).optional(),
@@ -24,22 +25,39 @@ export const updateSettingsSchema = z.object({
   customFaviconUrl: z.string().max(2000).optional(),
   customFaviconBase64: z.string().max(50000).optional(),
   corsOrigins: z.string().max(500).optional(),
-  cloudUrl: z.string().max(500).optional(),
   baseUrl: z.string().max(500).optional(),
   setupComplete: z.boolean().optional(),
   blockedProviders: z.array(z.string().max(100)).optional(),
   disableGigachatCompatible: z.boolean().optional(),
   hideHealthCheckLogs: z.boolean().optional(),
-  hideEndpointCloudflaredTunnel: z.boolean().optional(),
-  hideEndpointTailscaleFunnel: z.boolean().optional(),
-  hideEndpointNgrokTunnel: z.boolean().optional(),
   autoRefreshProviderQuota: z.boolean().optional(),
   autoRefreshProviderQuotaInterval: z.number().int().min(10).max(3600).optional(),
   pinProviderQuotaToHome: z.boolean().optional(),
   showQuickStartOnHome: z.boolean().optional(),
   showProviderTopologyOnHome: z.boolean().optional(),
   localOnlyManageScopeBypassEnabled: z.boolean().optional(),
-  localOnlyManageScopeBypassPrefixes: z.array(z.string().max(200)).optional(),
+  // Layer 1 of the spawn-capable guard (see spawnCapablePrefixes.ts):
+  // reject any bypass prefix that reaches a SPAWN_CAPABLE_PREFIXES path at
+  // PATCH time, with the BYPASS_PREFIX_NOT_ALLOWED code the settings route
+  // handler translates. Layer 2 (isLocalOnlyBypassableByManageScope) still
+  // refuses spawn paths at runtime even if a malformed DB row claims otherwise.
+  localOnlyManageScopeBypassPrefixes: z
+    .array(
+      z
+        .string()
+        .max(200)
+        .refine(
+          (prefix) => {
+            const normalized = prefix.endsWith("/") ? prefix : `${prefix}/`;
+            return !SPAWN_CAPABLE_PREFIXES.some((sp) => normalized.startsWith(sp));
+          },
+          {
+            message:
+              "BYPASS_PREFIX_NOT_ALLOWED: spawn-capable prefixes cannot be added to the manage-scope bypass list",
+          }
+        )
+    )
+    .optional(),
   debugMode: z.boolean().optional(),
   hiddenSidebarItems: z.array(z.enum(HIDEABLE_SIDEBAR_ITEM_IDS)).optional(),
   sidebarSectionOrder: z
@@ -98,14 +116,8 @@ export const updateSettingsSchema = z.object({
   visionBridgeTimeout: z.number().int().min(1000).max(300000).optional(),
   visionBridgeMaxImages: z.number().int().min(1).max(20).optional(),
   // Missing settings
-  lkgpEnabled: z.boolean().optional(),
   backgroundDegradation: z.unknown().optional(),
   bruteForceProtection: z.boolean().optional(),
-  // Auto-routing settings
-  autoRoutingEnabled: z.boolean().optional(),
-  autoRoutingDefaultVariant: z
-    .enum(["lkgp", "coding", "fast", "cheap", "offline", "smart"])
-    .optional(),
   // CLIProxyAPI connection settings
   cliproxyapi_fallback_enabled: z.boolean().optional(),
   cliproxyapi_url: z.string().url().max(500).optional(),

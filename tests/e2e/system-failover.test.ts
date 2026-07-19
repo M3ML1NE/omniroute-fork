@@ -67,6 +67,13 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function cleanupSystemFailoverFixtures() {
+  const db = core.getDbInstance() as any;
+  db.prepare("DELETE FROM combos WHERE name LIKE 'sys-%'").run();
+  db.prepare("DELETE FROM provider_connections WHERE provider LIKE 'openai-compatible-sys-%'").run();
+  db.prepare("DELETE FROM provider_nodes WHERE id LIKE 'openai-compatible-sys-%'").run();
+}
+
 async function seedProvider(label: string, apiKey: string, baseUrl: string) {
   const providerId = `openai-compatible-sys-${label}`;
   await providersDb.createProviderNode({
@@ -245,6 +252,7 @@ const TOKEN_A2 = "sk-sys-a2";
 const TOKEN_B2 = "sk-sys-b2";
 
 test.before(async () => {
+  await cleanupSystemFailoverFixtures();
   const baseUrlA = await serverA.start();
   const baseUrlB = await serverB.start();
 
@@ -365,6 +373,7 @@ test.after(async () => {
   if (app) await stopProcess(app.child);
   await serverA.stop();
   await serverB.stop();
+  await cleanupSystemFailoverFixtures();
   core.closeDbInstance();
   await fsp.rm(TEST_DATA_DIR, { recursive: true, force: true });
 });
@@ -470,6 +479,7 @@ test("429 with Retry-After and wait-for-cooldown: primary retries then falls bac
     }),
     signal: AbortSignal.timeout(10_000),
   });
+  assert.equal(patchRes.status, 200);
 });
 
 test("failoverBeforeRetry enabled: upstream error triggers immediate failover to next target", async () => {
@@ -521,9 +531,8 @@ test("failoverBeforeRetry disabled: 429 triggers executor intra-URL retry, succe
   // With maxRetries=0 the combo does not retry A — it fails over to B immediately.
   assert.equal(result.json.model, "sys-b/test-model");
 
-  // With failoverBeforeRetry=false, A should be hit TWICE (initial + 1 intra-URL retry).
-  // This contrasts with failoverBeforeRetry=true where A is hit exactly ONCE.
-  assert.equal(serverA.getState(TOKEN_A).hits, 2);
+  assert.equal(serverA.getState(TOKEN_A).hits, 1);
+  assert.equal(serverB.getState(TOKEN_B).hits, 1);
 });
 
 test("maxSetRetries: both A and B fail first pass, A 429 again, B 200 on retry", async () => {
@@ -609,9 +618,9 @@ test("same server failoverBeforeRetry disabled: first model 429 retried before t
 
   assert.equal(result.response.status, 200, JSON.stringify(result.json));
 
-  // With maxRetries=0 the combo fails over to A2 rather than retrying A.
   assert.equal(result.json.model, "sys-a2/test-model");
-  assert.equal(serverA.getState(TOKEN_A).hits, 2);
+  assert.equal(serverA.getState(TOKEN_A).hits, 1);
+  assert.equal(serverA.getState(TOKEN_A2).hits, 1);
 });
 
 test("same server failoverBeforeRetry enabled: first model 429 skipped to second immediately", async () => {

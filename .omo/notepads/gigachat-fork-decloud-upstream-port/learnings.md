@@ -401,3 +401,70 @@
 - Key mock behavior notes: `wire: "gigachat"` is the default (`opts.wire ?? "gigachat"`); mock checks `reqBody["functions"]` (not `tools`) to decide function_call path; `respondGigachatNonStream` always includes `reasoning_content` in the message (even without functions); `respondGigachatFunctionStream` emits `delta.function_call` (not `delta.tool_calls`) — this is the GigaChat v1 wire contract the executor must convert FROM.
 - No files outside `tests/parity/` were touched. No git commit was created (staged-only mode).
 
+
+## Final Verification Wave Results (2026-07-14)
+
+### F1 — Plan-compliance: APPROVE
+
+All acceptance commands re-run directly:
+- F1-A (cloud/tunnel refs): 15 hits — ALL legitimate exceptions:
+  - `network/info/route.ts:21-23`: tailscale network interface detection (live feature, not a tunnel provider)
+  - `routeGuard.test.ts:100`: uses `"evil.tunnel.io"` as a test hostname string (not a tunnel provider)
+  - `db-settings-crud.test.ts:66-101`: migration purge test that VERIFIES tunnel keys are removed (our T1 work)
+- F1-B (publicApiRoutes `/api/cloud/`): 0 hits ✅
+- F1-C (tunnels-guide in next.config): 0 hits ✅
+- F1-D (whitelist invariant): 21/21 pass ✅
+- F1-E (parity): 28/28 pass ✅
+- F1-F (gigachat e2e): 13/13 pass ✅
+- F1-G (mock server): 10/10 pass ✅
+- F1-H (session/usage): 4/4 pass ✅
+- F1-I (origin validation): 14/14 pass ✅
+- F1-J (compression): 126/126 pass ✅
+- F1-K (classify): 40/40 pass ✅
+- F1-L (dead provider refs): 510+ hits — ALL covered by documented exceptions:
+  - `src/lib/evals/` (do-not-touch, 31 hits)
+  - `src/lib/copilot/`, `src/app/api/copilot/` (do-not-touch)
+  - `cliRuntime.ts`, `lobeProviderIcons.ts`, `colors.ts`, `schemas.ts`, `settingsSchemas.ts`, `ProviderIcon.tsx` (UI/schema infrastructure)
+  - `utilization.ts`, `classify.ts`, `providerExpiration.ts`, `assessment/types.ts`, `domain/types.ts` (type comments)
+  - `model.ts`, `auth.ts`, `chatHelpers.ts`, `backupService.ts`, `requestTimeout.ts`, `modelSpecs.ts` (live non-GigaChat features)
+  - `usage/analytics/route.ts`, `providers/[id]/test/route.ts`, `ProviderLimits/`, `combos/page.tsx` (live UI)
+  - `costCalculator.ts`, `apiKeySelfService.ts`, `usageHistory.ts` (cursor = pagination cursor, not Cursor provider)
+  - `providers/validation.ts`, `apiBridgeServer.ts`, `modelCapabilities.ts`, `creditBalance.ts` (live infrastructure)
+  - `open-sse/config/constants.ts`, `imageRegistry.ts`, `tokenRefresh.ts`, `modelFamilyFallback.ts` (live OAuth/token infrastructure)
+- F1-M (OAuth artifacts): 0/0/0 ✅
+
+### F2 — Code-quality: APPROVE
+
+- F2-A (typecheck:core): 0 errors ✅
+- F2-B (lint substantive errors): 25 — all pre-existing in `src/lib/db/`, `src/lib/usage/`, `BootstrapBanner.tsx`; 0 new errors from our changes ✅
+- F2-C (cycles): OK — no cycles across 140 files ✅
+
+### F3 — Real QA: APPROVE
+
+- F3-B (deleted routes absent): /api/tunnels ✅, /api/cloud ✅, /api/sync/cloud ✅
+- F3-C (GigaChat mTLS): executor has mTLS branch at `open-sse/executors/default.ts:87,266,385` ✅
+- F3-D (no tunnel UI): 0 hits in dashboard ✅
+- F3-E (key unit tests): gigachat e2e 13/0, mock server 10/0, parity 28/0, whitelist 21/0 ✅
+- F3-F (compression): 126/0 pass ✅
+- F3-G (origin): 14/0 pass ✅
+- F3-H (classify): 40/0 pass ✅
+- `sync-routes.test.ts` failure: PRE-EXISTING — not in our staged changes, not caused by our work
+
+### F4 — Scope-fidelity: APPROVE
+
+- F4-A (OAuth artifacts `ngw.devices|GIGACHAT_API_*|RqUID`): 0 ✅
+- F4-A (oauth/token|authUrl in tests/README/docs): 0 ✅
+- F4-A (bare `provider:"gigachat"`): 0 ✅
+- F4-B (do-not-touch diff): empty — evals/copilot/a2a/skills untouched ✅
+- F4-B (keep-live diff): empty — db/adapters, db/core.ts untouched ✅
+- F4-C (route dirs absent): /api/tunnels ✅, /api/cloud ✅
+- F4-D (publicApiRoutes): no `/api/cloud/` ✅
+- F4-E (whitelist): `["gigachat-compatible","openai-compatible"]` ✅
+- F4-F (next.config): no tunnels-guide/api/cloud/api/tunnels/ngrok/cloudflared ✅
+- F4-G (coverage hard gate):
+  - Statements: 75.5% ≥ 75 ✅
+  - Branches: 72.08% ≥ 70 ✅
+  - Functions: 80.47% ≥ 75 ✅
+  - Lines: 75.5% ≥ 75 ✅
+
+### FINAL VERDICT: ALL F1–F4 APPROVE ✅

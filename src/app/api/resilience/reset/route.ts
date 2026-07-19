@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const { getAllCircuitBreakerStatuses, getCircuitBreaker } =
       await import("@/shared/utils/circuitBreaker");
 
-    const statuses = getAllCircuitBreakerStatuses();
+    const statuses = await getAllCircuitBreakerStatuses();
     let resetCount = 0;
 
     for (const { name } of statuses) {
@@ -26,12 +26,15 @@ export async function POST(request: Request) {
     // Also clear in-memory model lockouts (per-model quota cooldowns)
     const { clearAllModelLockouts } =
       await import("@omniroute/open-sse/services/accountFallback.ts");
+    const { clearProviderConnectionCooldowns } = await import("@/lib/db/providers");
     clearAllModelLockouts();
+    const connectionResetCount = await clearProviderConnectionCooldowns();
 
     return NextResponse.json({
       ok: true,
       resetCount,
-      message: `Reset ${resetCount} circuit breaker(s) and model lockouts`,
+      connectionResetCount,
+      message: `Reset ${resetCount} circuit breaker(s), model lockouts, and ${connectionResetCount} provider connection cooldown(s)`,
     });
   } catch (err: unknown) {
     console.error("[API] POST /api/resilience/reset error:", err);

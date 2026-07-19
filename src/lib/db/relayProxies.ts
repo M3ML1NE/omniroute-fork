@@ -4,7 +4,7 @@
  * Manages relay tokens, rate limits, and usage tracking for serverless relay proxies.
  */
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { getDbInstance } from "./core";
 import { rowToCamel } from "./core";
 import { nonCriticalDbDisabled } from "./minimalDb";
@@ -96,7 +96,6 @@ function generateToken(): string {
 
 function hashToken(token: string): string {
   // Simple hash for token comparison (not bcrypt-heavy for performance)
-  const { createHash } = require("node:crypto");
   return createHash("sha256").update(token).digest("hex");
 }
 
@@ -142,7 +141,11 @@ export async function createRelayToken(
   const token = (await db
     .prepare("SELECT * FROM relay_tokens WHERE id = ?")
     .get(id)) as RelayTokenRow;
-  return { ...(rowToCamel(token) as unknown as RelayToken), rawToken };
+  return {
+    ...(rowToCamel(token) as unknown as RelayToken),
+    enabled: token.enabled === 1,
+    rawToken,
+  };
 }
 
 export async function getRelayTokens(): Promise<RelayToken[]> {
@@ -319,8 +322,8 @@ export async function recordRelayUsage(
     INSERT INTO relay_rate_limits (token_id, window_start, request_count, cost)
     VALUES (?, ?, 1, ?)
     ON CONFLICT(token_id, window_start) DO UPDATE SET
-      request_count = request_count + 1,
-      cost = cost + ?
+      request_count = relay_rate_limits.request_count + 1,
+      cost = relay_rate_limits.cost + ?
   `
   ).run(tokenId, minuteWindow, params.cost || 0, params.cost || 0);
 
@@ -360,8 +363,8 @@ export async function getRelayUsage(
     .prepare(
       "SELECT COUNT(*) as request_count, COALESCE(SUM(cost), 0) as total_cost FROM relay_logs WHERE token_id = ? AND created_at >= ?"
     )
-    .get(tokenId, since)) as { request_count: number; total_cost: number };
-  return { requestCount: row.request_count, totalCost: row.total_cost };
+    .get(tokenId, since)) as { request_count: number | string; total_cost: number | string };
+  return { requestCount: Number(row.request_count), totalCost: Number(row.total_cost) };
 }
 
 export async function getRelayLogs(tokenId?: string, limit = 50): Promise<RelayLogRow[]> {

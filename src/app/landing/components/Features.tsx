@@ -63,18 +63,6 @@ const FEATURES = [
     },
   },
   {
-    icon: "cloud_sync",
-    titleKey: "featureCloudSyncTitle",
-    descKey: "featureCloudSyncDesc",
-    colors: {
-      border: "hover:border-sky-500/50",
-      bg: "hover:bg-sky-500/5",
-      iconBg: "bg-sky-500/10",
-      iconText: "text-sky-500",
-      titleHover: "group-hover:text-sky-400",
-    },
-  },
-  {
     icon: "terminal",
     titleKey: "featureCliSupportTitle",
     descKey: "featureCliSupportDesc",

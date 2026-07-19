@@ -2,6 +2,7 @@
 import "./setupPolyfill.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fetch as undiciFetch, ProxyAgent } from "undici";
+import { randomFloat } from "../../src/shared/utils/secureRandom";
 import tlsClient from "./tlsClient.ts";
 
 function isTlsFingerprintEnabled() {
@@ -270,7 +271,7 @@ async function patchedFetch(
       ) {
         if (attempt === 0 && maxAttempts > 1) {
           lastError = err;
-          await new Promise((r) => setTimeout(r, 25 + Math.random() * 50));
+          await new Promise((r) => setTimeout(r, 25 + randomFloat() * 50));
           continue;
         }
         console.warn(`[ProxyFetch] Undici failed, falling back to native fetch: ${msg}`);

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Assessor } from "@/domain/assessment/assessor";
 import { Categorizer } from "@/domain/assessment/categorizer";
-import { SelfHealer } from "@/domain/assessment/selfHealer";
 import {
   type AssessmentScope,
   type AssessmentTrigger,
@@ -16,7 +15,6 @@ const assessor = new Assessor(
 );
 
 const categorizer = new Categorizer();
-const healer = new SelfHealer();
 
 const modelCategories = new Set<ModelCategory>([
   "coding",
@@ -121,10 +119,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ models: results });
   }
 
-  if (action === "combo-health") {
-    return NextResponse.json({ combos: [], message: "Combo health requires DB access" });
-  }
-
   if (action === "working") {
     return NextResponse.json({ models: assessor.getWorkingModels() });
   }
@@ -132,7 +126,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     endpoints: {
       "GET ?action=results": "Get assessment results (filter: status, provider, category)",
-      "GET ?action=combo-health": "Get combo health status",
       "GET ?action=working": "Get working models only",
       "POST { scope, trigger }": "Run assessment",
     },

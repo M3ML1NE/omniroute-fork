@@ -223,7 +223,7 @@ function mergeChunksToResponse(chunks, sourceFormat) {
   let finalChunk = chunks[chunks.length - 1];
 
   // For Claude format, find the message_stop or final message
-  if (sourceFormat === FORMATS.CLAUDE) {
+  if (sourceFormat === "claude") {
     const messageStop = chunks.find((c) => c.type === "message_stop");
     if (messageStop) {
       // Reconstruct complete message from chunks

@@ -14,6 +14,8 @@ const clearPendingRequests = usageHistory.clearPendingRequests;
 
 async function resetStorage() {
   core.resetDbInstance();
+  const db = core.getDbInstance();
+  await db.prepare("DELETE FROM usage_history").run();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
   clearPendingRequests();
@@ -129,13 +131,18 @@ test("usage history persists service tier and defaults to standard", async () =>
 
 test("getUsageDb provides nextCursor when rows exceed MAX_ROWS", async () => {
   const db = core.getDbInstance();
-  // Insert exactly MAX_ROWS + 1 = 10001 rows so getUsageDb returns a cursor
-  for (let i = 0; i < 10001; i++) {
-    db.prepare(
-      `INSERT INTO usage_history (provider, model, timestamp, tokens_input, tokens_output, success, latency_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(`prov-${i}`, `model-${i}`, new Date(Date.now() - i * 1000).toISOString(), 10, 5, 1, 100);
-  }
+  await db.exec(`
+    INSERT INTO usage_history (provider, model, timestamp, tokens_input, tokens_output, success, latency_ms)
+    SELECT
+      'prov-' || i,
+      'model-' || i,
+      to_char((now() - (i || ' seconds')::interval) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+      10,
+      5,
+      1,
+      100
+    FROM generate_series(0, 10000) AS g(i)
+  `);
 
   const result = await usageHistory.getUsageDb();
 

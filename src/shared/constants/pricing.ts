@@ -2,31 +2,36 @@
 // All rates are in dollars per million tokens ($/1M tokens)
 // GigaChat fork — only GigaChat pricing retained
 
+const GIGACHAT_PRICING = {
+  GigaChat: {
+    input: 0,
+    output: 0,
+    cached: 0,
+    reasoning: 0,
+    cache_creation: 0,
+  },
+  "GigaChat-Pro": {
+    input: 0,
+    output: 0,
+    cached: 0,
+    reasoning: 0,
+    cache_creation: 0,
+  },
+  "GigaChat-Max": {
+    input: 0,
+    output: 0,
+    cached: 0,
+    reasoning: 0,
+    cache_creation: 0,
+  },
+};
+
 export const DEFAULT_PRICING = {
   // GigaChat (Sber)
-  gigachat: {
-    "GigaChat": {
-      input: 0,
-      output: 0,
-      cached: 0,
-      reasoning: 0,
-      cache_creation: 0,
-    },
-    "GigaChat-Pro": {
-      input: 0,
-      output: 0,
-      cached: 0,
-      reasoning: 0,
-      cache_creation: 0,
-    },
-    "GigaChat-Max": {
-      input: 0,
-      output: 0,
-      cached: 0,
-      reasoning: 0,
-      cache_creation: 0,
-    },
-  },
+  gigachat: GIGACHAT_PRICING,
+  // Family keys: apply to every dynamic <type>-<uuid> connection; prices user-set via /api/pricing.
+  "gigachat-compatible": GIGACHAT_PRICING,
+  "openai-compatible": {},
 };
 
 type ProviderPricingTable = Record<string, Record<string, unknown>>;

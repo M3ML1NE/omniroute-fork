@@ -1,5 +1,6 @@
 import { translateResponse, initState } from "../translator/index.ts";
 import { FORMATS } from "../translator/formats.ts";
+import { generateToolCallId } from "../translator/helpers/toolCallHelper.ts";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb";
 import {
   extractUsage,
@@ -748,8 +749,8 @@ export function createSSEStream(options: StreamOptions = {}) {
   // state). Skip the `[DONE]` for these formats.
   const clientExpectsClaudeStream =
     (mode === STREAM_MODE.PASSTHROUGH
-      ? clientResponseFormat === FORMATS.CLAUDE
-      : sourceFormat === FORMATS.CLAUDE) === true;
+      ? clientResponseFormat === "claude"
+      : sourceFormat === "claude") === true;
 
   // Single source of truth for the [DONE] decision, used at both emission
   // sites below. Only OpenAI Chat Completions clients expect [DONE];
@@ -764,6 +765,7 @@ export function createSSEStream(options: StreamOptions = {}) {
   /** Passthrough: accumulate tool_calls deltas for call log responseBody */
   const passthroughToolCalls = new Map<string, ToolCall>();
   let passthroughToolCallSeq = 0;
+  let gigachatToolCallId: string | null = null;
   const allowedToolNames = extractAllowedToolNames(body);
   let skipPassthroughEvent = false;
 
@@ -933,7 +935,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     for (const event of events) {
       updateClaudeEmptyResponseLifecycle(claudeEmptyResponseLifecycle, event);
       clientPayloadCollector.push(event);
-      const output = formatSSE(event, FORMATS.CLAUDE);
+      const output = formatSSE(event, "claude");
       reqLogger?.appendConvertedChunk?.(output);
       controller.enqueue(encoder.encode(output));
     }
@@ -979,7 +981,7 @@ export function createSSEStream(options: StreamOptions = {}) {
     }
 
     if (
-      sourceFormat === FORMATS.CLAUDE &&
+      sourceFormat === "claude" &&
       shouldInjectClaudeEmptyResponseBeforeCurrentEvent(claudeEmptyResponseLifecycle, itemSanitized)
     ) {
       const eventType = getClaudeEventType(itemSanitized);
@@ -991,7 +993,7 @@ export function createSSEStream(options: StreamOptions = {}) {
       });
     }
 
-    if (sourceFormat === FORMATS.CLAUDE && isClaudeEventPayload(itemSanitized)) {
+    if (sourceFormat === "claude" && isClaudeEventPayload(itemSanitized)) {
       updateClaudeEmptyResponseLifecycle(claudeEmptyResponseLifecycle, itemSanitized);
     }
 
@@ -1563,15 +1565,11 @@ export function createSSEStream(options: StreamOptions = {}) {
 
                   const idFixed = fixInvalidId(parsed);
 
-                  if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
-                    continue;
-                  }
-
                   const delta = parsed.choices?.[0]?.delta;
                   let textualToolCallConverted = false;
                   let gigachatToolCallConverted = false;
 
-                  // GigaChat compatibility: translate legacy function_call back to tool_calls
+                  // GigaChat compatibility: translate function_call back to tool_calls
                   // because we translated tools to functions in the request.
                   if (
                     provider?.startsWith("gigachat-compatible-") &&
@@ -1579,7 +1577,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                     !delta?.tool_calls
                   ) {
                     const fc = delta.function_call;
-                    const rawName = fc.name || "";
+                    const rawName = typeof fc.name === "string" ? fc.name : "";
                     const callName =
                       (toolNameMap instanceof Map ? toolNameMap.get(rawName) : null) ?? rawName;
                     const callArgs =
@@ -1588,11 +1586,16 @@ export function createSSEStream(options: StreamOptions = {}) {
                         : typeof fc.arguments === "string"
                           ? fc.arguments
                           : "";
+                    if (callName && !gigachatToolCallId) {
+                      gigachatToolCallId = generateToolCallId();
+                    }
 
                     delta.tool_calls = [
                       {
                         index: 0,
-                        ...(callName ? { id: `call_${callName}`, type: "function" } : {}),
+                        ...(gigachatToolCallId
+                          ? { id: gigachatToolCallId, type: "function" }
+                          : {}),
                         function: {
                           name: callName,
                           arguments: callArgs,
@@ -1602,6 +1605,10 @@ export function createSSEStream(options: StreamOptions = {}) {
                     delete delta.function_call;
                     passthroughHasToolCalls = true;
                     gigachatToolCallConverted = true;
+                  }
+
+                  if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
+                    continue;
                   }
 
                   // Extract <think> tags from streaming content
@@ -1856,9 +1863,9 @@ export function createSSEStream(options: StreamOptions = {}) {
           // Cloud Code API wraps in { response: { candidates: [...] } }, so unwrap.
           // Only applies to Gemini-family formats — skip for OpenAI, Claude, etc.
           const isGeminiFormat =
-            targetFormat === FORMATS.GEMINI ||
-            targetFormat === FORMATS.GEMINI_CLI ||
-            targetFormat === FORMATS.ANTIGRAVITY;
+            targetFormat === "gemini" ||
+            targetFormat === "gemini-cli" ||
+            targetFormat === "antigravity";
           const geminiChunk = isGeminiFormat ? unwrapGeminiChunk(parsed) : parsed;
           if (geminiChunk.candidates?.[0]?.content?.parts) {
             for (const part of geminiChunk.candidates[0].content.parts) {
@@ -2187,7 +2194,7 @@ export function createSSEStream(options: StreamOptions = {}) {
             }
           }
 
-          if (sourceFormat === FORMATS.CLAUDE) {
+          if (sourceFormat === "claude") {
             if (shouldInjectClaudeEmptyResponseOnFlush(claudeEmptyResponseLifecycle)) {
               emitSyntheticClaudeEmptyResponse(controller, {
                 includeContentBlock: true,

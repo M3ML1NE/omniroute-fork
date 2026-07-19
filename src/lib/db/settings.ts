@@ -95,9 +95,6 @@ export async function getSettings() {
     .prepare("SELECT key, value FROM key_value WHERE namespace = 'settings'")
     .all();
   const settings: Record<string, unknown> = {
-    cloudEnabled: true,
-    tailscaleEnabled: false,
-    tailscaleUrl: "",
     stickyRoundRobinLimit: 3,
     requestRetry: 3,
     maxRetryIntervalSec: 30,
@@ -106,9 +103,6 @@ export async function getSettings() {
     sidebarSectionOrder: [],
     sidebarItemOrder: {},
     sidebarActivePreset: null,
-    hideEndpointCloudflaredTunnel: false,
-    hideEndpointTailscaleFunnel: false,
-    hideEndpointNgrokTunnel: false,
     autoRefreshProviderQuota: false,
     autoRefreshProviderQuotaInterval: 180,
     comboConfigMode: "guided",
@@ -178,11 +172,6 @@ export async function updateSettings(updates: Record<string, unknown>) {
   }
 
   return nextSettings;
-}
-
-export async function isCloudEnabled() {
-  const settings = await getSettings();
-  return settings.cloudEnabled === true;
 }
 
 // ──────────────── Pricing ────────────────
@@ -335,10 +324,23 @@ export async function getPricingForModel(provider: string, model: string) {
     }
   }
 
-  // GigaChat-compatible cert nodes carry per-node synthetic ids but bill
-  // against the shared GigaChat pricing table.
-  if (!providerPricing && pLower.startsWith("gigachat-compatible-")) {
-    providerPricing = findKeyInsensitive(pricing, "gigachat");
+  // Dynamic compatible providers store `provider = <type>-<uuid>` (the node id).
+  // Resolve through the node prefix, then the pricing family key, then the raw type,
+  // so user-set family pricing applies to every connection of that type.
+  if (
+    !providerPricing &&
+    (pLower.startsWith("gigachat-compatible-") || pLower.startsWith("openai-compatible-"))
+  ) {
+    const { getProviderNodeById } = await import("./providers");
+    const node = (await getProviderNodeById(provider)) as Record<string, unknown> | null;
+    const nodePrefix = node && typeof node.prefix === "string" ? node.prefix : "";
+    const nodeType = node && typeof node.type === "string" ? node.type : "";
+    const familyKey = pLower.startsWith("gigachat-compatible-") ? "gigachat" : "";
+    for (const key of [nodePrefix, familyKey, nodeType]) {
+      if (!key) continue;
+      providerPricing = findKeyInsensitive(pricing, key);
+      if (providerPricing) break;
+    }
   }
 
   if (!providerPricing) return null;
@@ -438,53 +440,6 @@ export async function resetAllPricing() {
   await db.prepare("DELETE FROM key_value WHERE namespace = 'pricing'").run();
   backupDbFile("pre-write");
   return {};
-}
-
-// ──────────────── LKGP (Last Known Good Provider) ────────────────
-
-export interface LKGPRecord {
-  provider: string;
-  connectionId?: string;
-}
-
-export async function getLKGP(comboName: string, modelId: string): Promise<LKGPRecord | null> {
-  const db = getDbInstance();
-  const key = `${comboName}:${modelId}`;
-  const row = await db
-    .prepare("SELECT value FROM key_value WHERE namespace = 'lkgp' AND key = ?")
-    .get<{ value?: string }>(key);
-  if (!row?.value) return null;
-  try {
-    const parsed = JSON.parse(row.value);
-    if (typeof parsed === "object" && parsed !== null && "provider" in parsed) {
-      return parsed as LKGPRecord;
-    }
-    return { provider: String(parsed) };
-  } catch {
-    return { provider: row.value };
-  }
-}
-
-export async function setLKGP(
-  comboName: string,
-  modelId: string,
-  providerId: string,
-  connectionId?: string
-) {
-  const db = getDbInstance();
-  const key = `${comboName}:${modelId}`;
-  const value: LKGPRecord = { provider: providerId };
-  if (connectionId) value.connectionId = connectionId;
-  await db
-    .prepare(
-      "INSERT INTO key_value (namespace, key, value) VALUES ('lkgp', ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value"
-    )
-    .run(key, JSON.stringify(value));
-}
-
-export async function clearAllLKGP(): Promise<void> {
-  const db = getDbInstance();
-  await db.prepare("DELETE FROM key_value WHERE namespace = 'lkgp'").run();
 }
 
 // ──────────────── Proxy Config ────────────────

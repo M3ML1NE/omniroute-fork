@@ -444,7 +444,7 @@ export async function getMemoryTokensUsed(apiKeyId?: string): Promise<number> {
       (apiKeyId ? " WHERE api_key_id = ?" : "")
   );
   const row = (await stmt.get(...(apiKeyId ? [apiKeyId] : []))) as
-    | { tokensUsed: number | string }
+    | { tokensUsed?: number | string; tokensused?: number | string }
     | undefined;
-  return Number(row?.tokensUsed ?? 0);
+  return Number(row?.tokensUsed ?? row?.tokensused ?? 0);
 }

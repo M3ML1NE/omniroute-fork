@@ -25,12 +25,7 @@ function asRecord(value: unknown): JsonRecord {
 
 function sanitizeSettingsForSync(settings: unknown): JsonRecord {
   const record = asRecord(settings);
-  const {
-    password: _password,
-    requireLogin: _requireLogin,
-    cloudEnabled: _cloudEnabled,
-    ...safeSettings
-  } = record;
+  const { password: _password, requireLogin: _requireLogin, ...safeSettings } = record;
   return safeSettings;
 }
 
@@ -99,7 +94,6 @@ function sanitizeProviderNodeForSync(node: unknown): JsonRecord {
     "apiType",
     "baseUrl",
     "chatPath",
-    "modelsPath",
   ]);
 }
 
@@ -193,16 +187,5 @@ export async function buildConfigSyncEnvelope() {
   return {
     version,
     bundle,
-  };
-}
-
-export function toLegacyCloudSyncPayload(bundle: ConfigSyncBundle) {
-  return {
-    providers: bundle.providerConnections,
-    providerNodes: bundle.providerNodes,
-    modelAliases: bundle.modelAliases,
-    combos: bundle.combos,
-    apiKeys: bundle.apiKeys,
-    settings: bundle.settings,
   };
 }

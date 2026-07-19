@@ -8,16 +8,24 @@ const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-evals-his
 process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
+const pgModule = await import("../../src/lib/db/postgres.ts");
 const evalsDb = await import("../../src/lib/db/evals.ts");
 
-function resetDb() {
+const RUN_PREFIX = `evals-history-${process.pid}`;
+const HISTORY_SUITE_ID = `${RUN_PREFIX}-golden-set`;
+const ROUTING_SUITE_ID = `${RUN_PREFIX}-routing-quality`;
+const OTHER_SUITE_ID = `${RUN_PREFIX}-other-suite`;
+
+async function resetDb() {
+  const schema = pgModule.getSchema();
+  await pgModule.query(`DELETE FROM ${schema}.eval_runs WHERE suite_id LIKE $1`, [`${RUN_PREFIX}-%`]);
   core.resetDbInstance();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
 }
 
-test.beforeEach(() => {
-  resetDb();
+test.beforeEach(async () => {
+  await resetDb();
 });
 
 test.after(() => {
@@ -26,8 +34,8 @@ test.after(() => {
 });
 
 test("eval run history persists target metadata and newest-first ordering", async () => {
-  const older = evalsDb.saveEvalRun({
-    suiteId: "golden-set",
+  const older = await evalsDb.saveEvalRun({
+    suiteId: HISTORY_SUITE_ID,
     suiteName: "Golden Set",
     target: { type: "model", id: "gpt-4o", label: "Model: gpt-4o" },
     summary: { total: 2, passed: 2, failed: 0, passRate: 100 },
@@ -37,8 +45,8 @@ test("eval run history persists target metadata and newest-first ordering", asyn
     createdAt: "2026-04-23T10:00:00.000Z",
   });
 
-  const newer = evalsDb.saveEvalRun({
-    suiteId: "golden-set",
+  const newer = await evalsDb.saveEvalRun({
+    suiteId: HISTORY_SUITE_ID,
     suiteName: "Golden Set",
     target: { type: "combo", id: "cost-optimized", label: "Combo: cost-optimized" },
     summary: { total: 2, passed: 1, failed: 1, passRate: 50 },
@@ -48,7 +56,7 @@ test("eval run history persists target metadata and newest-first ordering", asyn
     createdAt: "2026-04-23T11:00:00.000Z",
   });
 
-  const runs = await evalsDb.listEvalRuns({ limit: 10 });
+  const runs = await evalsDb.listEvalRuns({ suiteId: HISTORY_SUITE_ID, limit: 10 });
 
   assert.equal(runs.length, 2);
   assert.equal(runs[0].id, newer.id);
@@ -60,8 +68,8 @@ test("eval run history persists target metadata and newest-first ordering", asyn
 });
 
 test("scorecard keeps only the latest run per suite and target scope", async () => {
-  evalsDb.saveEvalRun({
-    suiteId: "golden-set",
+  await evalsDb.saveEvalRun({
+    suiteId: HISTORY_SUITE_ID,
     suiteName: "Golden Set",
     target: { type: "model", id: "gpt-4o", label: "Model: gpt-4o" },
     summary: { total: 2, passed: 1, failed: 1, passRate: 50 },
@@ -70,8 +78,8 @@ test("scorecard keeps only the latest run per suite and target scope", async () 
     createdAt: "2026-04-23T09:00:00.000Z",
   });
 
-  evalsDb.saveEvalRun({
-    suiteId: "golden-set",
+  await evalsDb.saveEvalRun({
+    suiteId: HISTORY_SUITE_ID,
     suiteName: "Golden Set",
     target: { type: "model", id: "gpt-4o", label: "Model: gpt-4o" },
     summary: { total: 2, passed: 2, failed: 0, passRate: 100 },
@@ -80,8 +88,8 @@ test("scorecard keeps only the latest run per suite and target scope", async () 
     createdAt: "2026-04-23T10:00:00.000Z",
   });
 
-  evalsDb.saveEvalRun({
-    suiteId: "golden-set",
+  await evalsDb.saveEvalRun({
+    suiteId: HISTORY_SUITE_ID,
     suiteName: "Golden Set",
     target: { type: "combo", id: "balanced", label: "Combo: balanced" },
     summary: { total: 2, passed: 1, failed: 1, passRate: 50 },
@@ -90,7 +98,7 @@ test("scorecard keeps only the latest run per suite and target scope", async () 
     createdAt: "2026-04-23T10:30:00.000Z",
   });
 
-  const scorecard = await evalsDb.getEvalScorecard({ limit: 10 });
+  const scorecard = await evalsDb.getEvalScorecard({ suiteId: HISTORY_SUITE_ID, limit: 10 });
 
   assert.ok(scorecard);
   assert.equal(scorecard.suites, 2);
@@ -100,8 +108,8 @@ test("scorecard keeps only the latest run per suite and target scope", async () 
 });
 
 test("routing eval run query returns recent model runs for requested targets", async () => {
-  evalsDb.saveEvalRun({
-    suiteId: "routing-quality",
+  await evalsDb.saveEvalRun({
+    suiteId: ROUTING_SUITE_ID,
     suiteName: "Routing Quality",
     target: { type: "model", id: "openai/good", label: "Model: openai/good" },
     summary: { total: 4, passed: 4, failed: 0, passRate: 100 },
@@ -109,8 +117,8 @@ test("routing eval run query returns recent model runs for requested targets", a
     results: [],
     createdAt: "2026-04-23T10:00:00.000Z",
   });
-  evalsDb.saveEvalRun({
-    suiteId: "routing-quality",
+  await evalsDb.saveEvalRun({
+    suiteId: ROUTING_SUITE_ID,
     suiteName: "Routing Quality",
     target: { type: "combo", id: "openai/good", label: "Combo: openai/good" },
     summary: { total: 4, passed: 1, failed: 3, passRate: 25 },
@@ -118,8 +126,8 @@ test("routing eval run query returns recent model runs for requested targets", a
     results: [],
     createdAt: "2026-04-23T10:30:00.000Z",
   });
-  evalsDb.saveEvalRun({
-    suiteId: "other-suite",
+  await evalsDb.saveEvalRun({
+    suiteId: OTHER_SUITE_ID,
     suiteName: "Other Suite",
     target: { type: "model", id: "openai/good", label: "Model: openai/good" },
     summary: { total: 4, passed: 2, failed: 2, passRate: 50 },
@@ -130,7 +138,7 @@ test("routing eval run query returns recent model runs for requested targets", a
 
   const runs = await evalsDb.listModelEvalRunsForRouting({
     targetIds: ["openai/good", "openai/missing"],
-    suiteIds: ["routing-quality"],
+    suiteIds: [ROUTING_SUITE_ID],
     maxAgeHours: 24 * 365 * 10,
     limit: 10,
   });
@@ -138,7 +146,7 @@ test("routing eval run query returns recent model runs for requested targets", a
   assert.equal(runs.length, 1);
   assert.equal(runs[0].target.type, "model");
   assert.equal(runs[0].target.id, "openai/good");
-  assert.equal(runs[0].suiteId, "routing-quality");
+  assert.equal(runs[0].suiteId, ROUTING_SUITE_ID);
 });
 
 test("custom eval suites persist cases and support update/delete", async () => {

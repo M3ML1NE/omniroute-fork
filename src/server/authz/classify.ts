@@ -7,8 +7,14 @@ import type { ClassificationReason, RouteClass, RouteClassification } from "./ty
 
 const CLIENT_API_ALIAS_PREFIXES: ReadonlyArray<{ alias: string; canonical: string }> = [
   { alias: "/chat/completions", canonical: "/api/v1/chat/completions" },
+  { alias: "/responses", canonical: "/api/v1/responses" },
   { alias: "/models", canonical: "/api/v1/models" },
 ];
+
+// Next.js rewrite collapses any /codex/* path straight to /api/v1/responses
+// (see next.config.mjs rewrites), unlike the suffix-preserving aliases above.
+const CODEX_ALIAS_PREFIX = "/codex";
+const CODEX_ALIAS_CANONICAL = "/api/v1/responses";
 
 function normalizePathname(rawPath: string): { path: string; reason?: ClassificationReason } {
   let path = rawPath || "/";
@@ -23,6 +29,10 @@ function normalizePathname(rawPath: string): { path: string; reason?: Classifica
   if (path === "/v1" || path.startsWith("/v1/")) {
     const tail = path.slice("/v1".length) || "";
     return { path: "/api/v1" + tail, reason: "client_api_alias" };
+  }
+
+  if (path === CODEX_ALIAS_PREFIX || path.startsWith(CODEX_ALIAS_PREFIX + "/")) {
+    return { path: CODEX_ALIAS_CANONICAL, reason: "client_api_alias" };
   }
 
   for (const { alias, canonical } of CLIENT_API_ALIAS_PREFIXES) {

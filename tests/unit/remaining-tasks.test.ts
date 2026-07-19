@@ -83,6 +83,25 @@ test("comboResolver: random returns a valid model", () => {
   assert.ok(["a", "b", "c"].includes(result.model));
 });
 
+test("comboResolver: random strategy does not call Math.random", () => {
+  const combo = {
+    name: "test-random-no-math",
+    strategy: "random",
+    models: ["a", "b", "c"],
+  };
+  const originalRandom = Math.random;
+  Math.random = () => {
+    throw new Error("Math.random must not be used for combo selection");
+  };
+
+  try {
+    const result = resolveComboModel(combo);
+    assert.ok(["a", "b", "c"].includes(result.model));
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test("comboResolver: least-used picks model with lowest count", () => {
   const combo = {
     name: "test-least",

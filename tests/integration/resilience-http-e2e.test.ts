@@ -291,6 +291,22 @@ async function stopProcess(child: ReturnType<typeof spawn>) {
   }
 }
 
+async function cleanupSeededFixtures() {
+  for (const comboName of ["res-priority-fallback", "res-breaker-combo", "res-rr"]) {
+    const combo = await combosDb.getComboByName(comboName);
+    if (combo && typeof combo.id === "string") {
+      await combosDb.deleteCombo(combo.id);
+    }
+  }
+
+  const db = core.getDbInstance();
+  for (const prefix of Object.keys(TOKENS)) {
+    const providerId = `openai-compatible-chat-e2e-${prefix}`;
+    await db.prepare("DELETE FROM provider_connections WHERE provider = ?").run(providerId);
+    await providersDb.deleteProviderNode(providerId);
+  }
+}
+
 async function seedCompatibleProvider(prefix: string, apiKey: string, baseUrl: string) {
   const providerId = `openai-compatible-chat-e2e-${prefix}`;
   await providersDb.createProviderNode({
@@ -457,6 +473,7 @@ const TOKENS = {
 
 test.before(async () => {
   const fakeBaseUrl = await relay.start();
+  await cleanupSeededFixtures();
 
   relay.configureToken(TOKENS.p1, {
     defaultResponse: buildCompletion("primary healthy again"),
@@ -596,7 +613,16 @@ test("request queue serializes concurrent requests on the same connection", asyn
 
 test("priority combo falls back on 503 and skips the cooled-down primary on the next request", async () => {
   assert.ok(app);
-  await patchResilience(app.baseUrl, buildResilienceConfig());
+  await patchResilience(
+    app.baseUrl,
+    buildResilienceConfig({
+      connectionCooldown: {
+        apikey: {
+          baseCooldownMs: 5_000,
+        },
+      },
+    })
+  );
   relay.resetState(TOKENS.p1, [buildError(503, "primary transient failure")]);
   relay.resetState(TOKENS.p2);
 

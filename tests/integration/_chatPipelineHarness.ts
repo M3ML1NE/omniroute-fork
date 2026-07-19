@@ -43,7 +43,6 @@ export async function createChatPipelineHarness(prefix) {
     "api_keys",
     "call_logs",
     "memories",
-    "memory",
     "key_value",
     "model_combo_mappings",
     "semantic_cache",

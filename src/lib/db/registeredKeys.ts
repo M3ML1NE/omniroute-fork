@@ -156,10 +156,10 @@ export async function checkQuota(provider = "", accountId = ""): Promise<QuotaCh
       if (limits.max_active_keys !== null) {
         const countRow = await db
           .prepare(
-            "SELECT COUNT(*) as activeCount FROM registered_keys WHERE provider = ? AND is_active = 1"
+            "SELECT COUNT(*) as active_count FROM registered_keys WHERE provider = ? AND is_active = 1"
           )
-          .get<{ activeCount: number }>(provider);
-        const activeCount = countRow?.activeCount ?? 0;
+          .get<{ active_count: number | string }>(provider);
+        const activeCount = Number(countRow?.active_count) || 0;
         if (activeCount >= limits.max_active_keys) {
           return {
             allowed: false,
@@ -201,10 +201,10 @@ export async function checkQuota(provider = "", accountId = ""): Promise<QuotaCh
       if (limits.max_active_keys !== null) {
         const countRow = await db
           .prepare(
-            "SELECT COUNT(*) as activeCount FROM registered_keys WHERE account_id = ? AND is_active = 1"
+            "SELECT COUNT(*) as active_count FROM registered_keys WHERE account_id = ? AND is_active = 1"
           )
-          .get<{ activeCount: number }>(accountId);
-        const activeCount = countRow?.activeCount ?? 0;
+          .get<{ active_count: number | string }>(accountId);
+        const activeCount = Number(countRow?.active_count) || 0;
         if (activeCount >= limits.max_active_keys) {
           return {
             allowed: false,
@@ -372,7 +372,7 @@ export async function validateRegisteredKey(rawKey: string): Promise<RegisteredK
     .prepare(
       `SELECT * FROM registered_keys
        WHERE key = ? AND is_active = 1
-         AND (expires_at IS NULL OR expires_at > NOW())`
+         AND (expires_at IS NULL OR expires_at::timestamptz > NOW())`
     )
     .get<RegisteredKeyRow>(hash);
   if (!row) return null;

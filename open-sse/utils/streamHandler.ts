@@ -252,7 +252,7 @@ function buildStreamErrorChunks(
     return encodeSseEvent(errorEvent, { event: "response.failed" });
   }
 
-  if (clientResponseFormat === FORMATS.CLAUDE) {
+  if (clientResponseFormat === "claude") {
     const errorEvent = {
       type: "error",
       error: {

@@ -79,10 +79,10 @@ function inferFormatFromEvents(
       eventType === "message_stop" ||
       eventType === "ping"
     ) {
-      return FORMATS.CLAUDE;
+      return "claude";
     }
     if (Array.isArray(payload.candidates) || payload.usageMetadata) {
-      return FORMATS.GEMINI;
+      return "gemini";
     }
   }
 
@@ -593,11 +593,11 @@ export function buildStreamSummaryFromEvents(
   switch (format) {
     case FORMATS.OPENAI_RESPONSES:
       return buildResponsesSummary(events, fallbackModel);
-    case FORMATS.CLAUDE:
+    case "claude":
       return buildClaudeSummary(events, fallbackModel);
-    case FORMATS.GEMINI:
-    case FORMATS.GEMINI_CLI:
-    case FORMATS.ANTIGRAVITY:
+    case "gemini":
+    case "gemini-cli":
+    case "antigravity":
       return buildGeminiSummary(events, fallbackModel);
     default:
       return buildOpenAISummary(events, fallbackModel);

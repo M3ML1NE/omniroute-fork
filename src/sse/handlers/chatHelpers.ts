@@ -1,4 +1,4 @@
-import { getModelInfo, getComboForModel } from "../services/model";
+import { getModelInfo } from "../services/model";
 import { clearAccountError, markAccountUnavailable } from "../services/auth";
 import { connectionHasExtraKeys } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import * as log from "../utils/logger";
@@ -61,46 +61,6 @@ export async function resolveModelOrError(
 ) {
   const modelInfo = await getModelInfo(modelStr);
   const sourceFormat = detectFormatFromEndpoint(body, endpointPath);
-
-  // "auto" is a combo prefix, not a provider. parseModel("auto/fast") splits it into
-  // provider="auto" model="fast" — redirect to matching combo before credential lookup fails.
-  if (modelInfo.provider === "auto") {
-    const exactCombo = await getComboForModel(modelStr);
-    if (exactCombo) {
-      log.info("ROUTING", `"auto" provider → combo "${modelStr}"`);
-      return { combo: exactCombo, provider: "auto", model: modelInfo.model };
-    }
-
-    // Fuzzy: "fast" → "auto/best-fast", "chat" → "auto/best-chat"
-    const suffix = modelInfo.model || "";
-    for (const candidate of [`auto/best-${suffix}`, `auto/${suffix}`]) {
-      const fuzzyCombo = await getComboForModel(candidate);
-      if (fuzzyCombo) {
-        log.info("ROUTING", `"auto/${suffix}" → combo "${candidate}" (fuzzy)`);
-        return { combo: fuzzyCombo, provider: "auto", model: suffix };
-      }
-    }
-
-    // List available auto/* combos in error
-    const available: string[] = [];
-    try {
-      const { getCombos } = await import("@/lib/localDb");
-      const all = await getCombos();
-      for (const c of all) {
-        if (c.name?.startsWith("auto/")) available.push(c.name);
-      }
-    } catch {
-      /* DB unavailable */
-    }
-
-    const hint =
-      available.length > 0
-        ? ` Available auto combos: ${available.join(", ")}`
-        : " No auto combos configured — create one in the Dashboard.";
-    const message = `Model '${modelStr}' is not a valid combo or provider.${hint}`;
-    log.warn("CHAT", message, { model: modelStr });
-    return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, message) };
-  }
 
   if (!modelInfo.provider) {
     // model_not_found: raised by resolveModelByProviderInference when no

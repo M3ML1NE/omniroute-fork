@@ -11,7 +11,7 @@ auto-fallback, RTK token saver, MCP server, A2A agents.
 ## Setup
 
 ```bash
-export OMNIROUTE_URL="http://localhost:20128"      # or VPS / tunnel URL
+export OMNIROUTE_URL="http://localhost:20128"      # or remote VPS URL
 export OMNIROUTE_KEY="sk-..."                       # from Dashboard → API Keys
 ```
 
@@ -56,7 +56,6 @@ Use `data[].id` as `model` field in requests. Combos appear with `owned_by:"comb
 | CLI entry point        | https://raw.githubusercontent.com/diegosouzapw/OmniRoute/main/skills/omniroute-cli/SKILL.md           |
 | CLI admin & lifecycle  | https://raw.githubusercontent.com/diegosouzapw/OmniRoute/main/skills/omniroute-cli-admin/SKILL.md     |
 | CLI providers & keys   | https://raw.githubusercontent.com/diegosouzapw/OmniRoute/main/skills/omniroute-cli-providers/SKILL.md |
-| CLI cloud agents       | https://raw.githubusercontent.com/diegosouzapw/OmniRoute/main/skills/omniroute-cli-cloud/SKILL.md     |
 | CLI evals & benchmarks | https://raw.githubusercontent.com/diegosouzapw/OmniRoute/main/skills/omniroute-cli-eval/SKILL.md      |
 
 ## Errors

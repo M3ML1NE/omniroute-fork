@@ -44,34 +44,34 @@ describe("hasValuableContent", () => {
   describe("Claude format", () => {
     it("returns true for content_block_delta with text", () => {
       const chunk = { type: "content_block_delta", delta: { text: "Hello" } };
-      assert.strictEqual(hasValuableContent(chunk, FORMATS.CLAUDE), true);
+      assert.strictEqual(hasValuableContent(chunk, "claude"), true);
     });
 
     it("returns false for empty content_block_delta", () => {
       const chunk = { type: "content_block_delta", delta: {} };
-      assert.strictEqual(hasValuableContent(chunk, FORMATS.CLAUDE), false);
+      assert.strictEqual(hasValuableContent(chunk, "claude"), false);
     });
 
     it("returns true for thinking blocks", () => {
       const chunk = { type: "content_block_delta", delta: { thinking: "reasoning" } };
-      assert.strictEqual(hasValuableContent(chunk, FORMATS.CLAUDE), true);
+      assert.strictEqual(hasValuableContent(chunk, "claude"), true);
     });
   });
 
   describe("Gemini format", () => {
     it("returns true for content with text", () => {
       const chunk = { candidates: [{ content: { parts: [{ text: "Hello" }] } }] };
-      assert.strictEqual(hasValuableContent(chunk, FORMATS.GEMINI), true);
+      assert.strictEqual(hasValuableContent(chunk, "gemini"), true);
     });
 
     it("returns false for empty parts", () => {
       const chunk = { candidates: [{ content: { parts: [] } }] };
-      assert.strictEqual(hasValuableContent(chunk, FORMATS.GEMINI), false);
+      assert.strictEqual(hasValuableContent(chunk, "gemini"), false);
     });
 
     it("returns true for finishReason", () => {
       const chunk = { candidates: [{ finishReason: "STOP" }] };
-      assert.strictEqual(hasValuableContent(chunk, FORMATS.GEMINI), true);
+      assert.strictEqual(hasValuableContent(chunk, "gemini"), true);
     });
   });
 });

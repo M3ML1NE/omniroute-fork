@@ -77,9 +77,9 @@ export interface EvalRoutingRunQuery {
 type JsonRecord = Record<string, unknown>;
 
 interface StatementLike<TRow = unknown> {
-  all: (...params: unknown[]) => TRow[];
-  get: (...params: unknown[]) => TRow | undefined;
-  run: (...params: unknown[]) => { changes: number };
+  all: (...params: unknown[]) => TRow[] | Promise<TRow[]>;
+  get: (...params: unknown[]) => TRow | undefined | Promise<TRow | undefined>;
+  run: (...params: unknown[]) => { changes: number } | Promise<{ changes: number }>;
 }
 
 interface DbLike {
@@ -88,7 +88,9 @@ interface DbLike {
 
 function hasColumn(db: DbLike, table: string, column: string): boolean {
   const rows = db.prepare<{ name?: string }>(`PRAGMA table_info(${table})`).all();
-  return rows.some((row) => row && typeof row.name === "string" && row.name === column);
+  return Array.isArray(rows)
+    ? rows.some((row) => row && typeof row.name === "string" && row.name === column)
+    : false;
 }
 
 function ensureEvalSuiteTables(db: DbLike) {
@@ -429,7 +431,7 @@ function toEvalSuiteRecord(row: unknown, cases: EvalCaseRecord[]): EvalSuiteReco
   };
 }
 
-export function saveEvalRun(input: {
+export async function saveEvalRun(input: {
   runGroupId?: string | null;
   suiteId: string;
   suiteName: string;
@@ -440,7 +442,7 @@ export function saveEvalRun(input: {
   results: Array<Record<string, unknown>>;
   outputs?: Record<string, string>;
   createdAt?: string;
-}): PersistedEvalRun {
+}): Promise<PersistedEvalRun> {
   const db = getDbInstance() as unknown as DbLike;
   const createdAt = input.createdAt || new Date().toISOString();
   const id = randomUUID();
@@ -452,7 +454,7 @@ export function saveEvalRun(input: {
     ? Math.max(0, Math.round(Number(input.avgLatencyMs)))
     : 0;
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO eval_runs
       (id, run_group_id, suite_id, suite_name, target_type, target_id, target_label, api_key_id,
        pass_rate, total, passed, failed, avg_latency_ms, summary_json, results_json, outputs_json, created_at)

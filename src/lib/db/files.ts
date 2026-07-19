@@ -1,4 +1,4 @@
-import { getDbInstance, rowToCamel, objToSnake } from "./core";
+import { getDbInstance, rowToCamel } from "./core";
 import { nonCriticalDbDisabled } from "./minimalDb";
 import { v4 as uuidv4 } from "uuid";
 
@@ -18,6 +18,24 @@ export interface FileRecord {
 const FILE_METADATA_COLUMNS =
   "id, bytes, created_at, filename, purpose, mime_type, api_key_id, expires_at, deleted_at";
 
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function rowToFileRecord(row: unknown): FileRecord | null {
+  const record = rowToCamel(row) as (FileRecord & Record<string, unknown>) | null;
+  if (!record) return null;
+  return {
+    ...record,
+    bytes: Number(record.bytes),
+    createdAt: Number(record.createdAt),
+    expiresAt: toNullableNumber(record.expiresAt),
+    deletedAt: toNullableNumber(record.deletedAt),
+  };
+}
+
 export async function createFile(
   file: Omit<FileRecord, "id" | "createdAt">
 ): Promise<FileRecord> {
@@ -27,10 +45,10 @@ export async function createFile(
   const createdAt = Math.floor(Date.now() / 1000);
 
   let expiresAt = file.expiresAt;
-    if (expiresAt === undefined && file.purpose === "batch") {
-      // Default: batch files expire after 30 days
-      expiresAt = Math.floor(Date.now() / 1000) + 2592000;
-    }
+  if (expiresAt === undefined && file.purpose === "batch") {
+    // Default: batch files expire after 30 days
+    expiresAt = Math.floor(Date.now() / 1000) + 2592000;
+  }
 
   const record: FileRecord = {
     id,
@@ -45,23 +63,25 @@ export async function createFile(
     deletedAt: null,
   };
 
-  db.prepare(
-    `
+  await db
+    .prepare(
+      `
     INSERT INTO files (id, bytes, created_at, filename, purpose, content, mime_type, api_key_id, expires_at, deleted_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(
-    record.id,
-    record.bytes,
-    record.createdAt,
-    record.filename,
-    record.purpose,
-    record.content,
-    record.mimeType,
-    record.apiKeyId,
-    record.expiresAt,
-    record.deletedAt
-  );
+    )
+    .run(
+      record.id,
+      record.bytes,
+      record.createdAt,
+      record.filename,
+      record.purpose,
+      record.content,
+      record.mimeType,
+      record.apiKeyId,
+      record.expiresAt,
+      record.deletedAt
+    );
 
   return record;
 }
@@ -72,7 +92,7 @@ export async function getFile(id: string): Promise<FileRecord | null> {
   const row = await db
     .prepare(`SELECT ${FILE_METADATA_COLUMNS} FROM files WHERE id = ? AND deleted_at IS NULL`)
     .get(id);
-  return row ? (rowToCamel(row) as unknown as FileRecord) : null;
+  return rowToFileRecord(row);
 }
 
 export async function getFileContent(id: string): Promise<Buffer | null> {
@@ -129,7 +149,10 @@ export async function listFiles(
   params.push(limit);
 
   const rows = await db.prepare(query).all(...params);
-  return rows.map((row) => rowToCamel(row) as unknown as FileRecord);
+  return rows.flatMap((row) => {
+    const record = rowToFileRecord(row);
+    return record ? [record] : [];
+  });
 }
 
 export async function countFiles(

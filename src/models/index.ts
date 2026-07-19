@@ -21,6 +21,5 @@ export {
   createApiKey,
   deleteApiKey,
   validateApiKey,
-  isCloudEnabled,
   resolveProxyForProvider,
 } from "@/lib/localDb";

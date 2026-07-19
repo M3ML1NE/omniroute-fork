@@ -143,7 +143,7 @@ export function filterUsageForFormat(usage, targetFormat) {
   // Cross-map between Claude-style and OpenAI-style field names before filtering.
   // Some providers return input_tokens/output_tokens even when using OpenAI format.
   const convertedUsage = { ...usage };
-  if (targetFormat === FORMATS.CLAUDE || targetFormat === FORMATS.OPENAI_RESPONSES) {
+  if (targetFormat === "claude" || targetFormat === FORMATS.OPENAI_RESPONSES) {
     // OpenAI → Claude: prompt_tokens → input_tokens
     if (convertedUsage.prompt_tokens !== undefined && convertedUsage.input_tokens === undefined) {
       convertedUsage.input_tokens = convertedUsage.prompt_tokens;
@@ -188,14 +188,14 @@ export function filterUsageForFormat(usage, targetFormat) {
 
   // Define allowed fields for each format
   const formatFields = {
-    [FORMATS.CLAUDE]: [
+    claude: [
       "input_tokens",
       "output_tokens",
       "cache_read_input_tokens",
       "cache_creation_input_tokens",
       "estimated",
     ],
-    [FORMATS.GEMINI]: [
+    gemini: [
       "promptTokenCount",
       "candidatesTokenCount",
       "totalTokenCount",
@@ -227,8 +227,8 @@ export function filterUsageForFormat(usage, targetFormat) {
   let fields = formatFields[targetFormat];
 
   // Use same fields for similar formats
-  if (targetFormat === FORMATS.GEMINI_CLI || targetFormat === FORMATS.ANTIGRAVITY) {
-    fields = formatFields[FORMATS.GEMINI];
+  if (targetFormat === "gemini-cli" || targetFormat === "antigravity") {
+    fields = formatFields.gemini;
   } else if (targetFormat === FORMATS.OPENAI_RESPONSE) {
     fields = formatFields[FORMATS.OPENAI_RESPONSES];
   } else if (!fields) {
@@ -474,7 +474,7 @@ export function estimateOutputTokens(contentLength) {
  */
 export function formatUsage(inputTokens, outputTokens, targetFormat) {
   // Claude format uses input_tokens/output_tokens
-  if (targetFormat === FORMATS.CLAUDE) {
+  if (targetFormat === "claude") {
     return addBufferToUsage({
       input_tokens: inputTokens,
       output_tokens: outputTokens,

@@ -2,11 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { DEFAULT_MEMORY_SETTINGS } from "../../src/lib/memory/settings.ts";
 
-describe("memory settings — DEFAULT_MEMORY_SETTINGS.skillsEnabled", () => {
-  test("skillsEnabled defaults to true", () => {
-    assert.equal(DEFAULT_MEMORY_SETTINGS.skillsEnabled, true);
-  });
-
+describe("memory settings defaults", () => {
   test("enabled defaults to true", () => {
     assert.equal(DEFAULT_MEMORY_SETTINGS.enabled, true);
   });

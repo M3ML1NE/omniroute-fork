@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { getModelAliases, setModelAlias, deleteModelAlias, isCloudEnabled } from "@/models";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { syncToCloud } from "@/lib/cloudSync";
+import { getModelAliases, setModelAlias, deleteModelAlias } from "@/models";
 import { cloudModelAliasUpdateSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import {
@@ -129,7 +127,6 @@ export async function PUT(request) {
     const { model, alias } = validation.data;
 
     await setModelAlias(alias, model);
-    await syncToCloudIfEnabled();
 
     return NextResponse.json(
       { success: true, model, alias },
@@ -174,7 +171,6 @@ export async function DELETE(request) {
     }
 
     await deleteModelAlias(alias);
-    await syncToCloudIfEnabled();
 
     return NextResponse.json(
       { success: true },
@@ -193,17 +189,5 @@ export async function DELETE(request) {
       },
       { status: 500, headers: diagnosticHeaders }
     );
-  }
-}
-
-async function syncToCloudIfEnabled() {
-  try {
-    const cloudEnabled = await isCloudEnabled();
-    if (!cloudEnabled) return;
-
-    const machineId = await getConsistentMachineId();
-    await syncToCloud(machineId);
-  } catch (error) {
-    console.log("Error syncing aliases to cloud:", error);
   }
 }

@@ -1,3 +1,5 @@
+import { randomInt } from "@/shared/utils/secureRandom";
+
 type JsonRecord = Record<string, unknown>;
 
 const COMBO_TEST_MAX_TOKENS = 2048;
@@ -108,7 +110,7 @@ function hasReasoningOnlyCompletion(body: JsonRecord): boolean {
 }
 
 function getRandomFiveDigitNumber() {
-  return COMBO_TEST_OPERAND_MIN + Math.floor(Math.random() * COMBO_TEST_OPERAND_RANGE);
+  return COMBO_TEST_OPERAND_MIN + randomInt(COMBO_TEST_OPERAND_RANGE);
 }
 
 function buildComboTestPrompt() {

@@ -1,12 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  deleteApiKey,
-  getApiKeyById,
-  updateApiKeyPermissions,
-  isCloudEnabled,
-} from "@/lib/localDb";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { syncToCloud } from "@/lib/cloudSync";
+import { deleteApiKey, getApiKeyById, updateApiKeyPermissions } from "@/lib/localDb";
 import { updateKeyPermissionsSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
@@ -101,9 +94,6 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
 
-    // Auto sync to Cloud if enabled
-    await syncKeysToCloudIfEnabled();
-
     return NextResponse.json({
       message: "API key settings updated successfully",
       ...(name !== undefined && { name }),
@@ -140,27 +130,9 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
 
-    // Auto sync to Cloud if enabled
-    await syncKeysToCloudIfEnabled();
-
     return NextResponse.json({ message: "Key deleted successfully" });
   } catch (error) {
     log.error("keys", "Error deleting key", error);
     return NextResponse.json({ error: "Failed to delete key" }, { status: 500 });
-  }
-}
-
-/**
- * Sync API keys to Cloud if enabled
- */
-async function syncKeysToCloudIfEnabled() {
-  try {
-    const cloudEnabled = await isCloudEnabled();
-    if (!cloudEnabled) return;
-
-    const machineId = await getConsistentMachineId();
-    await syncToCloud(machineId);
-  } catch (error) {
-    log.error("keys", "Error syncing keys to cloud", error);
   }
 }

@@ -11,25 +11,25 @@ import {
   getAllAudioModels,
 } from "../../open-sse/config/audioRegistry.ts";
 
+// openai and every other hardcoded named provider were removed by the
+// compatible-only-provider-docs-purge (Todo 5). These registries now only
+// resolve dynamically-registered local provider_nodes (via
+// buildDynamicAudioProvider) — a bare lookup by name always returns null.
 describe("getTranscriptionProviders / getSpeechProviders", () => {
-  it("returns a non-empty registry of transcription providers", () => {
+  it("returns an empty registry of transcription providers (named entries purged)", () => {
     const providers = getTranscriptionProviders();
-    assert.ok(Object.keys(providers).length > 0);
-    assert.ok(providers.openai);
-    assert.ok(Array.isArray(providers.openai.models));
+    assert.deepEqual(providers, {});
   });
 
-  it("returns a non-empty registry of speech providers", () => {
+  it("returns an empty registry of speech providers (named entries purged)", () => {
     const providers = getSpeechProviders();
-    assert.ok(Object.keys(providers).length > 0);
+    assert.deepEqual(providers, {});
   });
 });
 
 describe("getTranscriptionProvider / getSpeechProvider", () => {
-  it("returns the provider config for a known transcription provider id", () => {
-    const provider = getTranscriptionProvider("openai");
-    assert.ok(provider);
-    assert.equal(provider!.id, "openai");
+  it("returns null for a formerly-hardcoded transcription provider id", () => {
+    assert.equal(getTranscriptionProvider("openai"), null);
   });
 
   it("returns null for an unknown transcription provider id", () => {
@@ -85,15 +85,15 @@ describe("parseTranscriptionModel", () => {
     assert.deepEqual(parseTranscriptionModel(null), { provider: null, model: null });
   });
 
-  it("parses a provider-prefixed model string", () => {
+  it("falls back to first-segment-as-provider for a prefixed string with no registry match", () => {
     const result = parseTranscriptionModel("openai/whisper-1");
-    assert.equal(result.provider, "openai");
-    assert.equal(result.model, "whisper-1");
+    assert.equal(result.provider, null);
+    assert.equal(result.model, "openai/whisper-1");
   });
 
-  it("resolves a bare model id to its owning provider", () => {
+  it("returns a null provider for a bare model id with no registry match", () => {
     const result = parseTranscriptionModel("whisper-1");
-    assert.equal(result.provider, "openai");
+    assert.equal(result.provider, null);
     assert.equal(result.model, "whisper-1");
   });
 
@@ -113,12 +113,12 @@ describe("parseTranscriptionModel", () => {
 });
 
 describe("parseSpeechModel", () => {
-  it("parses a provider-prefixed speech model string", () => {
-    const providers = getSpeechProviders();
-    const [firstProviderId, firstProvider] = Object.entries(providers)[0];
-    const firstModelId = firstProvider.models[0].id;
-    const result = parseSpeechModel(`${firstProviderId}/${firstModelId}`);
-    assert.equal(result.provider, firstProviderId);
+  it("resolves a dynamic provider prefix when no static registry match exists", () => {
+    const result = parseSpeechModel("local-tts/my-voice", [
+      { id: "local-tts", baseUrl: "http://localhost:5000", authType: "none", authHeader: "none", models: [] },
+    ]);
+    assert.equal(result.provider, "local-tts");
+    assert.equal(result.model, "my-voice");
   });
 
   it("returns null/null for a null model string", () => {
@@ -127,15 +127,8 @@ describe("parseSpeechModel", () => {
 });
 
 describe("getAllAudioModels", () => {
-  it("returns a flat list combining transcription and speech models", () => {
+  it("returns an empty list (no hardcoded named-provider entries remain)", () => {
     const models = getAllAudioModels();
-    assert.ok(models.length > 0);
-    assert.ok(models.some((m) => m.subtype === "transcription"));
-    assert.ok(models.some((m) => m.subtype === "speech"));
-    for (const m of models) {
-      assert.ok(m.id.includes("/"));
-      assert.ok(typeof m.name === "string");
-      assert.ok(typeof m.provider === "string");
-    }
+    assert.deepEqual(models, []);
   });
 });

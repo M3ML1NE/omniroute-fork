@@ -2,12 +2,12 @@
  * T-011 — DB-stored authz bypass policy + hot-reload.
  *
  * Covers spec AC-3 through AC-8:
- *   - AC-3 kill-switch flip → bypass disabled → /api/mcp/ from non-loopback → 403
+ *   - AC-3 kill-switch flip → bypass disabled → /api/copilot/ from non-loopback → 403
  *   - AC-4 PATCH missing currentPassword → 400 PASSWORD_REQUIRED
  *   - AC-5 wrong currentPassword → 401 PASSWORD_MISMATCH
  *   - AC-6 toggle list reflects DB after PATCH
  *   - AC-7 add a new prefix → persists + applyRuntimeSettings fires + snapshot reflects
- *   - AC-8 add /api/cli-tools/runtime/ → 400 BYPASS_PREFIX_NOT_ALLOWED, snapshot unchanged
+ *   - AC-8 add /api/services/ → 400 BYPASS_PREFIX_NOT_ALLOWED, snapshot unchanged
  *
  * Goes through the production `updateSettings → applyRuntimeSettings` and
  * the real PATCH route handler — no direct `getAuthzBypassSnapshot` mocks.
@@ -50,7 +50,7 @@ test.after(() => {
   else process.env.JWT_SECRET = ORIGINAL_JWT_SECRET;
 });
 
-function nonLoopbackCtx(headers: Headers, path = "/api/mcp/stream") {
+function nonLoopbackCtx(headers: Headers, path = "/api/copilot/chat") {
   return {
     request: {
       method: "GET",
@@ -69,12 +69,16 @@ function nonLoopbackCtx(headers: Headers, path = "/api/mcp/stream") {
 
 // ─── AC-3 — kill-switch flips bypass off → request 403 ───────────────────
 
-test("AC-3: kill-switch off → /api/mcp/* with manage-scope Bearer from non-loopback → 403 LOCAL_ONLY", async () => {
+test("AC-3: kill-switch off → /api/copilot/* with manage-scope Bearer from non-loopback → 403 LOCAL_ONLY", async () => {
   process.env.JWT_SECRET = "test-jwt-secret-authz-bypass";
   process.env.INITIAL_PASSWORD = "initial-pass";
-  // Seed DB with default snapshot first (kill-switch ON) and confirm the
-  // bypass works.
-  await mockSettings({ requireLogin: true });
+  // Seed DB with the kill-switch ON and /api/copilot/ opted into the bypass
+  // list, then confirm the bypass works.
+  await mockSettings({
+    requireLogin: true,
+    localOnlyManageScopeBypassEnabled: true,
+    localOnlyManageScopeBypassPrefixes: ["/api/copilot/"],
+  });
   const managePolicy = await import("../../../src/server/authz/policies/management.ts");
   const created = await apiKeysDb.createApiKey("ac3-mgmt", "machine-ac3", ["manage"]);
 
@@ -86,7 +90,7 @@ test("AC-3: kill-switch off → /api/mcp/* with manage-scope Bearer from non-loo
 
   // Flip the kill-switch off via the production pipeline.
   await mockSettings({ localOnlyManageScopeBypassEnabled: false });
-  assert.equal(routeGuard.isLocalOnlyBypassableByManageScope("/api/mcp/stream"), false);
+  assert.equal(routeGuard.isLocalOnlyBypassableByManageScope("/api/copilot/chat"), false);
 
   // After the hot-reload, the policy must reject.
   const after = await managePolicy.managementPolicy.evaluate(nonLoopbackCtx(headers));
@@ -192,7 +196,7 @@ test("AC-7: PATCH adds prefix → applyRuntimeSettings fires + getAuthzBypassSna
   await runtime.applyRuntimeSettings(seeded);
 
   const before = routeGuard.LOCAL_ONLY_MANAGE_SCOPE_BYPASS_PREFIXES;
-  assert.deepEqual([...before], ["/api/mcp/"]);
+  assert.deepEqual([...before], []);
 
   // Measure the snapshot-read latency (spec SLA: <50 ms).
   const t0 = process.hrtime.bigint();
@@ -230,7 +234,7 @@ test("AC-7: PATCH adds prefix → applyRuntimeSettings fires + getAuthzBypassSna
 
 // ─── AC-8 — spawn-capable prefix → 400 BYPASS_PREFIX_NOT_ALLOWED ─────────
 
-test("AC-8: PATCH with /api/cli-tools/runtime/ in bypass list → 400 BYPASS_PREFIX_NOT_ALLOWED + snapshot unchanged", async () => {
+test("AC-8: PATCH with /api/services/ in bypass list → 400 BYPASS_PREFIX_NOT_ALLOWED + snapshot unchanged", async () => {
   process.env.JWT_SECRET = "test-jwt-secret-authz-bypass";
   process.env.INITIAL_PASSWORD = "initial-pass-ac8";
   await settingsDb.updateSettings({ requireLogin: true });
@@ -246,7 +250,7 @@ test("AC-8: PATCH with /api/cli-tools/runtime/ in bypass list → 400 BYPASS_PRE
     await makeManagementSessionRequest("http://localhost/api/settings", {
       method: "PATCH",
       body: {
-        localOnlyManageScopeBypassPrefixes: ["/api/mcp/", "/api/cli-tools/runtime/"],
+        localOnlyManageScopeBypassPrefixes: ["/api/mcp/", "/api/services/"],
         currentPassword: "initial-pass-ac8",
       },
     })
@@ -264,7 +268,7 @@ test("AC-8: PATCH with /api/cli-tools/runtime/ in bypass list → 400 BYPASS_PRE
 
   // Persisted state untouched.
   const settings = await settingsDb.getSettings();
-  assert.deepEqual(settings.localOnlyManageScopeBypassPrefixes, ["/api/mcp/"]);
+  assert.deepEqual(settings.localOnlyManageScopeBypassPrefixes, []);
   // Runtime snapshot untouched.
   const snapshotAfter = runtime.getAuthzBypassSnapshot();
   assert.deepEqual(snapshotAfter.prefixes, snapshotBefore.prefixes);
@@ -273,14 +277,14 @@ test("AC-8: PATCH with /api/cli-tools/runtime/ in bypass list → 400 BYPASS_PRE
 
 // ─── Defence-in-depth: snapshot mutation alone cannot grant spawn bypass ─
 
-test("Defence-in-depth: even if a malformed snapshot lists /api/cli-tools/runtime/, the runtime predicate rejects it", async () => {
+test("Defence-in-depth: even if a malformed snapshot lists /api/services/, the runtime predicate rejects it", async () => {
   // applyRuntimeSettings wires the snapshot through normalizeAuthzBypass,
   // which does not filter spawn-capable entries (zod is the gate). The
   // routeGuard predicate must still refuse them at runtime.
   await runtime.applyRuntimeSettings({
     localOnlyManageScopeBypassEnabled: true,
-    localOnlyManageScopeBypassPrefixes: ["/api/cli-tools/runtime/"],
+    localOnlyManageScopeBypassPrefixes: ["/api/services/"],
   });
 
-  assert.equal(routeGuard.isLocalOnlyBypassableByManageScope("/api/cli-tools/runtime/foo"), false);
+  assert.equal(routeGuard.isLocalOnlyBypassableByManageScope("/api/services/foo"), false);
 });

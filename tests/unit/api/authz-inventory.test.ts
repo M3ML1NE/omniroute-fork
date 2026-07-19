@@ -68,9 +68,10 @@ test("AC-1: GET returns 5 tiers with prefixes + bypass state envelope", async ()
 
   const localOnly = body.tiers.find((t) => t.name === "LOCAL_ONLY");
   assert.ok(localOnly);
-  assert.ok(localOnly!.prefixes.includes("/api/mcp/"));
-  assert.ok(localOnly!.prefixes.includes("/api/cli-tools/runtime/"));
-  assert.equal(localOnly!.bypassable, true);
+  assert.ok(localOnly!.prefixes.includes("/api/copilot/"));
+  // LOCAL_ONLY_MANAGE_SCOPE_BYPASS_PREFIXES is empty in this fork, so no
+  // LOCAL_ONLY prefix is compile-time bypassable.
+  assert.equal(localOnly!.bypassable, false);
 
   const alwaysProtected = body.tiers.find((t) => t.name === "ALWAYS_PROTECTED");
   assert.ok(alwaysProtected);
@@ -82,7 +83,7 @@ test("AC-1: GET returns 5 tiers with prefixes + bypass state envelope", async ()
     assert.ok(tier.description.length > 0, `tier ${tier.name} missing description`);
   }
 
-  assert.ok(body.spawnCapablePrefixes.includes("/api/cli-tools/runtime/"));
+  assert.ok(body.spawnCapablePrefixes.includes("/api/services/"));
 });
 
 // ─── AC-2 — flags match getSettings() pre- and post-mutation ──────────────
@@ -102,9 +103,9 @@ test("AC-2: bypassEnabled + bypassPrefixes reflect getSettings() (defaults)", as
     bypassEnabled: boolean;
     bypassPrefixes: string[];
   };
-  // Default snapshot: kill-switch ON, single prefix /api/mcp/.
+  // Default snapshot: kill-switch ON, no prefixes configured.
   assert.equal(body.bypassEnabled, true);
-  assert.deepEqual(body.bypassPrefixes, ["/api/mcp/"]);
+  assert.deepEqual(body.bypassPrefixes, []);
 });
 
 test("AC-2: bypassEnabled flips after settings mutation", async () => {

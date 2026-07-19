@@ -43,7 +43,6 @@ const CRITICAL_MODULES = [
   "src/lib/db/quotaSnapshots.ts",
   "src/lib/db/prompts.ts",
   "src/lib/db/featureFlags.ts",
-  "src/lib/db/creditBalance.ts",
   "src/lib/db/models.ts",
   "src/lib/db/serviceModels.ts",
   "src/lib/db/stats.ts",
@@ -67,7 +66,10 @@ const SQLITE_PATTERNS = [
   { label: "datetime('now') / datetime(\"now\")", re: /\bdatetime\s*\(\s*['"]now['"]/i },
   { label: "strftime()", re: /\bstrftime\s*\(/i },
   { label: "unixepoch()", re: /\bunixepoch\b/i },
-  { label: "INSERT OR REPLACE/IGNORE/ABORT/FAIL/ROLLBACK", re: /\bINSERT\s+OR\s+(REPLACE|IGNORE|ABORT|FAIL|ROLLBACK)\b/i },
+  {
+    label: "INSERT OR REPLACE/IGNORE/ABORT/FAIL/ROLLBACK",
+    re: /\bINSERT\s+OR\s+(REPLACE|IGNORE|ABORT|FAIL|ROLLBACK)\b/i,
+  },
   { label: "AUTOINCREMENT", re: /\bAUTOINCREMENT\b/i },
   { label: "sqlite_master", re: /\bsqlite_master\b/i },
   { label: "ROWID", re: /\bROWID\b/i },
@@ -155,9 +157,12 @@ if (process.argv.includes("--self-test")) {
     if (!hit) allDetected = false;
   }
   // Ensure a clean Postgres line does NOT trip the guard.
-  const cleanLine = "INSERT INTO key_value (namespace, key, value) VALUES ($1, $2, $3) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value";
+  const cleanLine =
+    "INSERT INTO key_value (namespace, key, value) VALUES ($1, $2, $3) ON CONFLICT (namespace, key) DO UPDATE SET value = EXCLUDED.value";
   const falsePositive = SQLITE_PATTERNS.some((p) => p.re.test(cleanLine));
-  console.log(`  ${falsePositive ? "✗ FALSE POSITIVE" : "✓ clean line ok"}  ${cleanLine.slice(0, 60)}...`);
+  console.log(
+    `  ${falsePositive ? "✗ FALSE POSITIVE" : "✓ clean line ok"}  ${cleanLine.slice(0, 60)}...`
+  );
   if (!allDetected || falsePositive) {
     console.error("\nSelf-test FAILED.");
     process.exit(1);
@@ -182,5 +187,7 @@ if (report.length > 0) {
   process.exit(1);
 }
 
-console.log(`SQLite syntax guard: PASS (${CRITICAL_MODULES.length - missing} critical modules clean)`);
+console.log(
+  `SQLite syntax guard: PASS (${CRITICAL_MODULES.length - missing} critical modules clean)`
+);
 process.exit(0);

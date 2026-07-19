@@ -8,7 +8,7 @@ process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "omniroute-embeddings-"));
 
 const { handleEmbedding } = await import("../../open-sse/handlers/embeddings.ts");
 
-test("handleEmbedding routes prefixed models and forwards optional fields", async () => {
+test("handleEmbedding routes resolved providers and forwards optional fields", async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
 
@@ -31,28 +31,36 @@ test("handleEmbedding routes prefixed models and forwards optional fields", asyn
   try {
     const result = await handleEmbedding({
       body: {
-        model: "openai/text-embedding-3-large",
+        model: "acme/embed-large",
         input: "hello world",
         dimensions: 512,
         encoding_format: "float",
         user: "user-123",
       },
-      credentials: { apiKey: "openai-key" },
+      credentials: { apiKey: "acme-key" },
+      resolvedProvider: {
+        id: "acme",
+        baseUrl: "https://api.acme.example/v1/embeddings",
+        authType: "apikey",
+        authHeader: "bearer",
+        models: [],
+      },
+      resolvedModel: "embed-large",
       log: null,
     });
 
     assert.equal(result.success, true);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "https://api.openai.com/v1/embeddings");
-    assert.equal(calls[0].headers.Authorization, "Bearer openai-key");
+    assert.equal(calls[0].url, "https://api.acme.example/v1/embeddings");
+    assert.equal(calls[0].headers.Authorization, "Bearer acme-key");
     assert.deepEqual(calls[0].body, {
-      model: "text-embedding-3-large",
+      model: "embed-large",
       input: "hello world",
       dimensions: 512,
       encoding_format: "float",
       user: "user-123",
     });
-    assert.equal(result.data.model, "openai/text-embedding-3-large");
+    assert.equal(result.data.model, "acme/embed-large");
     assert.deepEqual(result.data.usage, { prompt_tokens: 3, total_tokens: 3 });
   } finally {
     globalThis.fetch = originalFetch;
@@ -113,7 +121,7 @@ test("handleEmbedding supports resolved local providers without auth and preserv
   }
 });
 
-test("handleEmbedding routes Upstage embedding models through the embedding endpoint", async () => {
+test("handleEmbedding routes resolved providers using x-api-key auth", async () => {
   const originalFetch = globalThis.fetch;
   let captured;
 
@@ -136,21 +144,29 @@ test("handleEmbedding routes Upstage embedding models through the embedding endp
   try {
     const result = await handleEmbedding({
       body: {
-        model: "upstage/embedding-query",
+        model: "solarprovider/embedding-query",
         input: "Solar embeddings are useful",
       },
-      credentials: { apiKey: "upstage-key" },
+      credentials: { apiKey: "solar-key" },
+      resolvedProvider: {
+        id: "solarprovider",
+        baseUrl: "https://api.solar.example/v1/embeddings",
+        authType: "apikey",
+        authHeader: "x-api-key",
+        models: [],
+      },
+      resolvedModel: "embedding-query",
       log: null,
     });
 
     assert.equal(result.success, true);
-    assert.equal(captured.url, "https://api.upstage.ai/v1/embeddings");
-    assert.equal(captured.headers.Authorization, "Bearer upstage-key");
+    assert.equal(captured.url, "https://api.solar.example/v1/embeddings");
+    assert.equal(captured.headers["x-api-key"], "solar-key");
     assert.deepEqual(captured.body, {
       model: "embedding-query",
       input: "Solar embeddings are useful",
     });
-    assert.equal(result.data.model, "upstage/embedding-query");
+    assert.equal(result.data.model, "solarprovider/embedding-query");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -182,8 +198,16 @@ test("handleEmbedding rejects unknown providers", async () => {
 
 test("handleEmbedding requires credentials for authenticated providers", async () => {
   const result = await handleEmbedding({
-    body: { model: "openai/text-embedding-3-small", input: "hello" },
+    body: { model: "acme/embed-large", input: "hello" },
     credentials: null,
+    resolvedProvider: {
+      id: "acme",
+      baseUrl: "https://api.acme.example/v1/embeddings",
+      authType: "apikey",
+      authHeader: "bearer",
+      models: [],
+    },
+    resolvedModel: "embed-large",
     log: null,
   });
 
@@ -203,8 +227,16 @@ test("handleEmbedding surfaces upstream failures", async () => {
 
   try {
     const result = await handleEmbedding({
-      body: { model: "mistral/mistral-embed", input: "hello" },
-      credentials: { apiKey: "mistral-key" },
+      body: { model: "acme/embed-large", input: "hello" },
+      credentials: { apiKey: "acme-key" },
+      resolvedProvider: {
+        id: "acme",
+        baseUrl: "https://api.acme.example/v1/embeddings",
+        authType: "apikey",
+        authHeader: "bearer",
+        models: [],
+      },
+      resolvedModel: "embed-large",
       log: null,
     });
 
@@ -239,8 +271,16 @@ test("handleEmbedding strips content-encoding header on success path", async () 
 
   try {
     const result = await handleEmbedding({
-      body: { model: "openai/text-embedding-3-small", input: "test" },
-      credentials: { apiKey: "openai-key" },
+      body: { model: "acme/embed-large", input: "test" },
+      credentials: { apiKey: "acme-key" },
+      resolvedProvider: {
+        id: "acme",
+        baseUrl: "https://api.acme.example/v1/embeddings",
+        authType: "apikey",
+        authHeader: "bearer",
+        models: [],
+      },
+      resolvedModel: "embed-large",
       log: null,
     });
 
@@ -272,8 +312,16 @@ test("handleEmbedding strips content-encoding header on error path", async () =>
 
   try {
     const result = await handleEmbedding({
-      body: { model: "openai/text-embedding-3-small", input: "test" },
-      credentials: { apiKey: "openai-key" },
+      body: { model: "acme/embed-large", input: "test" },
+      credentials: { apiKey: "acme-key" },
+      resolvedProvider: {
+        id: "acme",
+        baseUrl: "https://api.acme.example/v1/embeddings",
+        authType: "apikey",
+        authHeader: "bearer",
+        models: [],
+      },
+      resolvedModel: "embed-large",
       log: null,
     });
 

@@ -65,7 +65,7 @@ test("applyItemOrder returns original children when order is empty", () => {
 });
 
 test("applyItemOrder reorders items by provided list", () => {
-  const section = SIDEBAR_SECTIONS.find((s) => s.id === "help")!;
+  const section = SIDEBAR_SECTIONS.find((s) => s.id === "omni-proxy")!;
   const children = [...section.children] as any[];
   const ids = children.map((c) => c.id);
   const reversed = [...ids].reverse();
@@ -77,7 +77,7 @@ test("applyItemOrder reorders items by provided list", () => {
 });
 
 test("applyItemOrder ignores unknown IDs in order list", () => {
-  const section = SIDEBAR_SECTIONS.find((s) => s.id === "help")!;
+  const section = SIDEBAR_SECTIONS.find((s) => s.id === "omni-proxy")!;
   const children = [...section.children] as any[];
   const ids = children.map((c) => c.id);
   const orderWithUnknown = ["ghost-item", ids[1], ids[0], ids[2]];

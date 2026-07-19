@@ -111,7 +111,7 @@ export default function CallbackPage() {
         }, 1500);
       } else {
         // Opened as a tab, opener severed by COOP, or remote dashboard using a
-        // loopback/tunnel callback. Keep the full URL visible as a manual fallback
+        // non-local callback URL. Keep the full URL visible as a manual fallback
         // in case the opener cannot receive the cross-origin postMessage.
         queueStatusUpdate("manual");
       }

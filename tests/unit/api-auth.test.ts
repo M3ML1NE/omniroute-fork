@@ -258,7 +258,7 @@ test("isAuthRequired is disabled while no password exists", async () => {
 });
 
 test("isAuthRequired keeps fresh bootstrap open only on loopback", async () => {
-  await localDb.updateSettings({ requireLogin: true, password: "" });
+  await localDb.updateSettings({ requireLogin: true, password: "", setupComplete: false });
 
   assert.equal(await apiAuth.isAuthRequired(new Request("http://localhost/api/providers")), false);
   assert.equal(await apiAuth.isAuthRequired(new Request("http://127.0.0.1/api/providers")), false);

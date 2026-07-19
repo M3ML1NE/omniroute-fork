@@ -31,27 +31,28 @@ test("handleModeration rejects unknown moderation models", async () => {
   assert.match(payload.error.message, /No moderation provider found/);
 });
 
-test("handleModeration requires credentials for the resolved provider", async () => {
+test("handleModeration returns no-provider-found for a default model even with credentials present", async () => {
+  // MODERATION_PROVIDERS is intentionally empty post-purge (no local-node dynamic
+  // resolution path ever existed for moderations, unlike embeddings/audio/rerank).
+  // Every request now fails provider resolution before the credentials check.
   const response = await handleModeration({
     body: { input: "hello" },
-    credentials: null,
+    credentials: { apiKey: "sk-test" },
   });
   const payload = (await response.json()) as any;
 
-  assert.equal(response.status, 401);
-  assert.equal(payload.error.message, "No credentials for moderation provider: openai");
+  assert.equal(response.status, 400);
+  assert.equal(
+    payload.error.message,
+    'No moderation provider found for model "omni-moderation-latest". Available: openai'
+  );
 });
 
-test("handleModeration proxies successful requests with default model and accessToken fallback", async () => {
-  let captured;
+test("handleModeration never reaches fetch for a namespaced model, even with a mocked upstream", async () => {
+  let fetchCalled = false;
 
-  globalThis.fetch = async (url, options = {}) => {
-    captured = {
-      url: String(url),
-      headers: options.headers,
-      body: JSON.parse(String(options.body || "{}")),
-    };
-
+  globalThis.fetch = async () => {
+    fetchCalled = true;
     return Response.json({
       id: "modr-1",
       results: [{ flagged: false }],
@@ -62,43 +63,46 @@ test("handleModeration proxies successful requests with default model and access
     body: { input: "all clear" },
     credentials: { accessToken: "oauth-token" },
   });
+  const payload = (await response.json()) as any;
 
-  assert.equal(captured.url, "https://api.openai.com/v1/moderations");
-  assert.equal(captured.headers.Authorization, "Bearer oauth-token");
-  assert.deepEqual(captured.body, {
-    model: "omni-moderation-latest",
-    input: "all clear",
-  });
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("access-control-allow-origin"), null);
-  assert.match(response.headers.get("access-control-allow-methods") || "", /OPTIONS/);
-  assert.deepEqual(await response.json(), {
-    id: "modr-1",
-    results: [{ flagged: false }],
-  });
+  assert.equal(fetchCalled, false);
+  assert.equal(response.status, 400);
+  assert.equal(
+    payload.error.message,
+    'No moderation provider found for model "omni-moderation-latest". Available: openai'
+  );
 });
 
-test("handleModeration returns upstream error payloads with CORS headers", async () => {
-  globalThis.fetch = async () =>
-    new Response('{"error":"busy"}', {
+test("handleModeration returns no-provider-found for an openai/-prefixed model despite a mocked upstream", async () => {
+  let fetchCalled = false;
+
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    return new Response('{"error":"busy"}', {
       status: 429,
       headers: { "content-type": "application/json" },
     });
+  };
 
   const response = await handleModeration({
     body: { model: "openai/text-moderation-latest", input: "check this" },
     credentials: { apiKey: "sk-test" },
   });
+  const payload = (await response.json()) as any;
 
-  assert.equal(response.status, 429);
-  assert.equal(await response.text(), '{"error":"busy"}');
-  assert.equal(response.headers.get("content-type"), "application/json");
-  assert.equal(response.headers.get("access-control-allow-origin"), null);
-  assert.match(response.headers.get("access-control-allow-methods") || "", /OPTIONS/);
+  assert.equal(fetchCalled, false);
+  assert.equal(response.status, 400);
+  assert.equal(
+    payload.error.message,
+    'No moderation provider found for model "openai/text-moderation-latest". Available: openai'
+  );
 });
 
-test("handleModeration returns a 500 when the upstream request throws", async () => {
+test("handleModeration returns no-provider-found without ever invoking a throwing fetch", async () => {
+  let fetchCalled = false;
+
   globalThis.fetch = async () => {
+    fetchCalled = true;
     throw new Error("socket closed");
   };
 
@@ -108,6 +112,10 @@ test("handleModeration returns a 500 when the upstream request throws", async ()
   });
   const payload = (await response.json()) as any;
 
-  assert.equal(response.status, 500);
-  assert.match(payload.error.message, /Moderation request failed: socket closed/);
+  assert.equal(fetchCalled, false);
+  assert.equal(response.status, 400);
+  assert.equal(
+    payload.error.message,
+    'No moderation provider found for model "openai/text-moderation-latest". Available: openai'
+  );
 });

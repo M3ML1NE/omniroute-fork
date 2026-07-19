@@ -3,7 +3,6 @@ import { getSettings, updateSettings } from "@/lib/localDb";
 import { getRuntimePorts } from "@/lib/runtime/ports";
 import { updateSettingsSchema } from "@/shared/validation/settingsSchemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
 import {
   validateProxyUrl,
   upsertUpstreamProxyConfig,
@@ -110,7 +109,7 @@ function attemptedKeysOf(body: Record<string, unknown> | null | undefined): stri
 }
 
 /** Emit a settings.update_failed row. Never throws — audit must not break flow. */
-function emitSettingsFailureAudit(
+async function emitSettingsFailureAudit(
   request: Request,
   actor: string,
   reason: string,
@@ -118,7 +117,7 @@ function emitSettingsFailureAudit(
 ) {
   try {
     const { ipAddress, requestId } = getAuditRequestContext(request);
-    logAuditEvent({
+    await logAuditEvent({
       action: "settings.update_failed",
       actor,
       target: "settings",
@@ -142,8 +141,6 @@ export async function GET(request: Request) {
     const { password, ...safeSettings } = settings;
 
     const runtimePorts = getRuntimePorts();
-    const cloudUrl = process.env.CLOUD_URL || process.env.NEXT_PUBLIC_CLOUD_URL || null;
-    const machineId = await getConsistentMachineId();
 
     // Include cliproxyapi_model_mapping from upstream_proxy_config table
     let cliproxyapiModelMapping: Record<string, string> | null = null;
@@ -162,9 +159,6 @@ export async function GET(request: Request) {
       runtimePorts,
       apiPort: runtimePorts.apiPort,
       dashboardPort: runtimePorts.dashboardPort,
-      cloudConfigured: Boolean(cloudUrl),
-      cloudUrl,
-      machineId,
       ...(cliproxyapiModelMapping !== null
         ? { cliproxyapi_model_mapping: cliproxyapiModelMapping }
         : {}),
@@ -187,7 +181,7 @@ export async function PATCH(request: Request) {
   } catch {
     // Malformed JSON — surface a zod-style failure path so the rejection
     // is auditable like every other 400.
-    emitSettingsFailureAudit(request, actor, "INVALID_JSON", []);
+    await emitSettingsFailureAudit(request, actor, "INVALID_JSON", []);
     return NextResponse.json(
       { error: { code: "INVALID_JSON", message: "Request body is not valid JSON" } },
       { status: 400 }
@@ -205,7 +199,7 @@ export async function PATCH(request: Request) {
       const isBypassPrefixRejection = (validation.error.details || []).some(
         (d) => typeof d.message === "string" && d.message.includes("BYPASS_PREFIX_NOT_ALLOWED")
       );
-      emitSettingsFailureAudit(
+      await emitSettingsFailureAudit(
         request,
         actor,
         isBypassPrefixRejection ? "BYPASS_PREFIX_NOT_ALLOWED" : "VALIDATION_FAILED",
@@ -238,7 +232,7 @@ export async function PATCH(request: Request) {
       const isColdBoot = !storedPasswordHash && passwordState.settings.requireLogin === false;
       if (!isColdBoot) {
         if (!body.currentPassword) {
-          emitSettingsFailureAudit(request, actor, "PASSWORD_REQUIRED", attemptedKeys);
+          await emitSettingsFailureAudit(request, actor, "PASSWORD_REQUIRED", attemptedKeys);
           return NextResponse.json(
             {
               error: {
@@ -252,7 +246,7 @@ export async function PATCH(request: Request) {
         }
         const isValid = await verifyManagementPassword(body.currentPassword, storedPasswordHash);
         if (!isValid) {
-          emitSettingsFailureAudit(request, actor, "PASSWORD_MISMATCH", attemptedKeys);
+          await emitSettingsFailureAudit(request, actor, "PASSWORD_MISMATCH", attemptedKeys);
           return NextResponse.json(
             {
               error: {
@@ -286,7 +280,7 @@ export async function PATCH(request: Request) {
     if (cpaUrl && typeof cpaUrl === "string") {
       const urlValidation = validateProxyUrl(cpaUrl);
       if (urlValidation.valid === false) {
-        emitSettingsFailureAudit(request, actor, "CLIPROXY_URL_INVALID", attemptedKeys);
+        await emitSettingsFailureAudit(request, actor, "CLIPROXY_URL_INVALID", attemptedKeys);
         return NextResponse.json(
           { error: `Invalid CLIProxyAPI URL: ${urlValidation.error}` },
           { status: 400 }
@@ -346,7 +340,7 @@ export async function PATCH(request: Request) {
       const diff = computeSettingsDiff(beforeSnapshot, afterSnapshot, candidateKeys);
       if (Object.keys(diff).length > 0) {
         const { ipAddress, requestId } = getAuditRequestContext(request);
-        logAuditEvent({
+        await logAuditEvent({
           action: "settings.update",
           actor,
           target: "settings",

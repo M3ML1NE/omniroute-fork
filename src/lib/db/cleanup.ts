@@ -13,8 +13,8 @@ interface CleanupResult {
   errors: number;
 }
 
-function getRetentionSettings() {
-  return getUserDatabaseSettings().retention;
+async function getRetentionSettings() {
+  return (await getUserDatabaseSettings()).retention;
 }
 
 /**
@@ -22,7 +22,7 @@ function getRetentionSettings() {
  */
 export async function cleanupCallLogs(): Promise<CleanupResult> {
   const db = getDbInstance();
-  const retention = getRetentionSettings();
+  const retention = await getRetentionSettings();
 
   const retentionDays = retention.callLogs;
   const cutoffDate = new Date();
@@ -33,7 +33,7 @@ export async function cleanupCallLogs(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM call_logs WHERE created_at < ?");
-    const runResult = stmt.run(cutoffISO);
+    const runResult = await stmt.run(cutoffISO);
     result.deleted = runResult.changes;
 
     console.log(`[Cleanup] Deleted ${result.deleted} call_logs older than ${retentionDays} days`);
@@ -50,7 +50,7 @@ export async function cleanupCallLogs(): Promise<CleanupResult> {
  */
 export async function cleanupUsageHistory(): Promise<CleanupResult> {
   const db = getDbInstance();
-  const retention = getRetentionSettings();
+  const retention = await getRetentionSettings();
 
   const retentionDays = retention.usageHistory;
   const cutoffDate = new Date();
@@ -80,7 +80,7 @@ export async function cleanupUsageHistory(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM usage_history WHERE timestamp < ?");
-    const runResult = stmt.run(cutoffDateStr);
+    const runResult = await stmt.run(cutoffDateStr);
     result.deleted = runResult.changes;
 
     console.log(
@@ -99,7 +99,7 @@ export async function cleanupUsageHistory(): Promise<CleanupResult> {
  */
 export async function cleanupCompressionAnalytics(): Promise<CleanupResult> {
   const db = getDbInstance();
-  const retention = getRetentionSettings();
+  const retention = await getRetentionSettings();
 
   const retentionDays = retention.compressionAnalytics;
   const cutoffDate = new Date();
@@ -109,8 +109,8 @@ export async function cleanupCompressionAnalytics(): Promise<CleanupResult> {
   const result: CleanupResult = { deleted: 0, errors: 0 };
 
   try {
-    const stmt = db.prepare("DELETE FROM compression_analytics WHERE created_at < ?");
-    const runResult = stmt.run(cutoffISO);
+    const stmt = db.prepare("DELETE FROM compression_analytics WHERE timestamp < ?");
+    const runResult = await stmt.run(cutoffISO);
     result.deleted = runResult.changes;
 
     console.log(
@@ -129,7 +129,7 @@ export async function cleanupCompressionAnalytics(): Promise<CleanupResult> {
  */
 export async function cleanupMcpAudit(): Promise<CleanupResult> {
   const db = getDbInstance();
-  const retention = getRetentionSettings();
+  const retention = await getRetentionSettings();
 
   const retentionDays = retention.mcpAudit;
   const cutoffDate = new Date();
@@ -140,7 +140,7 @@ export async function cleanupMcpAudit(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM mcp_audit_log WHERE timestamp < ?");
-    const runResult = stmt.run(cutoffISO);
+    const runResult = await stmt.run(cutoffISO);
     result.deleted = runResult.changes;
 
     console.log(
@@ -159,7 +159,7 @@ export async function cleanupMcpAudit(): Promise<CleanupResult> {
  */
 export async function cleanupA2aEvents(): Promise<CleanupResult> {
   const db = getDbInstance();
-  const retention = getRetentionSettings();
+  const retention = await getRetentionSettings();
 
   const retentionDays = retention.a2aEvents;
   const cutoffDate = new Date();
@@ -170,7 +170,7 @@ export async function cleanupA2aEvents(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM a2a_events WHERE timestamp < ?");
-    const runResult = stmt.run(cutoffISO);
+    const runResult = await stmt.run(cutoffISO);
     result.deleted = runResult.changes;
 
     console.log(`[Cleanup] Deleted ${result.deleted} a2a_events older than ${retentionDays} days`);
@@ -187,7 +187,7 @@ export async function cleanupA2aEvents(): Promise<CleanupResult> {
  */
 export async function cleanupMemoryEntries(): Promise<CleanupResult> {
   const db = getDbInstance();
-  const retention = getRetentionSettings();
+  const retention = await getRetentionSettings();
 
   const retentionDays = retention.memoryEntries;
   const cutoffDate = new Date();
@@ -198,7 +198,7 @@ export async function cleanupMemoryEntries(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM memory_entries WHERE created_at < ?");
-    const runResult = stmt.run(cutoffISO);
+    const runResult = await stmt.run(cutoffISO);
     result.deleted = runResult.changes;
 
     console.log(
@@ -220,7 +220,7 @@ export async function runAutoCleanup(): Promise<{
   totalErrors: number;
   results: Record<string, CleanupResult>;
 }> {
-  const retention = getRetentionSettings();
+  const retention = await getRetentionSettings();
   const autoCleanupEnabled = retention.autoCleanupEnabled;
 
   if (!autoCleanupEnabled) {
@@ -256,7 +256,7 @@ export async function purgeQuotaSnapshots(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM quota_snapshots");
-    const runResult = stmt.run();
+    const runResult = await stmt.run();
     result.deleted = runResult.changes;
 
     console.log(`[Cleanup] Purged ${result.deleted} quota_snapshots`);
@@ -277,7 +277,7 @@ export async function purgeCallLogs(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM call_logs");
-    const runResult = stmt.run();
+    const runResult = await stmt.run();
     result.deleted = runResult.changes;
 
     console.log(`[Cleanup] Purged ${result.deleted} call_logs`);
@@ -298,7 +298,7 @@ export async function purgeDetailedLogs(): Promise<CleanupResult> {
 
   try {
     const stmt = db.prepare("DELETE FROM request_detail_logs");
-    const runResult = stmt.run();
+    const runResult = await stmt.run();
     result.deleted = runResult.changes;
 
     console.log(`[Cleanup] Purged ${result.deleted} request_detail_logs`);

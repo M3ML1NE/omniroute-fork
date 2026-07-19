@@ -8,12 +8,19 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "embedded-services",
   "combos",
   // OmniProxy > Compression Context
+  "compression-studio",
+  "context-settings",
+  "context-combos",
   "context-caveman",
   "context-rtk",
-  "context-combos",
+  "context-headroom",
+  "context-session-dedup",
+  "context-ccr",
+  "context-lite",
+  "context-aggressive",
+  "context-ultra",
   // Analytics
   "analytics",
-  "analytics-combo-health",
   "costs",
   "cache",
   "analytics-compression",
@@ -147,6 +154,27 @@ const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
   titleFallback: "Compression Context",
   items: [
     {
+      id: "compression-studio",
+      href: "/dashboard/compression/studio",
+      i18nKey: "compressionStudio",
+      subtitleKey: "compressionStudioSubtitle",
+      icon: "science",
+    },
+    {
+      id: "context-settings",
+      href: "/dashboard/context/settings",
+      i18nKey: "contextSettings",
+      subtitleKey: "contextSettingsSubtitle",
+      icon: "settings",
+    },
+    {
+      id: "context-combos",
+      href: "/dashboard/context/combos",
+      i18nKey: "contextCombos",
+      subtitleKey: "contextCombosSubtitle",
+      icon: "hub",
+    },
+    {
       id: "context-caveman",
       href: "/dashboard/context/caveman",
       i18nKey: "contextCaveman",
@@ -161,16 +189,49 @@ const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
       icon: "filter_alt",
     },
     {
-      id: "context-combos",
-      href: "/dashboard/context/combos",
-      i18nKey: "contextCombos",
-      subtitleKey: "contextCombosSubtitle",
-      icon: "hub",
+      id: "context-headroom",
+      href: "/dashboard/context/headroom",
+      i18nKey: "contextHeadroom",
+      subtitleKey: "contextHeadroomSubtitle",
+      icon: "table_rows",
+    },
+    {
+      id: "context-session-dedup",
+      href: "/dashboard/context/session-dedup",
+      i18nKey: "contextSessionDedup",
+      subtitleKey: "contextSessionDedupSubtitle",
+      icon: "content_copy",
+    },
+    {
+      id: "context-ccr",
+      href: "/dashboard/context/ccr",
+      i18nKey: "contextCcr",
+      subtitleKey: "contextCcrSubtitle",
+      icon: "archive",
+    },
+    {
+      id: "context-lite",
+      href: "/dashboard/context/lite",
+      i18nKey: "contextLite",
+      subtitleKey: "contextLiteSubtitle",
+      icon: "compress",
+    },
+    {
+      id: "context-aggressive",
+      href: "/dashboard/context/aggressive",
+      i18nKey: "contextAggressive",
+      subtitleKey: "contextAggressiveSubtitle",
+      icon: "speed",
+    },
+    {
+      id: "context-ultra",
+      href: "/dashboard/context/ultra",
+      i18nKey: "contextUltra",
+      subtitleKey: "contextUltraSubtitle",
+      icon: "bolt",
     },
   ],
 };
-
-
 
 const ANALYTICS_ITEMS: readonly SidebarItemDefinition[] = [
   {
@@ -179,13 +240,6 @@ const ANALYTICS_ITEMS: readonly SidebarItemDefinition[] = [
     i18nKey: "usage",
     subtitleKey: "usageSubtitle",
     icon: "analytics",
-  },
-  {
-    id: "analytics-combo-health",
-    href: "/dashboard/analytics/combo-health",
-    i18nKey: "analyticsComboHealth",
-    subtitleKey: "analyticsComboHealthSubtitle",
-    icon: "monitor_heart",
   },
   {
     id: "costs",
@@ -275,7 +329,6 @@ const COSTS_PARAMS_GROUP: SidebarItemGroup = {
       subtitleKey: "costsBudgetSubtitle",
       icon: "savings",
     },
-
   ],
 };
 
@@ -393,10 +446,7 @@ export const SIDEBAR_SECTIONS: readonly SidebarSectionDefinition[] = [
     id: "omni-proxy",
     titleKey: "omniProxySection",
     titleFallback: "OmniProxy",
-    children: [
-      ...OMNI_PROXY_ITEMS,
-      COMPRESSION_CONTEXT_GROUP,
-    ],
+    children: [...OMNI_PROXY_ITEMS, COMPRESSION_CONTEXT_GROUP],
     defaultPinned: true,
   },
   {
@@ -469,11 +519,17 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "api-manager",
   "providers",
   "combos",
+  "context-settings",
+  "context-combos",
   "context-caveman",
   "context-rtk",
-  "context-combos",
+  "context-headroom",
+  "context-session-dedup",
+  "context-ccr",
+  "context-lite",
+  "context-aggressive",
+  "context-ultra",
   "analytics",
-  "analytics-combo-health",
   "costs",
   "cache",
   "logs",
@@ -493,7 +549,6 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "providers",
   "combos",
   "analytics",
-  "analytics-combo-health",
   "costs",
   "costs-pricing",
   "costs-budget",

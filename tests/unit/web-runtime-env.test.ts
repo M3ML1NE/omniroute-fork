@@ -17,8 +17,6 @@ function buildEnv(overrides = {}) {
     REQUIRE_API_KEY: "false",
     PRICING_SYNC_ENABLED: "false",
     OMNIROUTE_DISABLE_BACKGROUND_SERVICES: "false",
-    CLOUD_URL: "https://cloud.example",
-    NEXT_PUBLIC_CLOUD_URL: "https://public-cloud.example",
     NEXT_PUBLIC_BASE_URL: "https://app.example",
     OMNIROUTE_PORT: "20128",
     API_PORT: "21128",
@@ -52,12 +50,12 @@ test("validateWebRuntimeEnv rejects invalid boolean and port flags", () => {
 test("validateWebRuntimeEnv rejects malformed public URLs", () => {
   const result = validateWebRuntimeEnv(
     buildEnv({
-      NEXT_PUBLIC_CLOUD_URL: "cloud.example",
+      NEXT_PUBLIC_BASE_URL: "app.example",
     })
   );
 
   assert.equal(result.valid, false);
-  assert.ok(result.errors.some((error) => error.name === "NEXT_PUBLIC_CLOUD_URL"));
+  assert.ok(result.errors.some((error) => error.name === "NEXT_PUBLIC_BASE_URL"));
 });
 
 test("getWebRuntimeEnv throws sanitized messages without leaking secret values", () => {

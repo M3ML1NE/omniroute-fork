@@ -1,10 +1,71 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
+import { getGlobalDispatcher, MockAgent, setGlobalDispatcher } from "undici";
 
 import { createChatPipelineHarness } from "./_chatPipelineHarness.ts";
 
 const harness = await createChatPipelineHarness("memory-pipeline");
+const originalDispatcher = getGlobalDispatcher();
+let upstreamMockAgent: MockAgent | null = null;
+
+function parseMockRequestBody(body: unknown): Record<string, any> | null {
+  if (!body) return null;
+  if (typeof body === "string") return JSON.parse(body);
+  if (Buffer.isBuffer(body)) return JSON.parse(body.toString("utf8"));
+  if (body instanceof ArrayBuffer) return JSON.parse(Buffer.from(body).toString("utf8"));
+  if (ArrayBuffer.isView(body)) {
+    return JSON.parse(Buffer.from(body.buffer, body.byteOffset, body.byteLength).toString("utf8"));
+  }
+  return JSON.parse(String(body));
+}
+
+function buildOpenAIResponsePayload(text = "ok", model = "gpt-4o-mini", usage = null) {
+  return {
+    id: "chatcmpl_json",
+    object: "chat.completion",
+    model,
+    choices: [
+      {
+        index: 0,
+        message: { role: "assistant", content: text },
+        finish_reason: "stop",
+      },
+    ],
+    usage: usage || {
+      prompt_tokens: 4,
+      completion_tokens: 2,
+      total_tokens: 6,
+    },
+  };
+}
+
+function mockOpenAIUpstream(
+  responder: string | ((body: Record<string, any> | null, callIndex: number) => string)
+): Array<Record<string, any> | null> {
+  upstreamMockAgent?.close();
+  upstreamMockAgent = new MockAgent();
+  upstreamMockAgent.disableNetConnect();
+  setGlobalDispatcher(upstreamMockAgent);
+
+  const calls: Array<Record<string, any> | null> = [];
+  const upstream = upstreamMockAgent.get("https://api.openai.com");
+  upstream
+    .intercept({ method: "POST", path: "/v1/chat/completions" })
+    .reply(
+      200,
+      (options) => {
+        const body = parseMockRequestBody(options.body);
+        calls.push(body);
+        const text = typeof responder === "function" ? responder(body, calls.length) : responder;
+        return buildOpenAIResponsePayload(text);
+      },
+      { headers: { "Content-Type": "application/json" } }
+    )
+    .persist();
+
+  return calls;
+}
 
 // Dynamic imports — MUST happen after harness creation to avoid premature DB init.
 // The harness sets DATA_DIR before importing DB modules, so these must resolve after that.
@@ -33,10 +94,20 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   BaseExecutor.RETRY_CONFIG.delayMs = harness.originalRetryDelayMs;
+  setGlobalDispatcher(originalDispatcher);
+  if (upstreamMockAgent) {
+    await upstreamMockAgent.close();
+    upstreamMockAgent = null;
+  }
   await resetStorage();
 });
 
 test.after(async () => {
+  setGlobalDispatcher(originalDispatcher);
+  if (upstreamMockAgent) {
+    await upstreamMockAgent.close();
+    upstreamMockAgent = null;
+  }
   await harness.cleanup();
 });
 
@@ -54,11 +125,7 @@ test("first request proceeds without injected context when the store is empty", 
   const apiKey = await seedApiKey();
   await enableMemory();
 
-  const fetchCalls = [];
-  globalThis.fetch = async (_url, init = {}) => {
-    fetchCalls.push(init.body ? JSON.parse(String(init.body)) : null);
-    return buildOpenAIResponse("No memory yet");
-  };
+  const fetchCalls = mockOpenAIUpstream("No memory yet");
 
   const response = await handleChat(
     buildRequest({
@@ -82,8 +149,7 @@ test("successful responses extract facts and persist them as memories", async ()
   const apiKey = await seedApiKey();
   await enableMemory();
 
-  globalThis.fetch = async () =>
-    buildOpenAIResponse("I prefer concise answers. I usually answer in bullet points.");
+  mockOpenAIUpstream("I prefer concise answers. I usually answer in bullet points.");
 
   const response = await handleChat(
     buildRequest({
@@ -125,11 +191,7 @@ test("later requests inject retrieved memories into upstream messages", async ()
     expiresAt: null,
   });
 
-  const fetchCalls = [];
-  globalThis.fetch = async (_url, init = {}) => {
-    fetchCalls.push(init.body ? JSON.parse(String(init.body)) : null);
-    return buildOpenAIResponse("Memory injected");
-  };
+  const fetchCalls = mockOpenAIUpstream("Memory injected");
 
   const response = await handleChat(
     buildRequest({
@@ -174,11 +236,7 @@ test("memory injection respects the configured token budget", async () => {
     expiresAt: null,
   });
 
-  const fetchCalls = [];
-  globalThis.fetch = async (_url, init = {}) => {
-    fetchCalls.push(init.body ? JSON.parse(String(init.body)) : null);
-    return buildOpenAIResponse("Budget respected");
-  };
+  const fetchCalls = mockOpenAIUpstream("Budget respected");
 
   const response = await handleChat(
     buildRequest({
@@ -207,11 +265,7 @@ test("disabled memory skips both extraction and injection", async () => {
     memoryStrategy: "recent",
   });
 
-  const fetchCalls = [];
-  globalThis.fetch = async (_url, init = {}) => {
-    fetchCalls.push(init.body ? JSON.parse(String(init.body)) : null);
-    return buildOpenAIResponse("I prefer dark mode.");
-  };
+  const fetchCalls = mockOpenAIUpstream("I prefer dark mode.");
 
   const response = await handleChat(
     buildRequest({
@@ -240,7 +294,7 @@ test("extracted memories remain isolated by session id", async () => {
   const apiKey = await seedApiKey();
   await enableMemory();
 
-  globalThis.fetch = async () => buildOpenAIResponse("I prefer tea.");
+  mockOpenAIUpstream("I prefer tea.");
   await handleChat(
     buildRequest({
       authKey: apiKey.key,
@@ -253,7 +307,7 @@ test("extracted memories remain isolated by session id", async () => {
     })
   );
 
-  globalThis.fetch = async () => buildOpenAIResponse("I prefer coffee.");
+  mockOpenAIUpstream("I prefer coffee.");
   await handleChat(
     buildRequest({
       authKey: apiKey.key,

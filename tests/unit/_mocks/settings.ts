@@ -43,6 +43,14 @@ export function setupSettingsFixture(slug: string): SettingsFixture {
     async resetStorage() {
       const core = await import("../../../src/lib/db/core.ts");
       const runtime = await import("../../../src/lib/config/runtimeSettings.ts");
+      // Settings live in the shared Postgres key_value table (namespace
+      // 'settings'), not the per-test DATA_DIR, so a row written by another
+      // test file sharing the same DB would otherwise leak into this
+      // fixture's "defaults" state.
+      await core
+        .getDbInstance()
+        .prepare("DELETE FROM key_value WHERE namespace = 'settings'")
+        .run();
       core.resetDbInstance();
       runtime.resetRuntimeSettingsStateForTests();
       fs.rmSync(testDataDir, { recursive: true, force: true });

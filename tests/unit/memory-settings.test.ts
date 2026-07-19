@@ -14,7 +14,6 @@ describe("memory settings helpers", () => {
       memoryMaxTokens: 20001,
       memoryRetentionDays: 0,
       memoryStrategy: "unsupported",
-      skillsEnabled: true,
     });
 
     assert.deepEqual(settings, {
@@ -22,7 +21,6 @@ describe("memory settings helpers", () => {
       maxTokens: 16000,
       retentionDays: 1,
       strategy: DEFAULT_MEMORY_SETTINGS.strategy,
-      skillsEnabled: true,
     });
   });
 
@@ -33,14 +31,12 @@ describe("memory settings helpers", () => {
         maxTokens: 4096,
         retentionDays: 21,
         strategy: "hybrid",
-        skillsEnabled: true,
       }),
       {
         memoryEnabled: false,
         memoryMaxTokens: 4096,
         memoryRetentionDays: 21,
         memoryStrategy: "hybrid",
-        skillsEnabled: true,
       }
     );
   });
@@ -52,7 +48,6 @@ describe("memory settings helpers", () => {
         maxTokens: 0,
         retentionDays: 10,
         strategy: "recent",
-        skillsEnabled: false,
       }),
       {
         enabled: false,

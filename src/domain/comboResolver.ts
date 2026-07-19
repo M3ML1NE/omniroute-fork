@@ -3,7 +3,8 @@
  *
  * Extracts combo resolution logic from handleChat into a dedicated
  * domain service. Handles model selection based on combo strategy
- * (priority, round-robin, random, least-used).
+ * (priority, round-robin, least-used). Weighted/p2c ordering is resolved in
+ * the combo routing engine; any legacy/unknown strategy degrades to priority.
  *
  * @module domain/comboResolver
  */
@@ -12,6 +13,7 @@
  * @typedef {import('./types.js').Combo} Combo
  */
 import { getComboStepTarget, getComboStepWeight } from "@/lib/combos/steps";
+import { normalizeRoutingStrategy } from "@/shared/constants/routingStrategies";
 
 /** @type {Map<string, number>} Persistent round-robin counters per combo */
 const roundRobinCounters = new Map();
@@ -38,7 +40,7 @@ export function resolveComboModel(combo: any, context: any = {}) {
     }))
     .filter((entry) => entry.model);
 
-  const strategy = combo.strategy || "priority";
+  const strategy = normalizeRoutingStrategy(combo.strategy);
 
   switch (strategy) {
     case "priority":
@@ -54,20 +56,6 @@ export function resolveComboModel(combo: any, context: any = {}) {
       const index = counter % normalized.length;
       roundRobinCounters.set(comboKey, counter + 1);
       return { model: normalized[index].model, index };
-    }
-
-    case "random": {
-      // Weighted random selection
-      const totalWeight = normalized.reduce((sum, m) => sum + (m.weight || 1), 0);
-      let rand = Math.random() * totalWeight;
-
-      for (let i = 0; i < normalized.length; i++) {
-        rand -= normalized[i].weight || 1;
-        if (rand <= 0) {
-          return { model: normalized[i].model, index: i };
-        }
-      }
-      return { model: normalized[0].model, index: 0 };
     }
 
     case "least-used": {

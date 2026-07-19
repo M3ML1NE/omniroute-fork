@@ -15,19 +15,15 @@ import {
 import { getModelInfo, getComboForModel } from "../services/model";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { handleComboChat } from "@omniroute/open-sse/services/combo.ts";
-import { resolveComboConfig } from "@omniroute/open-sse/services/comboConfig.ts";
-import { injectHandoffIntoBody } from "@omniroute/open-sse/services/contextHandoff.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { getTargetFormat } from "@omniroute/open-sse/services/provider.ts";
 import {
   getModelTargetFormat,
   PROVIDER_ID_TO_ALIAS,
 } from "@omniroute/open-sse/config/providerModels.ts";
-import type { AutoVariant } from "@omniroute/open-sse/services/autoCombo/autoPrefix.ts";
 import * as log from "../utils/logger";
 import { checkAndRefreshToken } from "../services/tokenRefresh";
 import { createHookContext, runHooks, initPreRequestRegistry } from "@/lib/middleware/registry";
-import { deleteHandoff, getHandoff } from "@/lib/db/contextHandoffs";
 import { getCachedSettings, getCombos } from "@/lib/localDb";
 import {
   ensureOpenAIStoreSessionFallback,
@@ -305,82 +301,10 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
     telemetry.endPhase();
   }
 
-  // ── Zero-Config Auto-Routing (auto and auto/ prefix) ────────────────────────
-  // If the model ID is "auto" or starts with "auto/", bypass DB combo lookup
-  // entirely and generate a virtual auto-combo on-the-fly from connected providers.
-  let autoVariant: AutoVariant | undefined;
-  let isAutoRouting = resolvedModelStr === "auto" || resolvedModelStr.startsWith("auto/");
-  if (isAutoRouting) {
-    // C2: Enforce autoRoutingEnabled setting.
-    // Issue #2346: `getSettings` was never imported in this module; only
-    // `getCachedSettings` is. Calling the bare name caused a ReferenceError
-    // on every auto-routed request. The cached variant has the same shape
-    // and benefits the auto-routing hot path.
-    const settings = await getCachedSettings().catch(() => ({}) as Record<string, unknown>);
-    if (settings?.autoRoutingEnabled === false) {
-      return errorResponse(
-        HTTP_STATUS.BAD_REQUEST,
-        "Auto routing is disabled. Enable it in Settings > Routing."
-      );
-    }
-
-    try {
-      const { parseAutoPrefix } =
-        await import("@omniroute/open-sse/services/autoCombo/autoPrefix.ts");
-      const parsed = parseAutoPrefix(resolvedModelStr);
-      if (parsed.valid) {
-        autoVariant = parsed.variant;
-        // C3: Apply autoRoutingDefaultVariant from settings when bare "auto" is used
-        if (autoVariant === undefined && settings?.autoRoutingDefaultVariant) {
-          autoVariant = settings.autoRoutingDefaultVariant as AutoVariant;
-        }
-        log.info(
-          "AUTO",
-          `Zero-config routing variant: ${autoVariant || "default"} (model=${resolvedModelStr})`
-        );
-      } else {
-        log.warn("AUTO", `Invalid auto prefix format: ${resolvedModelStr}`);
-      }
-    } catch (err) {
-      log.error("AUTO", "Failed to load auto-prefix parser", { err });
-    }
-  }
-  // ────────────────────────────────────────────────────────────────────────────
-
   // Check if model is a combo (has multiple models with fallback)
   telemetry.startPhase("resolve");
-  let combo: any = await getComboForModel(resolvedModelStr);
+  const combo: any = await getComboForModel(resolvedModelStr);
 
-  // "auto" prefix fuzzy matching: "auto/fast" → "auto/best-fast", etc.
-  // parseModel splits "auto/fast" into provider="auto" which isn't a real provider.
-  if (!combo && resolvedModelStr.startsWith("auto/")) {
-    const suffix = resolvedModelStr.slice(5);
-    for (const candidate of [`auto/best-${suffix}`, `auto/${suffix}`]) {
-      combo = await getComboForModel(candidate);
-      if (combo) {
-        log.info("ROUTING", `"${resolvedModelStr}" → combo "${candidate}" (auto fuzzy)`);
-        break;
-      }
-    }
-  }
-
-  // Auto-prefix short-circuit: if auto/ prefix was detected, replace combo with virtual one
-  if (isAutoRouting && combo === null) {
-    try {
-      const { createVirtualAutoCombo } =
-        await import("@omniroute/open-sse/services/autoCombo/virtualFactory.ts");
-      const virtualCombo = await createVirtualAutoCombo(autoVariant);
-      virtualCombo.name = resolvedModelStr;
-      virtualCombo.id = resolvedModelStr;
-      combo = virtualCombo;
-      log.info(
-        "AUTO",
-        `Virtual auto-combo created: ${combo.name} (${virtualCombo.candidatePool?.length || 0} candidates)`
-      );
-    } catch (err) {
-      log.error("AUTO", "Failed to create virtual auto-combo", { err });
-    }
-  }
   if (combo) {
     log.info(
       "CHAT",
@@ -444,12 +368,8 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
       getCachedSettings().catch(() => ({})),
       getCombosCachedForChat(),
     ]);
-    const relayConfig =
-      combo.strategy === "context-relay" ? resolveComboConfig(combo, settings) : null;
     telemetry.endPhase();
 
-    // Context-relay keeps generation in combo.ts, but handoff injection lives here
-    // because only this layer knows which connectionId was actually selected.
     const response = await (handleComboChat as any)({
       body,
       combo,
@@ -496,13 +416,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
       settings,
       allCombos,
       apiKeyAllowedConnections: apiKeyInfo?.allowedConnections ?? null,
-      relayOptions:
-        combo.strategy === "context-relay"
-          ? {
-              sessionId,
-              config: relayConfig,
-            }
-          : undefined,
+      relayOptions: { sessionId },
       signal: request?.signal ?? null,
     });
 
@@ -629,55 +543,6 @@ async function handleSingleModelChat(
     clientRawRequest?.headers
   );
   if (resolved.error) return resolved.error;
-
-  // Safety net: if auto-combo resolution returned a combo object, redirect
-  // to combo flow. This handles the case where the auto-fuzzy match in
-  // resolveModelOrError found a combo but the main handler's combo lookup missed it.
-  if ((resolved as any).combo) {
-    const redirectCombo = (resolved as any).combo;
-    log.info("ROUTING", `Auto-combo redirect from handleSingleModelChat for "${modelStr}"`);
-    log.info("ROUTING", `Auto-combo redirect to combo flow for "${modelStr}"`);
-    return handleComboChat({
-      body,
-      combo: redirectCombo,
-      handleSingleModel: (
-        b: any,
-        m: string,
-        target?: {
-          connectionId?: string | null;
-          executionKey?: string | null;
-          stepId?: string | null;
-          failoverBeforeRetry?: boolean;
-        }
-      ) =>
-        handleSingleModelChat(
-          b,
-          m,
-          clientRawRequest,
-          request,
-          redirectCombo.name ?? modelStr,
-          apiKeyInfo,
-          telemetry,
-          {
-            sessionId: "", // safety-net redirect doesn't have session context
-            forceLiveComboTest: false,
-            forcedConnectionId: null,
-            allowedConnectionIds: null,
-            comboStepId: null,
-            comboExecutionKey: null,
-            skipUpstreamRetry: target?.failoverBeforeRetry ?? false,
-          },
-          redirectCombo.strategy ?? "priority",
-          false
-        ),
-      isModelAvailable: async () => true,
-      log,
-      settings: {},
-      allCombos: [],
-      relayOptions: undefined,
-      signal: request?.signal ?? null,
-    });
-  }
 
   const { provider, model, sourceFormat, targetFormat, extendedContext, apiFormat } = resolved;
   const forceLiveComboTest = runtimeOptions.forceLiveComboTest === true;
@@ -845,29 +710,7 @@ async function handleSingleModelChat(
 
       const accountId = credentials.connectionId.slice(0, 8);
       log.info("AUTH", `Using ${provider} account: ${accountId}...`);
-      let requestBody = body;
-      let injectedHandoff = null;
-      if (
-        comboStrategy === "context-relay" &&
-        comboName &&
-        runtimeOptions.sessionId &&
-        body?._omnirouteSkipContextRelay !== true
-      ) {
-        const handoff = getHandoff(runtimeOptions.sessionId, comboName);
-        if (handoff && handoff.fromAccount !== credentials.connectionId) {
-          // Inject only after a real account switch. The combo loop itself cannot
-          // reliably detect this because account selection happens inside auth.
-          requestBody = injectHandoffIntoBody(body, handoff);
-          injectedHandoff = handoff;
-          log.info(
-            "CONTEXT_RELAY",
-            `Injecting handoff for session ${runtimeOptions.sessionId}: ${handoff.fromAccount.slice(
-              0,
-              8
-            )} -> ${credentials.connectionId.slice(0, 8)}`
-          );
-        }
-      }
+      const requestBody = body;
       const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
       const storeEnabled = isOpenAIResponsesStoreEnabled(
         refreshedCredentials?.providerSpecificData ?? credentials?.providerSpecificData
@@ -932,9 +775,6 @@ async function handleSingleModelChat(
         clearModelLock(provider, credentials.connectionId, model);
         if (!forceLiveComboTest) {
           breaker._onSuccess();
-        }
-        if (injectedHandoff && runtimeOptions.sessionId && comboName) {
-          deleteHandoff(runtimeOptions.sessionId, comboName);
         }
         if (telemetry) telemetry.startPhase("finalize");
         if (telemetry) telemetry.endPhase();
