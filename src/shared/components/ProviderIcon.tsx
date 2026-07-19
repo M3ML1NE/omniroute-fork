@@ -1,23 +1,21 @@
 "use client";
 
 /**
- * ProviderIcon — Renders a provider logo using @lobehub/icons with static asset fallbacks.
+ * ProviderIcon — Renders a provider logo with static asset fallbacks.
  *
- * Strategy (#529):
- * 1. Try @lobehub/icons direct icon components (no @lobehub/ui peer runtime)
- * 2. Fall back to /providers/{id}.png (existing static assets)
- * 3. Fall back to /providers/{id}.svg (SVG assets)
- * 4. Fall back to a generic AI icon
+ * Strategy:
+ * 1. Fall back to /providers/{id}.png (existing static assets — currently only the
+ *    generic `oai-cc`/`oai-r` compatible-connection icons)
+ * 2. Fall back to /providers/{id}.svg (SVG assets)
+ * 3. Fall back to a generic AI icon
  *
  * Usage:
- *   <ProviderIcon providerId="openai" size={24} />
- *   <ProviderIcon providerId="anthropic" size={28} type="color" />
+ *   <ProviderIcon providerId="oai-cc" size={24} />
+ *   <ProviderIcon providerId="oai-r" size={28} type="color" />
  */
 
-import { createElement, memo, useState } from "react";
+import { memo, useState } from "react";
 import Image from "next/image";
-
-import { getLobeProviderIcon } from "./lobeProviderIcons";
 
 interface ProviderIconProps {
   providerId: string;
@@ -36,85 +34,8 @@ function GenericProviderIcon({ size }: { size: number }) {
   );
 }
 
-const KNOWN_PNGS = new Set([
-  "agentrouter",
-  "inner-ai",
-  "aimlapi",
-  "anthropic-m",
-  "blackbox",
-  "continue",
-  "copilot",
-  "cursor",
-  "deepgram",
-  "ironclaw",
-  "kie",
-  "nanobot",
-  "oai-cc",
-  "oai-r",
-  "openclaw",
-  "zeroclaw",
-  "adapta-web",
-  "blackbox-web",
-  "cliproxyapi",
-  "empower",
-  "gigachat",
-  "heroku",
-  "lemonade",
-  "linkup-search",
-  "llamafile",
-  "llamagate",
-  "maritalk",
-  "nanogpt",
-  "nscale",
-  "ovhcloud",
-  "piapi",
-  "predibase",
-  "reka",
-]);
-const KNOWN_SVGS = new Set([
-  "apikey",
-  "bazaarlink",
-  "brave",
-  "brave-search",
-  "cartesia",
-  "360ai",
-  "huggingchat",
-  "iflytek",
-  "sparkdesk",
-  "arcee-ai",
-  "inclusionai",
-  "krutrim",
-  "liquid",
-  "monsterapi",
-  "nomic",
-  "poolside",
-  "clarifai",
-  "command-code",
-  "docker-model-runner",
-  "droid",
-  "gemini-cli",
-  "gitlab",
-  "gitlab-duo",
-  "inworld",
-  "kiro",
-  "kilo-gateway",
-  "kilocode",
-  "modal",
-  "nlpcloud",
-  "oauth",
-  "oci",
-  "opencode",
-  "playht",
-  "puter",
-  "qianfan",
-  "sap",
-  "scaleway",
-  "serper-search",
-  "searxng-search",
-  "synthetic",
-  "wandb",
-  "youcom-search",
-]);
+const KNOWN_PNGS = new Set(["oai-cc", "oai-r"]);
+const KNOWN_SVGS = new Set<string>([]);
 
 const ProviderIcon = memo(function ProviderIcon({
   providerId,
@@ -124,30 +45,14 @@ const ProviderIcon = memo(function ProviderIcon({
   style,
 }: ProviderIconProps) {
   const normalizedId = providerId.toLowerCase();
-  const lobeIcon = getLobeProviderIcon(normalizedId, type);
   const hasPng = KNOWN_PNGS.has(normalizedId);
   const hasSvg = KNOWN_SVGS.has(normalizedId);
 
   const [failedAssets, setFailedAssets] = useState<Record<string, true>>({});
   const pngKey = `${normalizedId}:png`;
   const svgKey = `${normalizedId}:svg`;
-  const usePng = !lobeIcon && hasPng && !failedAssets[pngKey];
-  const useSvg = !lobeIcon && hasSvg && !failedAssets[svgKey] && (!hasPng || failedAssets[pngKey]);
-
-  if (lobeIcon) {
-    return (
-      <span
-        className={className}
-        style={{ display: "inline-flex", alignItems: "center", ...style }}
-      >
-        {createElement(lobeIcon, {
-          "aria-label": providerId,
-          size,
-          style: { flex: "none" },
-        })}
-      </span>
-    );
-  }
+  const usePng = hasPng && !failedAssets[pngKey];
+  const useSvg = hasSvg && !failedAssets[svgKey] && (!hasPng || failedAssets[pngKey]);
 
   if (usePng) {
     return (
