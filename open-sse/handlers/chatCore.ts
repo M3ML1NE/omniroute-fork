@@ -1,6 +1,11 @@
 import { CORS_HEADERS } from "../utils/cors.ts";
 import { normalizeHeaders } from "../utils/headers.ts";
-import { detectFormatFromEndpoint, getTargetFormat } from "../services/provider.ts";
+import {
+  detectFormatFromEndpoint,
+  getTargetFormat,
+  isGigachatCompatible,
+} from "../services/provider.ts";
+import { isGigaChatV2 } from "../executors/default.ts";
 import { injectSystemPrompt } from "../services/systemPrompt.ts";
 import { translateRequest, needsTranslation } from "../translator/index.ts";
 import { FORMATS } from "../translator/formats.ts";
@@ -968,6 +973,19 @@ function getHeaderValueCaseInsensitive(
   return null;
 }
 
+/**
+ * F1: resolve the X-Request-ID to persist on the call log — the client's own
+ * header always wins; the upstream's echoed x-request-id (e.g. GigaChat
+ * auto-generates a UUIDv4 and may echo it back) is only used when the client
+ * sent none.
+ */
+export function resolveCallLogRequestId(
+  clientRequestId: string | null | undefined,
+  upstreamEchoedRequestId: string | null | undefined
+): string | null {
+  return clientRequestId || upstreamEchoedRequestId || null;
+}
+
 function toFiniteNumberOrNull(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -1701,7 +1719,11 @@ export async function handleChatCore({
     );
   }
   const noLogEnabled = apiKeyInfo?.noLog === true;
-  const detailedLoggingEnabled = !noLogEnabled && (await isDetailedLoggingEnabled());
+  // F3: the card's four dual-format payload sections (OpenAI/GigaChat request,
+  // GigaChat/OpenAI response) must be populated by default for gigachat-compatible
+  // requests, not only when the global "detailed logging" toggle is on.
+  const detailedLoggingEnabled =
+    !noLogEnabled && ((await isDetailedLoggingEnabled()) || isGigachatCompatible(provider));
   const capturePipelineStreamChunks =
     detailedLoggingEnabled && getCallLogPipelineCaptureStreamChunks();
   const skillRequestId = generateRequestId();
@@ -1728,9 +1750,21 @@ export async function handleChatCore({
   const clientHeaders = clientRawRequest?.headers ?? null;
   const pipelineSessionId =
     getHeaderValueCaseInsensitive(clientHeaders, "x-omniroute-session-id") || skillRequestId;
+  const clientRequestIdHeader = getHeaderValueCaseInsensitive(clientHeaders, "x-request-id");
   const callLogCorrelationId =
-    getHeaderValueCaseInsensitive(clientHeaders, "x-request-id") ||
-    getHeaderValueCaseInsensitive(clientHeaders, "x-correlation-id");
+    clientRequestIdHeader || getHeaderValueCaseInsensitive(clientHeaders, "x-correlation-id");
+  // F2: GigaChat upstream API contract version served for this request ("v1"/"v2"),
+  // resolved once from the request-scoped `credentials` — null for non-gigachat providers.
+  const gigachatUpstreamApiVersion = isGigachatCompatible(provider)
+    ? isGigaChatV2(credentials)
+      ? "v2"
+      : "v1"
+    : null;
+  // F1: fallback X-Request-ID when the client didn't send one — GigaChat auto-
+  // generates a UUIDv4 and may echo it in the upstream response headers. Declared
+  // BEFORE persistAttemptLogs (which closes over it and runs on early paths like
+  // semantic-cache hits) to avoid a temporal-dead-zone ReferenceError.
+  let upstreamEchoedRequestId: string | null = null;
   const persistAttemptLogs = ({
     status,
     tokens,
@@ -1808,6 +1842,8 @@ export async function handleChatCore({
       provider,
       connectionId,
       correlationId: callLogCorrelationId,
+      requestId: resolveCallLogRequestId(clientRequestIdHeader, upstreamEchoedRequestId),
+      upstreamApiVersion: gigachatUpstreamApiVersion,
       duration: Date.now() - startTime,
       tokens: tokens || {},
       requestBody: cloneBoundedChatLogPayload(
@@ -3661,6 +3697,10 @@ export async function handleChatCore({
     const result = await executeProviderRequest(effectiveModel, true);
 
     providerResponse = result.response;
+    upstreamEchoedRequestId = getHeaderValueCaseInsensitive(
+      providerResponse.headers,
+      "x-request-id"
+    );
     providerUrl = result.url;
     providerHeaders = result.headers;
     finalBody = result.transformedBody;
@@ -3887,6 +3927,10 @@ export async function handleChatCore({
 
         if (retryResult.response.ok) {
           providerResponse = retryResult.response;
+          upstreamEchoedRequestId = getHeaderValueCaseInsensitive(
+            providerResponse.headers,
+            "x-request-id"
+          );
           providerUrl = retryResult.url;
           providerHeaders = new Headers(retryResult.headers || {});
           finalBody = retryResult.transformedBody;
@@ -4119,6 +4163,10 @@ export async function handleChatCore({
           const fallbackResult = await executeProviderRequest(nextModel, false);
           if (fallbackResult.response.ok) {
             providerResponse = fallbackResult.response;
+            upstreamEchoedRequestId = getHeaderValueCaseInsensitive(
+              providerResponse.headers,
+              "x-request-id"
+            );
             providerUrl = fallbackResult.url;
             providerHeaders = fallbackResult.headers;
             finalBody = fallbackResult.transformedBody;
@@ -4206,6 +4254,10 @@ export async function handleChatCore({
           const fallbackResult = await executeProviderRequest(nextModel, false);
           if (fallbackResult.response.ok) {
             providerResponse = fallbackResult.response;
+            upstreamEchoedRequestId = getHeaderValueCaseInsensitive(
+              providerResponse.headers,
+              "x-request-id"
+            );
             providerUrl = fallbackResult.url;
             providerHeaders = fallbackResult.headers;
             finalBody = fallbackResult.transformedBody;
@@ -4334,6 +4386,10 @@ export async function handleChatCore({
               model = fbDecision.model;
               translatedBody.model = fbDecision.model;
               providerResponse = fbResult.response;
+              upstreamEchoedRequestId = getHeaderValueCaseInsensitive(
+                providerResponse.headers,
+                "x-request-id"
+              );
               providerUrl = fbResult.url;
               providerHeaders = new Headers(fbResult.headers || {});
               finalBody = fbResult.transformedBody;

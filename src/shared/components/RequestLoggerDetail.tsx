@@ -99,20 +99,37 @@ export default function RequestLoggerDetail({
   };
 
   const pipelinePayloads = detail?.pipelinePayloads || null;
+  const isGigachatProvider = (detail?.provider || log.provider || "").startsWith(
+    "gigachat-compatible-"
+  );
+  const providerFormatLabel = isGigachatProvider ? "GigaChat Format" : "Provider Format";
+  // F3: four labeled dual-format sections — OpenAI request falls back to the raw
+  // client body when no separate hub-translation stage ran (client already sent
+  // OpenAI format, the common case for this proxy).
   const payloadSections = pipelinePayloads
     ? [
-        ["clientRawRequest", "Client Raw Request"],
-        ["clientRequest", "Client Request"],
-        ["openaiRequest", "OpenAI Request"],
-        ["providerRequest", "Provider Request"],
-        ["providerResponse", "Provider Response"],
-        ["clientResponse", "Client Response"],
-        ["error", "Pipeline Error"],
+        [
+          "openaiRequest",
+          "Request Payload (OpenAI Format)",
+          pipelinePayloads.openaiRequest ?? pipelinePayloads.clientRawRequest?.body,
+        ],
+        [
+          "providerRequest",
+          `Request Payload (${providerFormatLabel})`,
+          pipelinePayloads.providerRequest,
+        ],
+        [
+          "providerResponse",
+          `Response Payload (${providerFormatLabel})`,
+          pipelinePayloads.providerResponse,
+        ],
+        ["clientResponse", "Response Payload (OpenAI Format)", pipelinePayloads.clientResponse],
+        ["error", "Pipeline Error", pipelinePayloads.error],
       ]
-        .map(([key, title]) => ({
+        .map(([key, title, payload]) => ({
           key,
           title,
-          json: toPrettyJson(pipelinePayloads[key]),
+          json: toPrettyJson(payload),
         }))
         .filter((section) => section.json)
     : [];
@@ -173,6 +190,9 @@ export default function RequestLoggerDetail({
       ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
       : "bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-500/30";
   const accountLabel = maskAccount(detail?.account || log.account, emailsVisible);
+  const requestId = detail?.requestId || log.requestId || null;
+  const upstreamApiVersion = detail?.upstreamApiVersion || log.upstreamApiVersion || null;
+  const upstreamApiLabel = upstreamApiVersion ? `GigaChat ${upstreamApiVersion}` : "—";
 
   return (
     <div
@@ -376,6 +396,23 @@ export default function RequestLoggerDetail({
               ) : (
                 <div className="text-sm text-text-muted">—</div>
               )}
+            </div>
+            <div>
+              <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">
+                X-Request-ID
+              </div>
+              <div
+                className="text-sm font-medium font-mono truncate max-w-[180px]"
+                title={requestId || undefined}
+              >
+                {requestId || "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">
+                Upstream API
+              </div>
+              <div className="text-sm font-medium">{upstreamApiLabel}</div>
             </div>
           </div>
 

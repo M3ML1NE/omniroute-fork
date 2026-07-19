@@ -53,6 +53,8 @@ type CallLogSummaryRow = {
   account: string | null;
   connection_id: string | null;
   correlation_id: string | null;
+  request_id: string | null;
+  upstream_api_version: string | null;
   duration: number | null;
   tokens_in: number | null;
   tokens_out: number | null;
@@ -400,8 +402,9 @@ function readLegacyLogFromDisk(entry: {
 
 async function clearArtifactReference(relativePath: string, nextState: CallLogDetailState) {
   const db = getDbInstance();
-  await db.prepare(
-    `
+  await db
+    .prepare(
+      `
       UPDATE call_logs
       SET detail_state = ?,
           artifact_relpath = NULL,
@@ -409,14 +412,15 @@ async function clearArtifactReference(relativePath: string, nextState: CallLogDe
           artifact_sha256 = NULL
       WHERE artifact_relpath = ?
     `
-  ).run(nextState, relativePath);
+    )
+    .run(nextState, relativePath);
 }
 
 async function listReferencedArtifacts() {
   const db = getDbInstance();
-  const rows = await db
+  const rows = (await db
     .prepare("SELECT artifact_relpath FROM call_logs WHERE artifact_relpath IS NOT NULL")
-    .all() as Array<{ artifact_relpath: string | null }>;
+    .all()) as Array<{ artifact_relpath: string | null }>;
 
   return new Set(
     rows.map((row) => row.artifact_relpath).filter((value): value is string => Boolean(value))
@@ -430,11 +434,13 @@ async function deleteCallLogRowsByIds(ids: string[]): Promise<DeleteResult> {
 
   const db = getDbInstance();
   const placeholders = ids.map(() => "?").join(", ");
-  const rows = await db
+  const rows = (await db
     .prepare(`SELECT artifact_relpath FROM call_logs WHERE id IN (${placeholders})`)
-    .all(...ids) as Array<{ artifact_relpath: string | null }>;
+    .all(...ids)) as Array<{ artifact_relpath: string | null }>;
 
-  const result = await db.prepare(`DELETE FROM call_logs WHERE id IN (${placeholders})`).run(...ids);
+  const result = await db
+    .prepare(`DELETE FROM call_logs WHERE id IN (${placeholders})`)
+    .run(...ids);
   let deletedArtifacts = 0;
   for (const row of rows) {
     if (deleteCallArtifact(row.artifact_relpath)) {
@@ -505,7 +511,9 @@ export async function deleteCallLogsBefore(cutoff: string): Promise<DeleteResult
   return deleteCallLogRowsByIds(ids);
 }
 
-export async function trimCallLogsToMaxRows(maxRows = getCallLogsTableMaxRows()): Promise<DeleteResult> {
+export async function trimCallLogsToMaxRows(
+  maxRows = getCallLogsTableMaxRows()
+): Promise<DeleteResult> {
   if (!Number.isInteger(maxRows) || maxRows < 1) {
     return { deletedRows: 0, deletedArtifacts: 0 };
   }
@@ -516,9 +524,11 @@ export async function trimCallLogsToMaxRows(maxRows = getCallLogsTableMaxRows())
   const batchSize = 5000;
 
   while (true) {
-    const currentCount = await db.prepare("SELECT COUNT(*) AS cnt FROM call_logs").get() as {
-      cnt: number;
-    } | undefined;
+    const currentCount = (await db.prepare("SELECT COUNT(*) AS cnt FROM call_logs").get()) as
+      | {
+          cnt: number;
+        }
+      | undefined;
     if (!currentCount || currentCount.cnt <= maxRows) break;
 
     const toDelete = Math.min(currentCount.cnt - maxRows, batchSize);
@@ -551,6 +561,8 @@ function mapSummaryRow(row: CallLogSummaryRow) {
     account: row.resolved_account || row.account,
     connectionId: row.connection_id,
     correlationId: row.correlation_id,
+    requestId: row.request_id,
+    upstreamApiVersion: row.upstream_api_version,
     duration: toNumber(row.duration),
     tokens: {
       in: toNumber(row.tokens_in),
@@ -597,9 +609,9 @@ async function getLegacyInlineDetail(id: string) {
   if (!(await hasTable("call_logs_v1_legacy"))) return null;
 
   const db = getDbInstance();
-  const row = await db
+  const row = (await db
     .prepare("SELECT request_body, response_body, error FROM call_logs_v1_legacy WHERE id = ?")
-    .get(id) as LegacyInlineRow | undefined;
+    .get(id)) as LegacyInlineRow | undefined;
   if (!row) return null;
 
   return {
@@ -661,6 +673,8 @@ async function saveCallLogInternal(entry: any) {
       account,
       connectionId: entry.connectionId || null,
       correlationId: toStringOrNull(entry.correlationId),
+      requestId: toStringOrNull(entry.requestId),
+      upstreamApiVersion: toStringOrNull(entry.upstreamApiVersion),
       duration: entry.duration || 0,
       tokensIn: toNumber(getLoggedInputTokens(entry.tokens)),
       tokensOut: toNumber(getLoggedOutputTokens(entry.tokens)),
@@ -715,11 +729,13 @@ async function saveCallLogInternal(entry: any) {
     }
 
     const db = getDbInstance();
-    await db.prepare(
-      `
+    await db
+      .prepare(
+        `
       INSERT INTO call_logs (
         id, timestamp, method, path, status, model, requested_model, provider,
-        account, connection_id, correlation_id, duration, tokens_in, tokens_out,
+        account, connection_id, correlation_id, request_id, upstream_api_version,
+        duration, tokens_in, tokens_out,
         tokens_cache_read, tokens_cache_creation, tokens_reasoning, tokens_compressed,
         cache_source, request_type, source_format, target_format, api_key_id, api_key_name,
         combo_name, combo_step_id, combo_execution_key, error_summary, detail_state,
@@ -728,7 +744,8 @@ async function saveCallLogInternal(entry: any) {
       )
       VALUES (
         @id, @timestamp, @method, @path, @status, @model, @requestedModel, @provider,
-        @account, @connectionId, @correlationId, @duration, @tokensIn, @tokensOut,
+        @account, @connectionId, @correlationId, @requestId, @upstreamApiVersion,
+        @duration, @tokensIn, @tokensOut,
         @tokensCacheRead, @tokensCacheCreation, @tokensReasoning, @tokensCompressed,
         @cacheSource, @requestType, @sourceFormat, @targetFormat, @apiKeyId, @apiKeyName,
         @comboName, @comboStepId, @comboExecutionKey, @errorSummary, @detailState,
@@ -736,18 +753,19 @@ async function saveCallLogInternal(entry: any) {
         @hasRequestBody, @hasResponseBody, @hasPipelineDetails, @requestSummary
       )
     `
-    ).run({
-      ...logEntry,
-      errorSummary: toStoredErrorSummary(protectedError),
-      detailState,
-      artifactRelPath,
-      artifactSizeBytes,
-      artifactSha256,
-      hasRequestBody: protectedRequestBody !== null ? 1 : 0,
-      hasResponseBody: protectedResponseBody !== null ? 1 : 0,
-      hasPipelineDetails: protectedPipelinePayloads ? 1 : 0,
-      requestSummary,
-    });
+      )
+      .run({
+        ...logEntry,
+        errorSummary: toStoredErrorSummary(protectedError),
+        detailState,
+        artifactRelPath,
+        artifactSizeBytes,
+        artifactSha256,
+        hasRequestBody: protectedRequestBody !== null ? 1 : 0,
+        hasResponseBody: protectedResponseBody !== null ? 1 : 0,
+        hasPipelineDetails: protectedPipelinePayloads ? 1 : 0,
+        requestSummary,
+      });
 
     scheduleCallLogRotation();
   } catch (error) {
@@ -885,13 +903,13 @@ export async function getCallLogs(filter: any = {}) {
   params.__limit = limit;
   params.__offset = offset;
 
-  const rows = await db.prepare(sql).all(params) as CallLogSummaryRow[];
+  const rows = (await db.prepare(sql).all(params)) as CallLogSummaryRow[];
   return rows.map(mapSummaryRow);
 }
 
 export async function getCallLogById(id: string) {
   const db = getDbInstance();
-  const row = await db
+  const row = (await db
     .prepare(
       `SELECT cl.*,
         pn.prefix AS provider_node_prefix,
@@ -901,7 +919,7 @@ export async function getCallLogById(id: string) {
        LEFT JOIN provider_connections pc ON pc.id = cl.connection_id
        WHERE cl.id = ?`
     )
-    .get(id) as CallLogSummaryRow | undefined;
+    .get(id)) as CallLogSummaryRow | undefined;
   if (!row) return null;
 
   const entry = mapSummaryRow(row);
@@ -917,7 +935,8 @@ export async function getCallLogById(id: string) {
         requestBody: artifactResult.artifact.requestBody ?? null,
         responseBody: artifactResult.artifact.responseBody ?? null,
         error: artifactResult.artifact.error ?? entry.error,
-        pipelinePayloads: artifactResult.artifact.pipeline ?? (await buildLegacyPipelinePayloads(id)),
+        pipelinePayloads:
+          artifactResult.artifact.pipeline ?? (await buildLegacyPipelinePayloads(id)),
         hasPipelineDetails: Boolean(artifactResult.artifact.pipeline) || entry.hasPipelineDetails,
       };
     }
