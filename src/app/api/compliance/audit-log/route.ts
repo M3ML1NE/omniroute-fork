@@ -30,8 +30,8 @@ export async function GET(request) {
       offset: parsePagination(searchParams.get("offset"), 0, 0, 10_000),
     };
 
-    const logs = getAuditLog(filters);
-    const total = countAuditLog(filters);
+    const logs = await getAuditLog(filters);
+    const total = await countAuditLog(filters);
     return NextResponse.json(logs, {
       headers: {
         "x-total-count": String(total),
