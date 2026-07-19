@@ -9,6 +9,7 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
 const usageHistory = await import("../../src/lib/usage/usageHistory.ts");
+const { extractUsageFromResponse } = await import("../../open-sse/handlers/usageExtractor.ts");
 
 const clearPendingRequests = usageHistory.clearPendingRequests;
 
@@ -164,4 +165,67 @@ test("getUsageDb cursor-based pagination fetches subsequent pages", async () => 
   const page1 = await usageHistory.getUsageDb(undefined, 2);
   assert.equal(page1.data.history.length, 2);
   assert.notEqual(page1.data.nextCursor, null);
+});
+
+// ──────────────── Prompt cache CREATION token persistence ────────────────
+// Regression coverage for the bug where cache creation tokens never reached
+// usage_history (only cache READ tokens survived). Both upstream shapes are
+// exercised through the real extractUsageFromResponse → saveRequestUsage path.
+
+test("saveRequestUsage persists top-level cache_creation_input_tokens shape", async () => {
+  // Upstream shape A (reproduced case): prompt_tokens_details.cached_tokens for
+  // read + top-level cache_creation_input_tokens for creation (Claude-style field
+  // riding on an OpenAI-format body).
+  const responseBody = {
+    usage: {
+      prompt_tokens: 100,
+      completion_tokens: 5,
+      prompt_tokens_details: { cached_tokens: 64 },
+      cache_creation_input_tokens: 16,
+    },
+  };
+  const usage = extractUsageFromResponse(responseBody);
+  assert.equal(usage.cached_tokens, 64);
+  assert.equal(usage.cache_creation_input_tokens, 16);
+
+  await usageHistory.saveRequestUsage({
+    provider: "openai-compatible-test",
+    model: "test-model",
+    tokens: usage,
+    success: true,
+    timestamp: new Date().toISOString(),
+  });
+
+  const history = await usageHistory.getUsageHistory({ provider: "openai-compatible-test" });
+  assert.equal(history.length, 1);
+  assert.equal(history[0].tokens.cacheRead, 64);
+  assert.equal(history[0].tokens.cacheCreation, 16);
+});
+
+test("saveRequestUsage persists nested prompt_tokens_details.cache_creation_tokens shape", async () => {
+  // Upstream shape B (reproduced case): both read and creation nested under
+  // prompt_tokens_details (no top-level cache_creation_input_tokens).
+  const responseBody = {
+    usage: {
+      prompt_tokens: 200,
+      completion_tokens: 8,
+      prompt_tokens_details: { cached_tokens: 128, cache_creation_tokens: 32 },
+    },
+  };
+  const usage = extractUsageFromResponse(responseBody);
+  assert.equal(usage.cached_tokens, 128);
+  assert.equal(usage.cache_creation_input_tokens, 32);
+
+  await usageHistory.saveRequestUsage({
+    provider: "openai-compatible-test",
+    model: "test-model",
+    tokens: usage,
+    success: true,
+    timestamp: new Date().toISOString(),
+  });
+
+  const history = await usageHistory.getUsageHistory({ provider: "openai-compatible-test" });
+  assert.equal(history.length, 1);
+  assert.equal(history[0].tokens.cacheRead, 128);
+  assert.equal(history[0].tokens.cacheCreation, 32);
 });

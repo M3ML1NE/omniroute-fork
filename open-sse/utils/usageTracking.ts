@@ -368,6 +368,9 @@ export function extractUsage(chunk) {
         chunk.usage.input_tokens_details?.cached_tokens ??
         chunk.usage.prompt_cache_hit_tokens ??
         chunk.usage.cached_tokens,
+      cache_creation_input_tokens:
+        chunk.usage.cache_creation_input_tokens ??
+        chunk.usage.prompt_tokens_details?.cache_creation_tokens,
       reasoning_tokens:
         chunk.usage.completion_tokens_details?.reasoning_tokens ??
         chunk.usage.output_tokens_details?.reasoning_tokens ??

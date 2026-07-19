@@ -21,6 +21,12 @@ export function extractUsageFromResponse(responseBody) {
         responseBody.usage.input_tokens_details?.cached_tokens ??
         responseBody.usage.prompt_cache_hit_tokens ??
         responseBody.usage.cached_tokens,
+      // Prompt cache CREATION (write) tokens — Claude-style top-level field
+      // (cache_creation_input_tokens) or nested prompt_tokens_details.cache_creation_tokens.
+      // Without this, cache creation tokens are silently dropped before saveRequestUsage.
+      cache_creation_input_tokens:
+        responseBody.usage.cache_creation_input_tokens ??
+        responseBody.usage.prompt_tokens_details?.cache_creation_tokens,
       reasoning_tokens:
         responseBody.usage.completion_tokens_details?.reasoning_tokens ??
         responseBody.usage.output_tokens_details?.reasoning_tokens ??
