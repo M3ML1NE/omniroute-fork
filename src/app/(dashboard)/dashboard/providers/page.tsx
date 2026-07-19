@@ -34,7 +34,6 @@ import type { ProviderEntry } from "./providerPageUtils";
 import { readConfiguredOnlyPreference, writeConfiguredOnlyPreference } from "./providerPageStorage";
 import AddCompatibleProviderModal from "./components/AddCompatibleProviderModal";
 import AddGigachatCompatibleModal from "./components/AddGigachatCompatibleModal";
-import AddMlproxyModal from "./components/AddMlproxyModal";
 import { CategoryDot } from "./components/CategoryDot";
 import ProviderCard from "./components/ProviderCard";
 import ProviderCountBadge from "./components/ProviderCountBadge";
@@ -164,7 +163,6 @@ export default function ProvidersPage() {
   const [showAllProviders, setShowAllProviders] = useState(false);
   const [showAddCompatibleModal, setShowAddCompatibleModal] = useState(false);
   const [showAddGigachatModal, setShowAddGigachatModal] = useState(false);
-  const [showAddMlproxyModal, setShowAddMlproxyModal] = useState(false);
   const [testingMode, setTestingMode] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<any>(null);
   const [showConfiguredOnly, setShowConfiguredOnly] = useState(false);
@@ -180,7 +178,6 @@ export default function ProvidersPage() {
   const notify = useNotificationStore();
   const hasSearchQuery = searchQuery.trim().length > 0;
   const sectionCategoryAliases: Record<string, string> = {
-    cloud: "cloudagent",
     noauth: "no-auth",
     proxy: "upstream-proxy",
     web: "webcookie",
@@ -556,14 +553,6 @@ export default function ProvidersPage() {
     showFreeOnly
   );
 
-  const cloudAgentProviderEntriesAll = buildStaticProviderEntries("cloud-agent", getProviderStats);
-  const cloudAgentProviderEntries = filterConfiguredProviderEntries(
-    cloudAgentProviderEntriesAll,
-    effectiveShowConfiguredOnly,
-    searchQuery,
-    showFreeOnly
-  );
-
   const upstreamProxyEntriesAll = buildStaticProviderEntries("upstream-proxy", getProviderStats);
   const upstreamProxyEntries = filterConfiguredProviderEntries(
     upstreamProxyEntriesAll,
@@ -596,7 +585,6 @@ export default function ProvidersPage() {
     ...localProviderEntriesAll,
     ...searchProviderEntriesAll,
     ...audioProviderEntriesAll,
-    ...cloudAgentProviderEntriesAll,
     ...upstreamProxyEntriesAll,
   ] as DashboardProviderEntry[]);
   const dashboardProviderEntriesAll = dedupeProviderEntries([
@@ -653,7 +641,6 @@ export default function ProvidersPage() {
     audio: countConfigured(audioProviderEntriesAll),
     local: countConfigured(localProviderEntriesAll),
     upstreamproxy: countConfigured(upstreamProxyEntriesAll),
-    cloudagent: countConfigured(cloudAgentProviderEntriesAll),
     ide: countConfigured(ideProviderEntriesAll),
     webfetch: countConfigured(webFetchEntriesAll),
   };
@@ -891,9 +878,6 @@ export default function ProvidersPage() {
               <Button size="sm" icon="add" onClick={() => setShowAddGigachatModal(true)}>
                 {t("addGigachatCompatible")}
               </Button>
-              <Button size="sm" icon="add" onClick={() => setShowAddMlproxyModal(true)}>
-                {t("mlproxy")}
-              </Button>
             </div>
           </div>
           <p className="text-sm text-text-muted -mt-2">{t("compatibleProvidersDesc")}</p>
@@ -990,14 +974,6 @@ export default function ProvidersPage() {
           setProviderNodes((prev) => [...prev, node]);
           setShowAddGigachatModal(false);
           router.push(`/dashboard/providers/${node.id}`);
-        }}
-      />
-      <AddMlproxyModal
-        isOpen={showAddMlproxyModal}
-        onClose={() => setShowAddMlproxyModal(false)}
-        onCreated={() => {
-          setShowAddMlproxyModal(false);
-          router.refresh();
         }}
       />
       {/* Test Results Modal */}

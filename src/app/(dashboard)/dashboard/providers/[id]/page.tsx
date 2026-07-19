@@ -821,7 +821,7 @@ interface EditCompatibleNodeModalNode {
   apiType?: string;
   baseUrl?: string;
   chatPath?: string;
-  modelsPath?: string;
+  apiVersion?: string;
   mtls?: {
     cert_path?: string;
     key_path?: string;
@@ -7612,8 +7612,8 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
     prefix: "",
     apiType: "chat",
     baseUrl: "https://api.openai.com/v1",
+    apiVersion: "v1" as "v1" | "v2",
     chatPath: "",
-    modelsPath: "",
     certPath: "",
     keyPath: "",
     caPath: "",
@@ -7635,13 +7635,13 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
           (node.type === "gigachat-compatible"
             ? "https://gigachat.devices.sberbank.ru/api/v1"
             : "https://api.openai.com/v1"),
+        apiVersion: node.apiVersion === "v2" ? "v2" : "v1",
         chatPath: node.chatPath || "",
-        modelsPath: node.modelsPath || "",
         certPath: node.mtls?.cert_path || "",
         keyPath: node.mtls?.key_path || "",
         caPath: node.mtls?.ca_path || "",
       });
-      setShowAdvanced(!!(node.chatPath || node.modelsPath));
+      setShowAdvanced(!!node.chatPath);
     }
   }, [node]);
 
@@ -7669,7 +7669,6 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
         prefix: formData.prefix,
         baseUrl: formData.baseUrl,
         chatPath: formData.chatPath || "",
-        modelsPath: formData.modelsPath,
       };
       if (isGigachatNode) {
         payload.mtls = {
@@ -7677,6 +7676,7 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
           key_path: formData.keyPath.trim(),
           ca_path: formData.caPath.trim(),
         };
+        payload.apiVersion = formData.apiVersion;
       } else {
         payload.apiType = formData.apiType;
       }
@@ -7697,7 +7697,6 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
           apiKey: checkKey,
           type: "openai-compatible",
           chatPath: formData.chatPath || "",
-          modelsPath: formData.modelsPath,
         }),
       });
       const data = await res.json();
@@ -7780,6 +7779,18 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
               placeholder="/tmp/secrets/ca.pem"
               hint={t("mtlsCaHint")}
             />
+            <Select
+              label={t("gigachatApiVersionLabel")}
+              value={formData.apiVersion}
+              onChange={(e) =>
+                setFormData({ ...formData, apiVersion: e.target.value as "v1" | "v2" })
+              }
+              hint={t("gigachatApiVersionHint")}
+              options={[
+                { value: "v1", label: t("gigachatApiVersionV1") },
+                { value: "v2", label: t("gigachatApiVersionV2") },
+              ]}
+            />
           </>
         )}
         <button
@@ -7805,13 +7816,6 @@ function EditCompatibleNodeModal({ isOpen, node, onSave, onClose }: EditCompatib
               onChange={(e) => setFormData({ ...formData, chatPath: e.target.value })}
               placeholder={t("chatPathPlaceholder")}
               hint={t("chatPathHint")}
-            />
-            <Input
-              label={t("modelsPathLabel")}
-              value={formData.modelsPath}
-              onChange={(e) => setFormData({ ...formData, modelsPath: e.target.value })}
-              placeholder={t("modelsPathPlaceholder")}
-              hint={t("modelsPathHint")}
             />
           </div>
         )}

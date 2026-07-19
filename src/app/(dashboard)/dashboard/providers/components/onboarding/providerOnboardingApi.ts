@@ -45,7 +45,6 @@ export type CreateCompatibleProviderNodeInput = {
   baseUrl: string;
   apiType?: string;
   chatPath?: string;
-  modelsPath?: string;
 };
 
 export type ValidateOnboardingApiKeyInput = z.input<typeof validateProviderApiKeySchema>;
@@ -74,7 +73,6 @@ const compatibleProviderNodeInputSchema = z.object({
     ])
     .optional(),
   chatPath: z.string().trim().optional(),
-  modelsPath: z.string().trim().optional(),
 });
 
 const providerNodesResponseSchema = z
@@ -222,7 +220,6 @@ export function buildCompatibleNodeRequest(input: CreateCompatibleProviderNodeIn
     openai: {
       type: "openai-compatible",
       hasApiType: true,
-      hasModelsPath: true,
       chatPath: "",
     },
   } as const;
@@ -235,7 +232,6 @@ export function buildCompatibleNodeRequest(input: CreateCompatibleProviderNodeIn
     chatPath: sanitizedInput.chatPath || defaults.chatPath,
   };
   if (defaults.hasApiType) body.apiType = sanitizedInput.apiType || "chat";
-  if (defaults.hasModelsPath) body.modelsPath = sanitizedInput.modelsPath || "";
   return parseOrThrow(createProviderNodeSchema, body, "Compatible provider data is invalid");
 }
 

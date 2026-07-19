@@ -44,7 +44,6 @@ type CustomFormState = {
   baseUrl: string;
   apiKey: string;
   chatPath: string;
-  modelsPath: string;
 };
 
 const EMPTY_API_KEY_FORM: ApiKeyFormState = {
@@ -63,7 +62,6 @@ const DEFAULT_CUSTOM_FORM: CustomFormState = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "",
   chatPath: "",
-  modelsPath: "",
 };
 
 type ProviderMessageTranslator = ((key: string, values?: Record<string, unknown>) => string) & {
@@ -696,14 +694,6 @@ export default function ProviderOnboardingWizard() {
                 label={text("onboardingChatPath", "Chat path")}
                 value={customForm.chatPath}
                 onChange={(event) => setCustomForm({ ...customForm, chatPath: event.target.value })}
-                placeholder={text("optional", "Optional")}
-              />
-              <Input
-                label={text("onboardingModelsPath", "Models path")}
-                value={customForm.modelsPath}
-                onChange={(event) =>
-                  setCustomForm({ ...customForm, modelsPath: event.target.value })
-                }
                 placeholder={text("optional", "Optional")}
               />
             </div>

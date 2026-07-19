@@ -19,7 +19,6 @@ interface CompatibleFormState {
   apiType: string;
   baseUrl: string;
   chatPath: string;
-  modelsPath: string;
 }
 
 const MODE_DEFAULTS = {
@@ -27,7 +26,6 @@ const MODE_DEFAULTS = {
   type: "openai-compatible" as const,
   chatPath: "",
   hasApiType: true,
-  hasModelsPath: true,
 };
 
 function createInitialForm(): CompatibleFormState {
@@ -37,7 +35,6 @@ function createInitialForm(): CompatibleFormState {
     apiType: "chat",
     baseUrl: MODE_DEFAULTS.baseUrl,
     chatPath: MODE_DEFAULTS.chatPath,
-    modelsPath: "",
   };
 }
 
@@ -98,7 +95,6 @@ export default function AddCompatibleProviderModal({
         chatPath: formData.chatPath || "",
       };
       if (MODE_DEFAULTS.hasApiType) body.apiType = formData.apiType;
-      if (MODE_DEFAULTS.hasModelsPath) body.modelsPath = formData.modelsPath || "";
 
       const res = await fetch("/api/provider-nodes", {
         method: "POST",
@@ -125,7 +121,6 @@ export default function AddCompatibleProviderModal({
         apiKey: checkKey,
         type: MODE_DEFAULTS.type,
       };
-      if (MODE_DEFAULTS.hasModelsPath) body.modelsPath = formData.modelsPath || "";
 
       const res = await fetch("/api/provider-nodes/validate", {
         method: "POST",
@@ -198,15 +193,6 @@ export default function AddCompatibleProviderModal({
               placeholder="/v1/chat/completions"
               hint={t("chatPathHint")}
             />
-            {MODE_DEFAULTS.hasModelsPath && (
-              <Input
-                label={t("modelsPathLabel")}
-                value={formData.modelsPath}
-                onChange={(e) => setFormData({ ...formData, modelsPath: e.target.value })}
-                placeholder={t("modelsPathPlaceholder")}
-                hint={t("modelsPathHint")}
-              />
-            )}
           </div>
         )}
 

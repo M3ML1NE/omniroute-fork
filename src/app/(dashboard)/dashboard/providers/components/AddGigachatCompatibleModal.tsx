@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { Button, Input, Modal } from "@/shared/components";
+import { Button, Input, Modal, Select } from "@/shared/components";
 
 type CompatibleProviderNode = { id: string } & Record<string, unknown>;
 
@@ -13,10 +13,13 @@ interface AddGigachatCompatibleModalProps {
   onCreated: (node: CompatibleProviderNode) => void;
 }
 
+type GigachatApiVersion = "v1" | "v2";
+
 interface GigachatFormState {
   name: string;
   prefix: string;
   baseUrl: string;
+  apiVersion: GigachatApiVersion;
   certPath: string;
   keyPath: string;
   caPath: string;
@@ -29,6 +32,7 @@ function createInitialForm(): GigachatFormState {
     name: "",
     prefix: "",
     baseUrl: GIGACHAT_DEFAULT_BASE_URL,
+    apiVersion: "v1",
     certPath: "",
     keyPath: "",
     caPath: "",
@@ -66,6 +70,7 @@ export default function AddGigachatCompatibleModal({
         prefix: formData.prefix,
         baseUrl: formData.baseUrl,
         type: "gigachat-compatible",
+        apiVersion: formData.apiVersion,
         mtls: {
           cert_path: formData.certPath.trim(),
           key_path: formData.keyPath.trim(),
@@ -113,6 +118,18 @@ export default function AddGigachatCompatibleModal({
           onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
           placeholder={GIGACHAT_DEFAULT_BASE_URL}
           hint={t("compatibleBaseUrlHint", { type: t("gigachat") })}
+        />
+        <Select
+          label={t("gigachatApiVersionLabel")}
+          value={formData.apiVersion}
+          onChange={(e) =>
+            setFormData({ ...formData, apiVersion: e.target.value as GigachatApiVersion })
+          }
+          hint={t("gigachatApiVersionHint")}
+          options={[
+            { value: "v1", label: t("gigachatApiVersionV1") },
+            { value: "v2", label: t("gigachatApiVersionV2") },
+          ]}
         />
         <Input
           label={t("mtlsCertLabel")}

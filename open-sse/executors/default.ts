@@ -5,25 +5,25 @@ import { getRegistryEntry } from "../config/providerRegistry.ts";
 import { applyProviderRequestDefaults } from "../services/providerRequestDefaults.ts";
 import { detectFormat, getTargetFormat } from "../services/provider.ts";
 import { normalizeGigaChatToolSchema } from "./gigachatSchema.ts";
+import {
+  GigaChat400Error,
+  buildToolCallIdNameMap,
+  sanitizeGigaChatName,
+} from "./gigachatShared.ts";
+import {
+  convertGigaChatV2NonStreamResponse,
+  convertGigaChatV2Request,
+  createGigaChatV2StreamTransform,
+} from "./gigachatV2.ts";
 
 const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
 
-/**
- * Raised when a GigaChat request cannot be converted because a tool-result
- * message references a `tool_call_id` that no prior assistant message emitted.
- * `execute()` turns this into a 400 Response instead of forwarding a request
- * GigaChat would reject with an opaque error.
- */
-export class GigaChat400Error extends Error {
-  status = 400;
-  constructor(message: string) {
-    super(message);
-    this.name = "GigaChat400Error";
-  }
-}
+export { GigaChat400Error };
 
-function sanitizeGigaChatName(name: string): string {
-  return name.replace(/-/g, "_");
+function isGigaChatV2(credentials: unknown): boolean {
+  const psd = (credentials as { providerSpecificData?: Record<string, unknown> } | null)
+    ?.providerSpecificData;
+  return psd?.apiVersion === "v2";
 }
 
 /**
@@ -51,35 +51,6 @@ function mapGigaChatFunctionCall(toolChoice: unknown): unknown {
     }
   }
   return undefined;
-}
-
-/**
- * Build a map from `tool_call_id` -> (sanitized) function name by scanning the
- * assistant messages in conversation history. GigaChat requires `role:"function"`
- * results to carry the function `name`, but OpenAI tool-result messages only
- * carry `tool_call_id`; this recovers the name the assistant originally used.
- */
-function buildToolCallIdNameMap(messages: unknown[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const msg of messages) {
-    if (!msg || typeof msg !== "object") continue;
-    const record = msg as Record<string, unknown>;
-    if (record.role !== "assistant") continue;
-    const toolCalls = record.tool_calls;
-    if (!Array.isArray(toolCalls)) continue;
-    for (const call of toolCalls) {
-      if (!call || typeof call !== "object") continue;
-      const callRecord = call as Record<string, unknown>;
-      const id = callRecord.id;
-      const fn = callRecord.function;
-      if (typeof id !== "string" || !fn || typeof fn !== "object") continue;
-      const name = (fn as Record<string, unknown>).name;
-      if (typeof name === "string" && name) {
-        map.set(id, sanitizeGigaChatName(name));
-      }
-    }
-  }
-  return map;
 }
 
 function hasMtls(credentials: any): boolean {
@@ -207,11 +178,32 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   async execute(input: ExecuteInput) {
-    if (
-      !this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) ||
-      input.stream
-    ) {
+    const isGigachat = this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) === true;
+    const v2 = isGigachat && isGigaChatV2(input.credentials);
+
+    // Non-gigachat, or a v1 stream (converted downstream in stream.ts): unchanged.
+    if (!isGigachat || (input.stream && !v2)) {
       return super.execute(input);
+    }
+
+    // v2 streaming: convert the upstream v2 SSE body to OpenAI SSE in-place.
+    if (input.stream && v2) {
+      try {
+        const result = await super.execute(input);
+        const { response } = result;
+        if (!response.ok || response.status !== 200 || !response.body) return result;
+        const transformed = response.body.pipeThrough(createGigaChatV2StreamTransform());
+        return {
+          ...result,
+          response: new Response(transformed, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          }),
+        };
+      } catch (error) {
+        return this.handleGigaChatExecuteError(error, input);
+      }
     }
 
     try {
@@ -239,23 +231,32 @@ export class DefaultExecutor extends BaseExecutor {
         return { ...result, response: new Response(raw, responseInit) };
       }
 
+      if (v2) {
+        const converted = convertGigaChatV2NonStreamResponse(parsed, toolNameMap);
+        return { ...result, response: new Response(JSON.stringify(converted), responseInit) };
+      }
+
       const mutated = convertGigaChatNonStreamResponse(parsed, toolNameMap);
       const bodyString = mutated ? JSON.stringify(parsed) : raw;
       return { ...result, response: new Response(bodyString, responseInit) };
     } catch (error) {
-      if (error instanceof GigaChat400Error) {
-        return {
-          response: new Response(
-            JSON.stringify({ error: { message: error.message, type: "invalid_request_error" } }),
-            { status: 400, headers: { "Content-Type": "application/json" } }
-          ),
-          url: this.buildUrl(input.model, input.stream, 0, input.credentials),
-          headers: {},
-          transformedBody: null,
-        };
-      }
-      throw error;
+      return this.handleGigaChatExecuteError(error, input);
     }
+  }
+
+  private handleGigaChatExecuteError(error: unknown, input: ExecuteInput) {
+    if (error instanceof GigaChat400Error) {
+      return {
+        response: new Response(
+          JSON.stringify({ error: { message: error.message, type: "invalid_request_error" } }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        ),
+        url: this.buildUrl(input.model, input.stream, 0, input.credentials),
+        headers: {},
+        transformedBody: null,
+      };
+    }
+    throw error;
   }
 
   buildUrl(model: string, stream: boolean, urlIndex = 0, credentials: any = null): string {
@@ -454,6 +455,18 @@ export class DefaultExecutor extends BaseExecutor {
       }
     }
 
+    // GigaChat v2: distinct request contract — convert in a dedicated module and
+    // return, bypassing the v1 tools/tool_choice/response_format conversions below.
+    if (
+      this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) &&
+      isGigaChatV2(credentials) &&
+      typeof withDefaults === "object" &&
+      withDefaults !== null &&
+      !Array.isArray(withDefaults)
+    ) {
+      return convertGigaChatV2Request(withDefaults as Record<string, unknown>);
+    }
+
     if (
       this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) &&
       typeof withDefaults === "object" &&
@@ -522,7 +535,11 @@ export class DefaultExecutor extends BaseExecutor {
           const newMsg = { ...msg };
 
           // 1. Convert OpenAI assistant tool_calls -> GigaChat function_call
-          if (newMsg.role === "assistant" && Array.isArray(newMsg.tool_calls) && newMsg.tool_calls.length > 0) {
+          if (
+            newMsg.role === "assistant" &&
+            Array.isArray(newMsg.tool_calls) &&
+            newMsg.tool_calls.length > 0
+          ) {
             const firstCall = newMsg.tool_calls[0];
             if (firstCall && firstCall.function) {
               const fn = { ...firstCall.function };
@@ -553,7 +570,10 @@ export class DefaultExecutor extends BaseExecutor {
 
             // GigaChat requires a valid JSON object string for content.
             // If it's a raw string like "25" or "Sunny", GigaChat throws 422 INVALID_PARAMS.
-            let contentStr = typeof newMsg.content === "string" ? newMsg.content.trim() : JSON.stringify(newMsg.content ?? {});
+            let contentStr =
+              typeof newMsg.content === "string"
+                ? newMsg.content.trim()
+                : JSON.stringify(newMsg.content ?? {});
             let isObj = false;
             if (contentStr.startsWith("{") && contentStr.endsWith("}")) {
               try {
@@ -597,6 +617,34 @@ export class DefaultExecutor extends BaseExecutor {
 
           return newMsg;
         });
+      }
+    }
+
+    // Handle response_format for GigaChat: convert OpenAI json_schema to GigaChat format
+    if (
+      this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) &&
+      typeof withDefaults === "object" &&
+      withDefaults !== null &&
+      "response_format" in withDefaults
+    ) {
+      const rf = (withDefaults as Record<string, unknown>).response_format;
+      if (rf && typeof rf === "object" && !Array.isArray(rf)) {
+        const rfRecord = rf as Record<string, unknown>;
+        // json_schema: {type, json_schema: {name, schema, strict}}
+        //           -> {type, schema: normalized, strict}
+        if (rfRecord.type === "json_schema" && "json_schema" in rfRecord) {
+          const jsonSchema = rfRecord.json_schema as Record<string, unknown>;
+          const schema = jsonSchema.schema;
+          const strict = jsonSchema.strict;
+
+          // Replace response_format with normalized GigaChat format
+          (withDefaults as Record<string, unknown>).response_format = {
+            type: "json_schema",
+            schema: schema ? normalizeGigaChatToolSchema(schema) : {},
+            ...(strict !== undefined ? { strict } : {}),
+          };
+        }
+        // json_object: pass through exactly
       }
     }
 
