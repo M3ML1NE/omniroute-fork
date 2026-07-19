@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Card, Toggle } from "@/shared/components";
+import { Card } from "@/shared/components";
 import { useTranslations } from "next-intl";
 import { useNotificationStore } from "@/store/notificationStore";
 import FallbackChainsEditor from "./FallbackChainsEditor";
@@ -9,12 +9,8 @@ import FallbackChainsEditor from "./FallbackChainsEditor";
 export default function RoutingTab() {
   const [settings, setSettings] = useState<any>({
     alwaysPreserveClientCache: "auto",
-    autoRoutingEnabled: true,
-    autoRoutingDefaultVariant: "lkgp",
   });
   const [loading, setLoading] = useState(true);
-  const [lkgpCacheLoading, setLkgpCacheLoading] = useState(false);
-  const [lkgpCacheStatus, setLkgpCacheStatus] = useState({ type: "", message: "" });
   const t = useTranslations("settings");
   const tCommon = useTranslations("common");
   const notify = useNotificationStore();
@@ -108,85 +104,6 @@ export default function RoutingTab() {
         </div>
       </Card>
 
-      <Card>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex gap-3">
-            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 h-fit">
-              <span className="material-symbols-outlined text-[20px]" aria-hidden="true">
-                verified
-              </span>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold">
-                {t("lkgpToggleTitle") || "Last Known Good Provider (LKGP)"}
-              </h3>
-              <p className="text-sm text-text-muted mt-1">
-                {t("lkgpToggleDesc") ||
-                  "When enabled, the router remembers which provider last served a successful response and tries it first on subsequent requests."}
-              </p>
-            </div>
-          </div>
-          <div className="pt-1">
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={settings.lkgpEnabled !== false}
-                onChange={(e) => updateSetting({ lkgpEnabled: e.target.checked })}
-                disabled={loading}
-              />
-              <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-            </label>
-          </div>
-        </div>
-        <div className="mt-3 pt-3 border-t border-border/30 flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            loading={lkgpCacheLoading}
-            onClick={async () => {
-              setLkgpCacheLoading(true);
-              setLkgpCacheStatus({ type: "", message: "" });
-              try {
-                const res = await fetch("/api/settings/lkgp-cache", { method: "DELETE" });
-                const data = await res.json();
-                if (res.ok) {
-                  setLkgpCacheStatus({
-                    type: "success",
-                    message: t("lkgpCacheCleared") || "LKGP cache cleared successfully",
-                  });
-                } else {
-                  setLkgpCacheStatus({
-                    type: "error",
-                    message:
-                      data.error || t("lkgpCacheClearFailed") || "Failed to clear LKGP cache",
-                  });
-                }
-              } catch {
-                setLkgpCacheStatus({
-                  type: "error",
-                  message: t("errorOccurred") || "An error occurred",
-                });
-              } finally {
-                setLkgpCacheLoading(false);
-              }
-            }}
-          >
-            <span className="material-symbols-outlined text-[14px] mr-1" aria-hidden="true">
-              delete_sweep
-            </span>
-            {t("clearLkgpCache") || "Clear LKGP Cache"}
-          </Button>
-          {lkgpCacheStatus.message && (
-            <span
-              className={`text-xs ${lkgpCacheStatus.type === "success" ? "text-green-500" : "text-red-500"}`}
-            >
-              {lkgpCacheStatus.message}
-            </span>
-          )}
-        </div>
-      </Card>
-
       <FallbackChainsEditor />
 
       <Card>
@@ -251,101 +168,6 @@ export default function RoutingTab() {
               <p className="text-xs text-text-muted ml-7">{option.desc}</p>
             </button>
           ))}
-        </div>
-      </Card>
-
-      <Card>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex gap-3">
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500 h-fit">
-              <span className="material-symbols-outlined text-[20px]" aria-hidden="true">
-                auto_awesome
-              </span>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold">{t("routingZeroConfigTitle")}</h3>
-              <p className="text-sm text-text-muted mt-1">{t("routingZeroConfigDesc")}</p>
-            </div>
-          </div>
-          <div className="pt-1">
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={settings.autoRoutingEnabled !== false}
-                onChange={(e) => updateSetting({ autoRoutingEnabled: e.target.checked })}
-                disabled={loading}
-              />
-              <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-            </label>
-          </div>
-        </div>
-        <div className="mt-4 pt-4 border-t border-border/30">
-          <label className="block text-sm font-medium mb-2">{t("routingDefaultAutoVariant")}</label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {[
-              {
-                value: "lkgp",
-                label: t("routingDefaultAutoVariantLKGP"),
-                desc: t("routingDefaultAutoVariantLKGPDesc"),
-              },
-              {
-                value: "coding",
-                label: t("routingDefaultAutoVariantCoding"),
-                desc: t("routingDefaultAutoVariantCodingDesc"),
-              },
-              {
-                value: "fast",
-                label: t("routingDefaultAutoVariantFast"),
-                desc: t("routingDefaultAutoVariantFastDesc"),
-              },
-              {
-                value: "cheap",
-                label: t("routingDefaultAutoVariantCheap"),
-                desc: t("routingDefaultAutoVariantCheapDesc"),
-              },
-              {
-                value: "offline",
-                label: t("routingDefaultAutoVariantOffline"),
-                desc: t("routingDefaultAutoVariantOfflineDesc"),
-              },
-              {
-                value: "smart",
-                label: t("routingDefaultAutoVariantSmart"),
-                desc: t("routingDefaultAutoVariantSmartDesc"),
-              },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => updateSetting({ autoRoutingDefaultVariant: option.value })}
-                disabled={loading}
-                className={`p-2 rounded-lg border text-left transition-all ${
-                  settings.autoRoutingDefaultVariant === option.value
-                    ? "border-indigo-500/50 bg-indigo-500/5 ring-1 ring-indigo-500/20"
-                    : "border-border/50 hover:border-border hover:bg-surface/30"
-                }`}
-              >
-                <div className="flex items-center gap-1">
-                  <span
-                    className={`material-symbols-outlined text-[14px] ${
-                      settings.autoRoutingDefaultVariant === option.value
-                        ? "text-indigo-400"
-                        : "text-text-muted"
-                    }`}
-                  >
-                    {settings.autoRoutingDefaultVariant === option.value
-                      ? "check_circle"
-                      : "radio_button_unchecked"}
-                  </span>
-                  <span
-                    className={`text-xs font-medium ${settings.autoRoutingDefaultVariant === option.value ? "text-indigo-400" : ""}`}
-                  >
-                    {option.label}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
         </div>
       </Card>
     </div>

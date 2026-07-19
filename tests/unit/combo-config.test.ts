@@ -267,21 +267,37 @@ test("resolveComboConfig tolerates invalid or missing inputs and falls back to d
   assert.deepEqual(resolveComboConfig({}, { comboDefaults: null }, null), getDefaultComboConfig());
 });
 
-test("createComboSchema accepts context-relay strategy with handoff config", () => {
-  const parsed = createComboSchema.parse({
-    name: "codex-relay",
-    models: ["codex/gpt-5.4"],
-    strategy: "context-relay",
-    config: {
-      handoffThreshold: 0.85,
-      maxMessagesForSummary: 24,
-      handoffModel: "",
-    },
-  });
+test("createComboSchema rejects removed strategies (context-relay, lkgp, etc.)", () => {
+  for (const strategy of [
+    "context-relay",
+    "lkgp",
+    "auto",
+    "cost-optimized",
+    "fill-first",
+    "strict-random",
+    "reset-aware",
+    "reset-window",
+    "context-optimized",
+    "random",
+  ]) {
+    const result = createComboSchema.safeParse({
+      name: "legacy-strategy",
+      models: ["codex/gpt-5.4"],
+      strategy,
+    });
+    assert.equal(result.success, false, `expected strategy=${strategy} to be rejected`);
+  }
+});
 
-  assert.equal(parsed.strategy, "context-relay");
-  assert.equal(parsed.config.handoffThreshold, 0.85);
-  assert.equal(parsed.config.maxMessagesForSummary, 24);
+test("createComboSchema accepts the 5 supported strategies", () => {
+  for (const strategy of ["priority", "weighted", "round-robin", "p2c", "least-used"]) {
+    const parsed = createComboSchema.parse({
+      name: `combo-${strategy}`,
+      models: ["codex/gpt-5.4"],
+      strategy,
+    });
+    assert.equal(parsed.strategy, strategy);
+  }
 });
 
 test("createComboSchema accepts eval-driven routing config", () => {
@@ -304,35 +320,6 @@ test("createComboSchema accepts eval-driven routing config", () => {
 
   assert.equal(parsed.config.evalRouting.enabled, true);
   assert.deepEqual(parsed.config.evalRouting.suiteIds, ["golden-set", "coding-proficiency"]);
-});
-
-test("createComboSchema accepts SLA-aware auto routing config", () => {
-  const parsed = createComboSchema.parse({
-    name: "sla-auto",
-    models: ["openai/gpt-4o-mini", "gemini/gemini-2.5-flash"],
-    strategy: "auto",
-    config: {
-      routerStrategy: "sla-aware",
-      slaTargetP95Ms: "1500",
-      slaMaxErrorRate: "0.05",
-      slaMaxCostPer1MTokens: "4.5",
-      slaHardConstraints: true,
-      sla: {
-        targetP95Ms: "2000",
-        maxErrorRate: "0.1",
-        hardConstraints: false,
-      },
-    },
-  });
-
-  assert.equal(parsed.strategy, "auto");
-  assert.equal(parsed.config.routerStrategy, "sla-aware");
-  assert.equal(parsed.config.slaTargetP95Ms, 1500);
-  assert.equal(parsed.config.slaMaxErrorRate, 0.05);
-  assert.equal(parsed.config.slaMaxCostPer1MTokens, 4.5);
-  assert.equal(parsed.config.slaHardConstraints, true);
-  assert.equal(parsed.config.sla.targetP95Ms, 2000);
-  assert.equal(parsed.config.sla.maxErrorRate, 0.1);
 });
 
 test("createComboSchema accepts structured combo steps with pinned connection and combo refs", () => {

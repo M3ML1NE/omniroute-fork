@@ -18,17 +18,17 @@ test.after(() => {
   else process.env.DATA_DIR = ORIGINAL_DATA_DIR;
 });
 
-test("runJsonMigration normalizes legacy combo strategy names at the import boundary", () => {
+test("runJsonMigration normalizes legacy combo strategy names at the import boundary", async () => {
   const db = core.getDbInstance();
 
-  runJsonMigration(db, {
+  await runJsonMigration(db, {
     combos: [
       {
         id: "combo-usage",
         name: "combo-usage",
         strategy: "usage",
         models: ["openai/gpt-4o-mini"],
-        config: { strategy: "context" },
+        config: { strategy: "context-relay" },
       },
       {
         id: "combo-unknown",
@@ -39,13 +39,13 @@ test("runJsonMigration normalizes legacy combo strategy names at the import boun
     ],
   });
 
-  const rows = db.prepare("SELECT id, data FROM combos ORDER BY id ASC").all() as Array<{
+  const rows = (await db.prepare("SELECT id, data FROM combos ORDER BY id ASC").all()) as Array<{
     id: string;
     data: string;
   }>;
   const byId = new Map(rows.map((row) => [row.id, JSON.parse(row.data)]));
 
   assert.equal(byId.get("combo-usage").strategy, "least-used");
-  assert.equal(byId.get("combo-usage").config.strategy, "context-optimized");
+  assert.equal(byId.get("combo-usage").config.strategy, "priority");
   assert.equal(byId.get("combo-unknown").strategy, "priority");
 });

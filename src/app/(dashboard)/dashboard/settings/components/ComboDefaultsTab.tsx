@@ -9,9 +9,7 @@ import {
 } from "@/shared/constants/routingStrategies";
 import { useTranslations } from "next-intl";
 
-const STRATEGY_LABEL_FALLBACKS: Record<string, string> = {
-  "context-relay": "Context Relay",
-};
+const STRATEGY_LABEL_FALLBACKS: Record<string, string> = {};
 
 const LEGACY_COMBO_RESILIENCE_KEYS = new Set([
   "timeoutMs",
@@ -95,8 +93,6 @@ export default function ComboDefaultsTab() {
     handoffModel: "",
     maxMessagesForSummary: 30,
     stickyRoundRobinLimit: 3,
-    resetAwareQuotaCacheTtlMs: 0,
-    resetAwareQuotaCacheMaxStaleMs: 0,
     zeroLatencyOptimizationsEnabled: false,
   });
   const [providerOverrides, setProviderOverrides] = useState<any>({});
@@ -370,51 +366,6 @@ export default function ComboDefaultsTab() {
           )}
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-border/50">
-          <div className="md:col-span-2">
-            <p className="font-medium text-sm">
-              {translateOrFallback(t, "resetAwareQuotaCacheTitle", "Reset-aware quota cache")}
-            </p>
-            <p className="text-xs text-text-muted">
-              {translateOrFallback(
-                t,
-                "resetAwareQuotaCacheDesc",
-                "Caches quota telemetry for reset-aware ordering only. Quota preflight still protects requests. 0/0 keeps live fetching."
-              )}
-            </p>
-          </div>
-          <Input
-            label={translateOrFallback(t, "resetAwareQuotaCacheTtl", "Fresh TTL (seconds)")}
-            type="number"
-            min={0}
-            max={300}
-            step={5}
-            value={msToSeconds(comboDefaults.resetAwareQuotaCacheTtlMs)}
-            onChange={(e) =>
-              setComboDefaults((prev) => ({
-                ...prev,
-                resetAwareQuotaCacheTtlMs: secondsInputToMs(e.target.value, 300),
-              }))
-            }
-            className="text-sm"
-          />
-          <Input
-            label={translateOrFallback(t, "resetAwareQuotaCacheMaxStale", "Max stale (seconds)")}
-            type="number"
-            min={0}
-            max={3600}
-            step={30}
-            value={msToSeconds(comboDefaults.resetAwareQuotaCacheMaxStaleMs)}
-            onChange={(e) =>
-              setComboDefaults((prev) => ({
-                ...prev,
-                resetAwareQuotaCacheMaxStaleMs: secondsInputToMs(e.target.value, 3600),
-              }))
-            }
-            className="text-sm"
-          />
-        </div>
-
         {/* Round-Robin specific */}
         {comboDefaults.strategy === "round-robin" && (
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50">
@@ -445,55 +396,6 @@ export default function ComboDefaultsTab() {
                 setComboDefaults((prev) => ({
                   ...prev,
                   queueTimeoutMs: parseInt(e.target.value) || 0,
-                }))
-              }
-              className="text-sm"
-            />
-          </div>
-        )}
-
-        {comboDefaults.strategy === "context-relay" && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-border/50">
-            <Input
-              label={translateOrFallback(t, "contextRelayHandoffThreshold", "Handoff Threshold")}
-              type="number"
-              min={0.5}
-              max={0.94}
-              step={0.01}
-              value={comboDefaults.handoffThreshold ?? ""}
-              placeholder="0.85"
-              onChange={(e) =>
-                setComboDefaults((prev) => ({
-                  ...prev,
-                  handoffThreshold: e.target.value ? Number(e.target.value) : undefined,
-                }))
-              }
-              className="text-sm"
-            />
-            <Input
-              label={translateOrFallback(t, "contextRelayMaxMessages", "Max Messages For Summary")}
-              type="number"
-              min={5}
-              max={100}
-              value={comboDefaults.maxMessagesForSummary ?? ""}
-              placeholder="30"
-              onChange={(e) =>
-                setComboDefaults((prev) => ({
-                  ...prev,
-                  maxMessagesForSummary: e.target.value ? Number(e.target.value) : undefined,
-                }))
-              }
-              className="text-sm"
-            />
-            <Input
-              label={translateOrFallback(t, "contextRelaySummaryModel", "Summary Model")}
-              type="text"
-              value={comboDefaults.handoffModel ?? ""}
-              placeholder="gigachat/GigaChat-2-Max"
-              onChange={(e) =>
-                setComboDefaults((prev) => ({
-                  ...prev,
-                  handoffModel: e.target.value,
                 }))
               }
               className="text-sm"

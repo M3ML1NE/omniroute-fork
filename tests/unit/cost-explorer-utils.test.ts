@@ -62,22 +62,6 @@ const analytics: CostExplorerAnalyticsPayload = {
       cost: 12,
     },
   ],
-  byServiceTier: [
-    {
-      serviceTier: "priority",
-      label: "Fast",
-      requests: 2,
-      totalTokens: 2000,
-      cost: 4,
-    },
-    {
-      serviceTier: "standard",
-      label: "Standard",
-      requests: 10,
-      totalTokens: 10000,
-      cost: 8,
-    },
-  ],
 };
 
 describe("buildCostExplorerRows", () => {
@@ -106,14 +90,14 @@ describe("buildCostExplorerRows", () => {
   it("sorts numeric fields ascending when requested", () => {
     const rows = buildCostExplorerRows({
       analytics,
-      groupBy: "serviceTier",
+      groupBy: "provider",
       sortKey: "requests",
       sortDirection: "asc",
     });
 
     assert.equal(rows.length, 2);
-    assert.equal(rows[0].name, "Fast");
-    assert.equal(rows[1].name, "Standard");
+    assert.equal(rows[0].name, "anthropic");
+    assert.equal(rows[1].name, "openai");
   });
 
   it("falls back to request share when cost data is absent", () => {

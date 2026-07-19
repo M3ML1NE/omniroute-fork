@@ -30,21 +30,10 @@ import {
   getNextComboBuilderStage,
   getPreviousComboBuilderStage,
   hasExactModelStepDuplicate,
-  isIntelligentBuilderStrategy,
   parseQualifiedModel,
   resolveComboBuilderProviderId,
 } from "@/lib/combos/builderDraft";
 import { normalizeComboConfigMode } from "@/shared/constants/comboConfigMode";
-import AutoComboCatalog from "./AutoComboCatalog";
-import BuilderIntelligentStep from "./BuilderIntelligentStep";
-import IntelligentComboPanel from "./IntelligentComboPanel";
-import {
-  filterCombosByStrategyCategory,
-  getStrategyCategory,
-  isIntelligentStrategy,
-  normalizeIntelligentRoutingFilter,
-  normalizeIntelligentRoutingConfig,
-} from "@/lib/combos/intelligentRouting";
 import { useTranslations } from "next-intl";
 
 const ModelSelectModal = dynamic(() => import("@/shared/components/ModelSelectModal"), {
@@ -61,17 +50,9 @@ const STRATEGY_OPTIONS = ROUTING_STRATEGIES.map((strategy) => ({
   icon: strategy.icon,
 }));
 
-const STRATEGY_LABEL_FALLBACK = {
-  "context-relay": "Context Relay",
-  "reset-aware": "Reset-Aware RR",
-};
+const STRATEGY_LABEL_FALLBACK = {};
 
-const STRATEGY_DESC_FALLBACK = {
-  "context-relay":
-    "Priority-style routing with automatic context handoffs when account rotation happens.",
-  "reset-aware":
-    "Quota remaining and reset windows decide the order; similar scores rotate round-robin.",
-};
+const STRATEGY_DESC_FALLBACK = {};
 
 const STRATEGY_GUIDANCE_FALLBACK = {
   priority: {
@@ -89,61 +70,15 @@ const STRATEGY_GUIDANCE_FALLBACK = {
     avoid: "Avoid when model latency/cost differs significantly.",
     example: "Example: Same model across multiple accounts to spread throughput.",
   },
-  "context-relay": {
-    when: "Use when long sessions must survive account rotation without losing the working context.",
-    avoid:
-      "Avoid when account switching is rare or when you do not want extra summarization requests.",
-    example: "Example: Codex sessions that rotate across multiple accounts near quota exhaustion.",
-  },
-  random: {
-    when: "Use when you want a simple spread with low configuration effort.",
-    avoid: "Avoid when requests must be distributed with strict guarantees.",
-    example: "Example: Prototyping with equivalent models and no traffic policy.",
-  },
   "least-used": {
     when: "Use when you want adaptive balancing based on recent demand.",
     avoid: "Avoid when your traffic is too low to benefit from usage balancing.",
     example: "Example: Mixed workloads where one model tends to get overloaded.",
   },
-  "cost-optimized": {
-    when: "Use when minimizing cost is the top priority.",
-    avoid: "Avoid when pricing data is missing or outdated.",
-    example: "Example: Batch or background jobs where lower cost matters most.",
-  },
-  "reset-aware": {
-    when: "Use when multiple accounts with quota telemetry have different reset windows.",
-    avoid: "Avoid when quota telemetry is unavailable for most accounts.",
-    example: "Example: Prefer a 60% weekly account resetting tomorrow over 80% that resets later.",
-  },
-  "fill-first": {
-    when: "Use when you want to drain one provider's quota fully before moving to the next.",
-    avoid: "Avoid when you need request-level load balancing across providers.",
-    example: "Example: Use all $200 Deepgram credits before falling to Groq.",
-  },
   p2c: {
     when: "Use when you want low-latency selection using Power-of-Two-Choices algorithm.",
     avoid: "Avoid for small combos with 2 or fewer models — no benefit over round-robin.",
     example: "Example: High-throughput inference across 4+ equivalent model endpoints.",
-  },
-  "strict-random": {
-    when: "Use when you want perfectly even spread — each model used once before repeating.",
-    avoid: "Avoid when models have different quality or latency and order matters.",
-    example: "Example: Multiple accounts of the same model to distribute usage evenly.",
-  },
-  auto: {
-    when: "Use when you want multi-factor scoring based on cost, latency, and quality.",
-    avoid: "Avoid when you need strict priority ordering or historical persistence.",
-    example: "Example: Balance requests between models with different strengths.",
-  },
-  lkgp: {
-    when: "Use when you want routing based on historical success rates and performance.",
-    avoid: "Avoid when historical data is limited or unreliable.",
-    example: "Example: Route to models with proven track records for specific tasks.",
-  },
-  "context-optimized": {
-    when: "Use when you need to optimize for context window usage across models.",
-    avoid: "Avoid when models have similar context lengths or simple tasks.",
-    example: "Example: Distribute long conversations across models with large context windows.",
   },
 };
 
@@ -222,25 +157,6 @@ const STRATEGY_RECOMMENDATIONS_FALLBACK = {
       "Use queue timeout to fail fast under saturation.",
     ],
   },
-  "context-relay": {
-    title: "Session continuity first",
-    description:
-      "Best when account rotation is expected and the next account must inherit a condensed task summary.",
-    tips: [
-      "Use with providers that rotate accounts for the same model family.",
-      "Keep the handoff threshold below the hard quota cutoff to give the summary time to generate.",
-      "Set a dedicated summary model only when the primary model is too expensive or unstable.",
-    ],
-  },
-  random: {
-    title: "Quick spread with low setup",
-    description: "Use when you need simple distribution without strict guarantees.",
-    tips: [
-      "Use models with similar latency profiles.",
-      "Keep retries enabled to absorb random misses.",
-      "Prefer this for experimentation, not strict SLAs.",
-    ],
-  },
   "least-used": {
     title: "Adaptive balancing",
     description: "Routes to less-used models to reduce hotspots over time.",
@@ -248,33 +164,6 @@ const STRATEGY_RECOMMENDATIONS_FALLBACK = {
       "Works better under continuous traffic.",
       "Combine with health checks for safer balancing.",
       "Track per-model usage to validate distribution gains.",
-    ],
-  },
-  "cost-optimized": {
-    title: "Budget-first routing",
-    description: "Routes to lower-cost models when pricing metadata is available.",
-    tips: [
-      "Ensure pricing coverage for all selected models.",
-      "Keep a quality fallback for hard prompts.",
-      "Use for batch/background jobs where cost is the main KPI.",
-    ],
-  },
-  "reset-aware": {
-    title: "Reset-aware account rotation",
-    description: "Balances remaining provider quota against reset timing.",
-    tips: [
-      "Use explicit account steps or account-tag routing for providers with quota telemetry.",
-      "Tune session vs weekly weights when short-term exhaustion is more risky.",
-      "Keep the tie band small so equivalent accounts still rotate fairly.",
-    ],
-  },
-  "fill-first": {
-    title: "Quota drain strategy",
-    description: "Exhausts one provider's quota before moving to the next in chain.",
-    tips: [
-      "Order models by free quota size — biggest first.",
-      "Enable health checks to skip drained providers.",
-      "Ideal for free-tier stacking (Deepgram → Groq → NIM).",
     ],
   },
   p2c: {
@@ -285,42 +174,6 @@ const STRATEGY_RECOMMENDATIONS_FALLBACK = {
       "Use with 4+ models for best effect.",
       "Requires latency telemetry enabled in Settings.",
       "Great replacement for round-robin in high-throughput combos.",
-    ],
-  },
-  "strict-random": {
-    title: "Shuffle deck distribution",
-    description: "Each model is used exactly once per cycle before reshuffling.",
-    tips: [
-      "Use at least 2 models for meaningful distribution.",
-      "Ideal for same-model accounts to evenly spread quota.",
-      "Guarantees no model is skipped or repeated within a cycle.",
-    ],
-  },
-  auto: {
-    title: "Multi-factor optimization",
-    description: "Routes based on real-time scoring of cost, latency, quality, and health.",
-    tips: [
-      "Let the engine balance across multiple factors automatically.",
-      "Monitor which factors drive routing decisions in the logs.",
-      "Use for complex workloads where no single factor dominates.",
-    ],
-  },
-  lkgp: {
-    title: "History-based routing",
-    description: "Routes based on historical success rates and persistent performance data.",
-    tips: [
-      "Let success history accumulate before relying on this strategy.",
-      "Models with better track records get preference over time.",
-      "Ideal for stable workloads with consistent model availability.",
-    ],
-  },
-  "context-optimized": {
-    title: "Context-aware distribution",
-    description: "Routes to optimize context window usage and conversation continuity.",
-    tips: [
-      "Best for long conversations that span multiple requests.",
-      "Selects models with appropriate context capacity automatically.",
-      "Use when context limits are a bottleneck for your workload.",
     ],
   },
 };
@@ -344,12 +197,6 @@ const COMBO_FORM_STAGE_META = [
     fallbackLabel: "Strategy",
     fallbackDescription: "Routing behavior and advanced settings.",
     icon: "looks_3",
-  },
-  {
-    id: "intelligent",
-    fallbackLabel: "Intelligent",
-    fallbackDescription: "Auto-routing candidate pool, presets and scoring.",
-    icon: "auto_awesome",
   },
   {
     id: "review",
@@ -462,23 +309,13 @@ function getStrategyLabel(t, strategy) {
 
 function getStrategyDescription(t, strategy) {
   const key = getStrategyMeta(strategy).descKey;
-  return getI18nOrFallback(
-    t,
-    key,
-    STRATEGY_DESC_FALLBACK[strategy] || STRATEGY_DESC_FALLBACK.priority || strategy
-  );
+  return getI18nOrFallback(t, key, STRATEGY_DESC_FALLBACK[strategy] || strategy);
 }
 
 function getStrategyBadgeClass(strategy) {
   if (strategy === "weighted") return "bg-amber-500/15 text-amber-600 dark:text-amber-400";
   if (strategy === "round-robin") return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400";
-  if (strategy === "context-relay")
-    return "bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400";
-  if (strategy === "random") return "bg-purple-500/15 text-purple-600 dark:text-purple-400";
   if (strategy === "least-used") return "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400";
-  if (strategy === "cost-optimized") return "bg-teal-500/15 text-teal-600 dark:text-teal-400";
-  if (strategy === "reset-aware") return "bg-lime-500/15 text-lime-700 dark:text-lime-300";
-  if (strategy === "fill-first") return "bg-orange-500/15 text-orange-600 dark:text-orange-400";
   if (strategy === "p2c") return "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400";
   return "bg-blue-500/15 text-blue-600 dark:text-blue-400";
 }
@@ -653,43 +490,8 @@ export default function CombosPage() {
   const [savingComboOrder, setSavingComboOrder] = useState(false);
   const [comboConfigMode, setComboConfigMode] = useState("guided");
   const [promptCompressionEnabled, setPromptCompressionEnabled] = useState(false);
-  const [selectedIntelligentComboId, setSelectedIntelligentComboId] = useState<string | null>(null);
   const comboDragIndexRef = useRef<number | null>(null);
-  const activeFilter = normalizeIntelligentRoutingFilter(searchParams.get("filter"));
-  const intelligentCombos = useMemo(
-    () => combos.filter((combo) => isIntelligentStrategy(combo?.strategy)),
-    [combos]
-  );
-  const filteredCombos = useMemo(
-    () => filterCombosByStrategyCategory(combos, activeFilter),
-    [combos, activeFilter]
-  );
-  const selectedIntelligentCombo = useMemo(() => {
-    if (intelligentCombos.length === 0) return null;
-
-    const explicitlySelectedCombo =
-      intelligentCombos.find((combo) => combo.id === selectedIntelligentComboId) || null;
-
-    if (explicitlySelectedCombo) {
-      return explicitlySelectedCombo;
-    }
-
-    return activeFilter === "intelligent" ? intelligentCombos[0] : null;
-  }, [activeFilter, intelligentCombos, selectedIntelligentComboId]);
-
-  useEffect(() => {
-    if (intelligentCombos.length === 0) {
-      setSelectedIntelligentComboId(null);
-      return;
-    }
-
-    if (
-      selectedIntelligentComboId &&
-      !intelligentCombos.some((combo) => combo.id === selectedIntelligentComboId)
-    ) {
-      setSelectedIntelligentComboId(null);
-    }
-  }, [intelligentCombos, selectedIntelligentComboId]);
+  const filteredCombos = combos;
 
   useEffect(() => {
     fetchData();
@@ -870,25 +672,6 @@ export default function CombosPage() {
     } catch {}
   };
 
-  const handleFilterChange = (nextFilter) => {
-    const params = new URLSearchParams(searchParams.toString());
-
-    if (nextFilter === "all") {
-      params.delete("filter");
-    } else {
-      params.set("filter", nextFilter);
-    }
-
-    const queryString = params.toString();
-    router.replace(`/dashboard/combos${queryString ? `?${queryString}` : ""}`, { scroll: false });
-  };
-
-  const handleIntelligentComboUpdated = (updatedCombo) => {
-    setCombos((previousCombos) =>
-      previousCombos.map((combo) => (combo.id === updatedCombo?.id ? updatedCombo : combo))
-    );
-  };
-
   const resetComboDragState = () => {
     comboDragIndexRef.current = null;
     setComboDragIndex(null);
@@ -896,7 +679,7 @@ export default function CombosPage() {
   };
 
   const handleComboDragStart = (e, index) => {
-    if (savingComboOrder || activeFilter !== "all" || combos.length < 2) {
+    if (savingComboOrder || combos.length < 2) {
       e.preventDefault();
       return;
     }
@@ -1017,8 +800,6 @@ export default function CombosPage() {
         </div>
       </div>
 
-      <AutoComboCatalog />
-
       {showUsageGuide && (
         <ComboUsageGuide
           onHide={() => setShowUsageGuide(false)}
@@ -1071,62 +852,6 @@ export default function CombosPage() {
           </div>
         </Card>
       )}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-black/8 dark:border-white/8 bg-black/[0.02] dark:bg-white/[0.02] p-1">
-        {[
-          {
-            id: "all",
-            icon: "layers",
-            label: getI18nOrFallback(t, "filterAll", "All"),
-            count: combos.length,
-          },
-          {
-            id: "intelligent",
-            icon: "auto_awesome",
-            label: getI18nOrFallback(t, "filterIntelligent", "Intelligent"),
-            count: combos.filter((combo) => getStrategyCategory(combo?.strategy) === "intelligent")
-              .length,
-          },
-          {
-            id: "deterministic",
-            icon: "sort",
-            label: getI18nOrFallback(t, "filterDeterministic", "Deterministic"),
-            count: combos.filter(
-              (combo) => getStrategyCategory(combo?.strategy) === "deterministic"
-            ).length,
-          },
-        ].map((tab) => {
-          const isActive = activeFilter === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleFilterChange(tab.id)}
-              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all ${
-                isActive
-                  ? "border border-primary/20 bg-primary/10 text-primary"
-                  : "border border-transparent text-text-muted hover:bg-black/5 dark:hover:bg-white/5 hover:text-text-main"
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">{tab.icon}</span>
-              <span>{tab.label}</span>
-              <span className="rounded-full bg-black/5 dark:bg-white/5 px-1.5 py-0.5 text-[11px] text-text-muted">
-                {tab.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {activeFilter === "intelligent" && selectedIntelligentCombo && (
-        <IntelligentComboPanel
-          t={t}
-          combo={selectedIntelligentCombo}
-          allCombos={intelligentCombos}
-          activeProviders={activeProviders}
-          onComboUpdated={handleIntelligentComboUpdated}
-        />
-      )}
-
       {/* Combos List */}
       {combos.length === 0 ? (
         <EmptyState
@@ -1136,46 +861,12 @@ export default function CombosPage() {
           actionLabel={t("createCombo")}
           onAction={() => setShowCreateModal(true)}
         />
-      ) : filteredCombos.length === 0 ? (
-        <Card padding="sm">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-[18px]">filter_alt</span>
-              <p className="text-sm font-semibold text-text-main">
-                {getI18nOrFallback(t, "filterEmptyTitle", "No combos match this strategy filter.")}
-              </p>
-            </div>
-            <p className="text-sm text-text-muted">
-              {activeFilter === "intelligent"
-                ? getI18nOrFallback(
-                    t,
-                    "filterEmptyIntelligentDescription",
-                    "Create an auto or LKGP combo to populate the intelligent routing dashboard."
-                  )
-                : getI18nOrFallback(
-                    t,
-                    "filterEmptyDeterministicDescription",
-                    "Only auto and LKGP combos exist right now. Switch back to All or create a deterministic combo."
-                  )}
-            </p>
-            <div>
-              <Button size="sm" icon="add" onClick={() => setShowCreateModal(true)}>
-                {t("createCombo")}
-              </Button>
-            </div>
-          </div>
-        </Card>
       ) : (
         <div className="flex flex-col gap-4">
           {filteredCombos.map((combo, index) => (
             <div
               key={combo.id}
               data-testid={`combo-card-${combo.id}`}
-              onClick={() => {
-                if (isIntelligentStrategy(combo?.strategy)) {
-                  setSelectedIntelligentComboId(combo.id);
-                }
-              }}
               onDragOver={(e) => handleComboDragOver(e, index)}
               onDrop={(e) => handleComboDrop(e, index)}
             >
@@ -1194,10 +885,9 @@ export default function CombosPage() {
                 onProxy={() => setProxyTargetCombo(combo)}
                 hasProxy={!!proxyConfig?.combos?.[combo.id]}
                 onToggle={() => handleToggleCombo(combo)}
-                dragDisabled={savingComboOrder || activeFilter !== "all" || combos.length < 2}
+                dragDisabled={savingComboOrder || combos.length < 2}
                 isDragged={comboDragIndex === index}
                 isDropTarget={comboDragOverIndex === index && comboDragIndex !== index}
-                isSelected={selectedIntelligentCombo?.id === combo.id}
                 onDragStart={(e) => handleComboDragStart(e, index)}
                 onDragEnd={handleComboDragEnd}
               />
@@ -1561,7 +1251,6 @@ function ComboCard({
   dragDisabled,
   isDragged,
   isDropTarget,
-  isSelected,
   onDragStart,
   onDragEnd,
 }) {
@@ -1620,7 +1309,7 @@ function ComboCard({
         isDisabled ? "opacity-50" : ""
       } ${isDropTarget ? "border border-primary/30 bg-primary/5" : ""} ${
         isDragged ? "opacity-60" : ""
-      } ${isSelected ? "border-primary/30 bg-primary/[0.04]" : ""}`}
+      }`}
     >
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-0">
         <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0 w-full">
@@ -1992,11 +1681,12 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, combo
   const [contextLengthError, setContextLengthError] = useState<string>("");
   const comboBuilderStages = useMemo(() => getComboBuilderStages({ strategy }), [strategy]);
   const visibleStageMeta = useMemo(
-    () => COMBO_FORM_STAGE_META.filter((stageMeta) => comboBuilderStages.includes(stageMeta.id)),
+    () =>
+      COMBO_FORM_STAGE_META.filter((stageMeta) =>
+        (comboBuilderStages as readonly string[]).includes(stageMeta.id)
+      ),
     [comboBuilderStages]
   );
-  const usesIntelligentBuilderStage = isIntelligentBuilderStrategy(strategy);
-  const intelligentConfig = useMemo(() => normalizeIntelligentRoutingConfig(config), [config]);
 
   const resetFormForCombo = useCallback(
     (nextCombo, comboDefaults = null) => {
@@ -2123,13 +1813,8 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, combo
     models.length > 0 ? Math.round((pricedModelCount / models.length) * 100) : 0;
   const hasNoModels = models.length === 0;
   const hasRoundRobinSingleModel = strategy === "round-robin" && models.length === 1;
-  const hasCostOptimizedWithoutPricing =
-    strategy === "cost-optimized" && models.length > 0 && pricedModelCount === 0;
-  const hasCostOptimizedPartialPricing =
-    strategy === "cost-optimized" &&
-    models.length > 0 &&
-    pricedModelCount > 0 &&
-    pricedModelCount < models.length;
+  const hasCostOptimizedWithoutPricing = false;
+  const hasCostOptimizedPartialPricing = false;
   const hasInvalidWeightedTotal =
     strategy === "weighted" && models.length > 0 && weightTotal !== 100;
   const builderStageChecks = getComboBuilderStageChecks({
@@ -2137,16 +1822,13 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, combo
     nameError,
     modelsCount: models.length,
     hasInvalidWeightedTotal,
-    hasCostOptimizedWithoutPricing,
   });
   const canAdvanceFromCurrentStage =
     builderStage === "basics"
       ? builderStageChecks.basics
       : builderStage === "steps"
         ? builderStageChecks.steps
-        : builderStage === "intelligent"
-          ? true
-          : true;
+        : true;
   const currentStageIndex = visibleStageMeta.findIndex(
     (stageMeta) => stageMeta.id === builderStage
   );
@@ -2747,8 +2429,6 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, combo
   const showBasicsSection = isExpertMode || builderStage === "basics";
   const showStepsSection = isExpertMode || builderStage === "steps";
   const showStrategySection = isExpertMode || builderStage === "strategy";
-  const showIntelligentSection =
-    usesIntelligentBuilderStage && (isExpertMode || builderStage === "intelligent");
   const showReviewSection = !isExpertMode && builderStage === "review";
   const advancedConfigVisible = isExpertMode || showAdvanced;
 
@@ -2794,9 +2474,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, combo
                         ? builderStageChecks.basics
                         : stageMeta.id === "steps"
                           ? builderStageChecks.steps
-                          : stageMeta.id === "intelligent"
-                            ? usesIntelligentBuilderStage
-                            : builderStageChecks.strategy;
+                          : builderStageChecks.strategy;
 
                   return (
                     <button
@@ -2990,24 +2668,6 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, combo
                 </>
               )}
             </div>
-          )}
-
-          {showIntelligentSection && (
-            <BuilderIntelligentStep
-              t={t}
-              config={config}
-              activeProviders={activeProviders}
-              onChange={(nextIntelligentConfig: any) =>
-                setConfig((previousConfig) => ({
-                  ...previousConfig,
-                  ...nextIntelligentConfig,
-                  weights: {
-                    ...(previousConfig?.weights || {}),
-                    ...(nextIntelligentConfig?.weights || {}),
-                  },
-                }))
-              }
-            />
           )}
 
           {/* Models */}
@@ -4085,61 +3745,6 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, combo
                   </p>
                 </div>
               </div>
-
-              {usesIntelligentBuilderStage && (
-                <div className="rounded-lg border border-primary/15 bg-primary/[0.04] p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-[16px]">
-                      auto_awesome
-                    </span>
-                    <p className="text-sm font-semibold text-text-main">
-                      {getI18nOrFallback(t, "reviewIntelligentTitle", "Intelligent Routing Config")}
-                    </p>
-                  </div>
-                  <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3 text-sm">
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
-                        {getI18nOrFallback(t, "modePackLabel", "Mode Pack")}
-                      </dt>
-                      <dd className="text-text-main mt-1">{intelligentConfig.modePack}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
-                        {getI18nOrFallback(t, "routerStrategyLabel", "Router Strategy")}
-                      </dt>
-                      <dd className="text-text-main mt-1">{intelligentConfig.routerStrategy}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
-                        {getI18nOrFallback(t, "explorationRateLabel", "Exploration Rate")}
-                      </dt>
-                      <dd className="text-text-main mt-1">
-                        {Math.round(intelligentConfig.explorationRate * 100)}%
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
-                        {getI18nOrFallback(t, "candidatePoolLabel", "Candidate Pool")}
-                      </dt>
-                      <dd className="text-text-main mt-1">
-                        {intelligentConfig.candidatePool.length > 0
-                          ? intelligentConfig.candidatePool.length
-                          : getI18nOrFallback(t, "candidatePoolAllProviders", "All providers")}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
-                        {getI18nOrFallback(t, "budgetCapLabel", "Budget Cap (USD / request)")}
-                      </dt>
-                      <dd className="text-text-main mt-1">
-                        {intelligentConfig.budgetCap
-                          ? `$${intelligentConfig.budgetCap}`
-                          : getI18nOrFallback(t, "budgetCapPlaceholder", "No limit")}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-              )}
 
               <div className="rounded-lg border border-black/8 dark:border-white/8 bg-black/[0.02] dark:bg-white/[0.02] p-3">
                 <p className="text-xs font-semibold text-text-main">

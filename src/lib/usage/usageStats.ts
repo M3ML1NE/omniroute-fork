@@ -155,20 +155,14 @@ const AGGREGATE_FIELDS = `
 async function calculateAggregateCost(row: JsonRecord): Promise<number> {
   const provider = toStringOrEmpty(row.provider) || "unknown";
   const model = toStringOrEmpty(row.model) || "unknown";
-  const serviceTier = toStringOrEmpty(row.service_tier) || "standard";
   const storedCost = toNumber(row.stored_cost);
-  const calculatedCost = await calculateCost(
-    provider,
-    model,
-    {
-      input: toNumber(row.cost_tokens_input ?? row.tokens_input),
-      output: toNumber(row.cost_tokens_output ?? row.tokens_output),
-      cacheRead: toNumber(row.cost_tokens_cache_read ?? row.tokens_cache_read),
-      cacheCreation: toNumber(row.cost_tokens_cache_creation ?? row.tokens_cache_creation),
-      reasoning: toNumber(row.cost_tokens_reasoning ?? row.tokens_reasoning),
-    },
-    { serviceTier }
-  );
+  const calculatedCost = await calculateCost(provider, model, {
+    input: toNumber(row.cost_tokens_input ?? row.tokens_input),
+    output: toNumber(row.cost_tokens_output ?? row.tokens_output),
+    cacheRead: toNumber(row.cost_tokens_cache_read ?? row.tokens_cache_read),
+    cacheCreation: toNumber(row.cost_tokens_cache_creation ?? row.tokens_cache_creation),
+    reasoning: toNumber(row.cost_tokens_reasoning ?? row.tokens_reasoning),
+  });
   return storedCost + calculatedCost;
 }
 
@@ -194,7 +188,20 @@ function getApiKeyStatsKey(apiKeyId: string | null, apiKeyName: string | null): 
  * Uses UNION of recent raw data and older aggregated data when aggregation is enabled.
  */
 export async function getUsageStats() {
-  if (nonCriticalDbDisabled()) return { totalRequests: 0, totalPromptTokens: 0, totalCompletionTokens: 0, totalCost: 0, byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, last10Minutes: [], pending: { byModel: {}, byAccount: {}, details: {} }, activeRequests: [] };
+  if (nonCriticalDbDisabled())
+    return {
+      totalRequests: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      totalCost: 0,
+      byProvider: {},
+      byModel: {},
+      byAccount: {},
+      byApiKey: {},
+      last10Minutes: [],
+      pending: { byModel: {}, byAccount: {}, details: {} },
+      activeRequests: [],
+    };
   const db = getDbInstance();
   const aggregationEnabled = await isAggregationEnabled();
   const cutoffDate = aggregationEnabled ? await getRawDataCutoffDate() : null;
@@ -288,7 +295,7 @@ export async function getUsageStats() {
 
   const tenMinutesAgo = new Date(currentMinuteStart.getTime() - 9 * 60 * 1000);
 
-  const modelRows = await db
+  const modelRows = (await db
     .prepare(
       `
         WITH usage_source AS (${sourceSql})
@@ -297,7 +304,7 @@ export async function getUsageStats() {
         GROUP BY provider, model, service_tier
       `
     )
-    .all(...sourceParams) as unknown[];
+    .all(...sourceParams)) as unknown[];
 
   for (const rowRaw of modelRows) {
     const row = asRecord(rowRaw);
@@ -344,7 +351,7 @@ export async function getUsageStats() {
     }
   }
 
-  const accountRows = await db
+  const accountRows = (await db
     .prepare(
       `
         WITH usage_source AS (${sourceSql})
@@ -354,7 +361,7 @@ export async function getUsageStats() {
         GROUP BY provider, model, connection_id, service_tier
       `
     )
-    .all(...sourceParams) as unknown[];
+    .all(...sourceParams)) as unknown[];
 
   for (const rowRaw of accountRows) {
     const row = asRecord(rowRaw);
@@ -397,7 +404,7 @@ export async function getUsageStats() {
     }
   }
 
-  const apiKeyRows = await db
+  const apiKeyRows = (await db
     .prepare(
       `
         WITH usage_source AS (${sourceSql})
@@ -408,7 +415,7 @@ export async function getUsageStats() {
         GROUP BY provider, model, api_key_id, api_key_name, service_tier
       `
     )
-    .all(...sourceParams) as unknown[];
+    .all(...sourceParams)) as unknown[];
 
   for (const rowRaw of apiKeyRows) {
     const row = asRecord(rowRaw);
@@ -451,7 +458,7 @@ export async function getUsageStats() {
     }
   }
 
-  const recentRows = await db
+  const recentRows = (await db
     .prepare(
       `
         SELECT
@@ -470,7 +477,7 @@ export async function getUsageStats() {
         GROUP BY minute, provider, model, service_tier
       `
     )
-    .all(tenMinutesAgo.toISOString(), now.toISOString()) as unknown[];
+    .all(tenMinutesAgo.toISOString(), now.toISOString())) as unknown[];
 
   for (const rowRaw of recentRows) {
     const row = asRecord(rowRaw);

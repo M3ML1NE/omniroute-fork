@@ -136,7 +136,7 @@ export function supportsNativeWebSearchFallbackBypass({
   sourceFormat?: string | null;
   targetFormat?: string | null;
 }): boolean {
-  return targetFormat === FORMATS.GEMINI;
+  return targetFormat === "gemini";
 }
 
 export function prepareWebSearchFallbackBody<T extends JsonRecord>(

@@ -1,4 +1,4 @@
-export type CostExplorerGroupBy = "provider" | "model" | "apiKey" | "account" | "serviceTier";
+export type CostExplorerGroupBy = "provider" | "model" | "apiKey" | "account";
 export type CostExplorerSortKey =
   | "name"
   | "cost"
@@ -21,15 +21,12 @@ export interface CostExplorerBreakdownRow {
   apiKeyId?: string | null;
   apiKeyName?: string;
   account?: string;
-  serviceTier?: string;
   label?: string;
   requests: number;
   promptTokens?: number;
   completionTokens?: number;
   totalTokens: number;
   cost: number;
-  savings?: number;
-  usageSavingsTokens?: number;
 }
 
 export interface CostExplorerAnalyticsPayload {
@@ -38,7 +35,6 @@ export interface CostExplorerAnalyticsPayload {
   byModel?: CostExplorerBreakdownRow[];
   byApiKey?: CostExplorerBreakdownRow[];
   byAccount?: CostExplorerBreakdownRow[];
-  byServiceTier?: CostExplorerBreakdownRow[];
 }
 
 export interface CostExplorerRow {
@@ -60,7 +56,6 @@ const GROUP_LABEL_FIELDS: Record<CostExplorerGroupBy, Array<keyof CostExplorerBr
   model: ["model", "rawModel"],
   apiKey: ["apiKeyName", "apiKey", "apiKeyId"],
   account: ["account"],
-  serviceTier: ["label", "serviceTier"],
 };
 
 function toFiniteNumber(value: unknown): number {
@@ -80,7 +75,6 @@ function getRowDetail(row: CostExplorerBreakdownRow, groupBy: CostExplorerGroupB
   if (groupBy === "model") return row.provider || row.rawModel || "";
   if (groupBy === "apiKey") return row.apiKeyId || row.apiKey || "";
   if (groupBy === "provider") return row.model || "";
-  if (groupBy === "serviceTier") return row.serviceTier || "";
   return "";
 }
 
@@ -97,8 +91,6 @@ function getGroupRows(
       return analytics.byApiKey || [];
     case "account":
       return analytics.byAccount || [];
-    case "serviceTier":
-      return analytics.byServiceTier || [];
     default:
       return [];
   }

@@ -16,9 +16,7 @@ import {
   formatCostAbbreviated,
   truncateUrl,
   safePercentage,
-  normalizeServiceTierId,
   translateCostText,
-  getServiceTierDisplayLabel,
   type TranslationFn,
 } from "../../src/shared/utils/formatting.ts";
 
@@ -336,28 +334,6 @@ describe("safePercentage", () => {
   });
 });
 
-describe("normalizeServiceTierId", () => {
-  it("recognizes 'priority' and 'fast' as priority", () => {
-    assert.equal(normalizeServiceTierId("priority"), "priority");
-    assert.equal(normalizeServiceTierId("fast"), "priority");
-    assert.equal(normalizeServiceTierId("Fast"), "priority");
-  });
-
-  it("recognizes 'flex' as flex", () => {
-    assert.equal(normalizeServiceTierId("flex"), "flex");
-  });
-
-  it("defaults to 'standard' for unknown or non-string input", () => {
-    assert.equal(normalizeServiceTierId("unknown"), "standard");
-    assert.equal(normalizeServiceTierId(null), "standard");
-    assert.equal(normalizeServiceTierId(42), "standard");
-  });
-
-  it("trims and lowercases before matching", () => {
-    assert.equal(normalizeServiceTierId("  FLEX  "), "flex");
-  });
-});
-
 describe("translateCostText", () => {
   it("uses the translation function when the key exists", () => {
     const t: TranslationFn = Object.assign((key: string) => `translated:${key}`, {
@@ -376,43 +352,5 @@ describe("translateCostText", () => {
   it("uses the fallback when `t.has` is not a function", () => {
     const t = ((key: string) => `translated:${key}`) as TranslationFn;
     assert.equal(translateCostText(t, "any", "fallback"), "fallback");
-  });
-});
-
-describe("getServiceTierDisplayLabel", () => {
-  const t: TranslationFn = Object.assign(
-    (key: string) => {
-      const map: Record<string, string> = {
-        serviceTierFast: "Priority Tier",
-        serviceTierFlex: "Flex Tier",
-        serviceTierStandard: "Standard Tier",
-      };
-      return map[key] ?? key;
-    },
-    { has: () => true }
-  );
-
-  it("returns the translated label for the priority tier", () => {
-    assert.equal(getServiceTierDisplayLabel(t, "priority"), "Priority Tier");
-  });
-
-  it("returns the translated label for the flex tier", () => {
-    assert.equal(getServiceTierDisplayLabel(t, "flex"), "Flex Tier");
-  });
-
-  it("defaults to the standard tier for unrecognized input", () => {
-    assert.equal(getServiceTierDisplayLabel(t, "bogus"), "Standard Tier");
-  });
-
-  it("prefers a distinct fallback label over the tier default when the fallback differs", () => {
-    const noHas: TranslationFn = Object.assign((key: string) => key, { has: () => false });
-    const result = getServiceTierDisplayLabel(noHas, "priority", "Custom Fast Label");
-    assert.equal(result, "Custom Fast Label");
-  });
-
-  it("ignores a fallback that normalizes to the same tier as the detected one", () => {
-    const noHas: TranslationFn = Object.assign((key: string) => key, { has: () => false });
-    const result = getServiceTierDisplayLabel(noHas, "priority", "fast");
-    assert.equal(result, "Fast");
   });
 });

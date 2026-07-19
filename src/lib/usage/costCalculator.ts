@@ -25,7 +25,6 @@ export function normalizeModelName(model: string): string {
 export type CostCalculationOptions = {
   provider?: string | null;
   model?: string | null;
-  serviceTier?: string | null;
 };
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -35,38 +34,6 @@ function toNumber(value: unknown, fallback = 0): number {
     return Number.isFinite(parsed) ? parsed : fallback;
   }
   return fallback;
-}
-
-function normalizeServiceTier(value: unknown): string {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function stripCodexEffortSuffix(model: string): string {
-  return model.replace(/-(?:xhigh|high|medium|low|none)$/i, "");
-}
-
-export function getCodexFastCostMultiplier(
-  provider: string | null | undefined,
-  model: string | null | undefined,
-  serviceTier: string | null | undefined
-): number {
-  const providerKey = normalizeServiceTier(provider);
-  const tier = normalizeServiceTier(serviceTier);
-  if (providerKey !== "codex" && providerKey !== "cx") {
-    return 1;
-  }
-
-  // OpenAI Flex Processing is billed at a 50% token discount, like Batch,
-  // while still using the Responses API with service_tier="flex".
-  if (tier === "flex") return 0.5;
-
-  if (tier !== "priority" && tier !== "fast") return 1;
-
-  const modelKey = stripCodexEffortSuffix(normalizeModelName(String(model || "")).toLowerCase());
-  const compactModelKey = modelKey.replace(/-/g, "");
-  if (modelKey === "gpt-5.5" || compactModelKey === "gpt5.5") return 2.5;
-  if (modelKey === "gpt-5.4" || compactModelKey === "gpt5.4") return 2;
-  return 1;
 }
 
 /**
@@ -114,7 +81,7 @@ export function computeCostFromPricing(
 
   if (cacheCreationTokens > 0) cost += cacheCreationTokens * (cacheCreationPrice / 1_000_000);
 
-  return cost * getCodexFastCostMultiplier(options.provider, options.model, options.serviceTier);
+  return cost;
 }
 
 export async function calculateCost(
@@ -134,13 +101,6 @@ export async function calculateCost(
       const normalized = normalizeModelName(model);
       if (normalized !== model) {
         pricing = await getPricingForModel(provider, normalized);
-      }
-      const providerKey = normalizeServiceTier(provider);
-      if (!pricing && (providerKey === "codex" || providerKey === "cx")) {
-        const effortlessModel = stripCodexEffortSuffix(normalized);
-        if (effortlessModel !== normalized) {
-          pricing = await getPricingForModel(provider, effortlessModel);
-        }
       }
     }
     if (!pricing) return 0;

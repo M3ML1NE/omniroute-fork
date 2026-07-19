@@ -6,11 +6,9 @@ import { useTranslations } from "next-intl";
 import { UsageAnalytics, CardSkeleton } from "@/shared/components";
 import { cn } from "@/shared/utils/cn";
 import EvalsTab from "../usage/components/EvalsTab";
-import ComboHealthTab from "./ComboHealthTab";
 import RouteExplainabilityTab from "./RouteExplainabilityTab";
-import DiversityScoreCard from "./components/DiversityScoreCard";
 
-type AnalyticsTab = "overview" | "evals" | "combo-health" | "route-trace";
+type AnalyticsTab = "overview" | "evals" | "route-trace";
 
 const ANALYTICS_TABS: Array<{
   id: AnalyticsTab;
@@ -20,12 +18,6 @@ const ANALYTICS_TABS: Array<{
 }> = [
   { id: "overview", labelKey: "overview", label: "Overview", icon: "analytics" },
   { id: "evals", labelKey: "evals", label: "Evals", icon: "science" },
-  {
-    id: "combo-health",
-    labelKey: "comboHealth",
-    label: "Combo Health",
-    icon: "health_and_safety",
-  },
   { id: "route-trace", labelKey: "routeTrace", label: "Route Trace", icon: "alt_route" },
 ];
 
@@ -39,7 +31,7 @@ function analyticsText(t: AnalyticsTranslator, key: string, fallback: string) {
 
 function normalizeTab(tab: string | null): AnalyticsTab {
   if (tab === "route-trace" || tab === "route-explain") return "route-trace";
-  if (tab === "evals" || tab === "combo-health") {
+  if (tab === "evals") {
     return tab;
   }
   return "overview";
@@ -103,14 +95,8 @@ function AnalyticsPageContent() {
       </div>
 
       <Suspense fallback={<CardSkeleton />}>
-        {activeTab === "overview" ? (
-          <>
-            <UsageAnalytics />
-            <DiversityScoreCard />
-          </>
-        ) : null}
+        {activeTab === "overview" ? <UsageAnalytics /> : null}
         {activeTab === "evals" ? <EvalsTab /> : null}
-        {activeTab === "combo-health" ? <ComboHealthTab /> : null}
         {activeTab === "route-trace" ? (
           <RouteExplainabilityTab initialRequestId={initialRequestId} />
         ) : null}

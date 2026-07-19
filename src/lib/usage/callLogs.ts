@@ -52,6 +52,7 @@ type CallLogSummaryRow = {
   provider: string | null;
   account: string | null;
   connection_id: string | null;
+  correlation_id: string | null;
   duration: number | null;
   tokens_in: number | null;
   tokens_out: number | null;
@@ -549,6 +550,7 @@ function mapSummaryRow(row: CallLogSummaryRow) {
     provider,
     account: row.resolved_account || row.account,
     connectionId: row.connection_id,
+    correlationId: row.correlation_id,
     duration: toNumber(row.duration),
     tokens: {
       in: toNumber(row.tokens_in),
@@ -658,6 +660,7 @@ async function saveCallLogInternal(entry: any) {
       provider: rawProvider,
       account,
       connectionId: entry.connectionId || null,
+      correlationId: toStringOrNull(entry.correlationId),
       duration: entry.duration || 0,
       tokensIn: toNumber(getLoggedInputTokens(entry.tokens)),
       tokensOut: toNumber(getLoggedOutputTokens(entry.tokens)),
@@ -716,7 +719,7 @@ async function saveCallLogInternal(entry: any) {
       `
       INSERT INTO call_logs (
         id, timestamp, method, path, status, model, requested_model, provider,
-        account, connection_id, duration, tokens_in, tokens_out,
+        account, connection_id, correlation_id, duration, tokens_in, tokens_out,
         tokens_cache_read, tokens_cache_creation, tokens_reasoning, tokens_compressed,
         cache_source, request_type, source_format, target_format, api_key_id, api_key_name,
         combo_name, combo_step_id, combo_execution_key, error_summary, detail_state,
@@ -725,7 +728,7 @@ async function saveCallLogInternal(entry: any) {
       )
       VALUES (
         @id, @timestamp, @method, @path, @status, @model, @requestedModel, @provider,
-        @account, @connectionId, @duration, @tokensIn, @tokensOut,
+        @account, @connectionId, @correlationId, @duration, @tokensIn, @tokensOut,
         @tokensCacheRead, @tokensCacheCreation, @tokensReasoning, @tokensCompressed,
         @cacheSource, @requestType, @sourceFormat, @targetFormat, @apiKeyId, @apiKeyName,
         @comboName, @comboStepId, @comboExecutionKey, @errorSummary, @detailState,

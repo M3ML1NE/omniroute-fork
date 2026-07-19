@@ -1,11 +1,5 @@
-import { getComboByName } from "@/lib/db/combos";
-import { buildComboScoringInspectorResponse } from "@/lib/usage/comboScoringInspector";
 import { inspectTargetResilience } from "@/lib/usage/resilienceExplain";
-import type {
-  ComboScoringInspectorFactor,
-  ComboScoringInspectorTarget,
-  ResilienceExplanation,
-} from "@/shared/types/utilization";
+import type { ResilienceExplanation } from "@/shared/types/utilization";
 import { getCallLogById, getCallLogs } from "./callLogs";
 
 type JsonRecord = Record<string, unknown>;
@@ -74,27 +68,6 @@ type TargetStats = {
   lastUsedAt: string | null;
 };
 
-type DecisionReplayAlignment =
-  | "matches_recomputed_top_target"
-  | "differs_from_recomputed_top_target"
-  | "runtime_target_missing_from_recompute"
-  | "not_combo_routed";
-
-type DecisionReplayCandidate = {
-  executionKey: string;
-  stepId: string | null;
-  provider: string;
-  model: string;
-  connectionId: string | null;
-  label: string | null;
-  rank: number;
-  score: number;
-  isRuntimeSelected: boolean;
-  wouldSelectNow: boolean;
-  factors: ComboScoringInspectorFactor[];
-  signals: ComboScoringInspectorTarget["signals"];
-};
-
 type DecisionReplay = {
   runtime: {
     source: "call_logs";
@@ -110,24 +83,7 @@ type DecisionReplay = {
     timestamp: string | null;
     durationMs: number;
   };
-  recompute: null | {
-    source: "comboScoringInspector";
-    method: "read_only_recompute";
-    exactRuntimeReplay: false;
-    asOf: string;
-    timeRange: "24h";
-    horizon: "7d";
-    comboId: string;
-    comboName: string;
-    strategy: string;
-    taskType: "default";
-    recomputedSelectedExecutionKey: string | null;
-    runtimeSelectedRank: number | null;
-    runtimeSelectedScore: number | null;
-    alignment: DecisionReplayAlignment;
-    candidates: DecisionReplayCandidate[];
-    warnings: string[];
-  };
+  recompute: null;
   warnings: string[];
 };
 
@@ -470,59 +426,9 @@ function buildDecisionReplayRuntime(log: ExplainLog): DecisionReplay["runtime"] 
   };
 }
 
-function comboIdFromRecord(combo: unknown): string | null {
-  if (!combo || typeof combo !== "object") return null;
-  const record = combo as JsonRecord;
-  return toStringOrNull(record.id);
-}
-
-function targetMatchesRuntime(target: ComboScoringInspectorTarget, log: ExplainLog): boolean {
-  const runtimeExecutionKey = toStringOrNull(log.comboExecutionKey);
-  if (runtimeExecutionKey && target.executionKey === runtimeExecutionKey) return true;
-
-  const runtimeStepId = toStringOrNull(log.comboStepId);
-  if (runtimeStepId && target.stepId === runtimeStepId) return true;
-
-  if (target.provider !== log.provider || target.model !== log.model) return false;
-  if (target.connectionId && log.connectionId && target.connectionId !== log.connectionId) {
-    return false;
-  }
-  return true;
-}
-
-function buildReplayCandidates(
-  targets: ComboScoringInspectorTarget[],
-  runtimeTarget: ComboScoringInspectorTarget | undefined
-): DecisionReplayCandidate[] {
-  const selectedExecutionKey = targets[0]?.executionKey ?? null;
-  const limited = targets.slice(0, 10);
-  if (
-    runtimeTarget &&
-    !limited.some((target) => target.executionKey === runtimeTarget.executionKey)
-  ) {
-    limited.push(runtimeTarget);
-  }
-
-  return limited.map((target) => ({
-    executionKey: target.executionKey,
-    stepId: target.stepId,
-    provider: target.provider,
-    model: target.model,
-    connectionId: target.connectionId,
-    label: target.label,
-    rank: target.rank,
-    score: target.score,
-    isRuntimeSelected: runtimeTarget?.executionKey === target.executionKey,
-    wouldSelectNow: selectedExecutionKey === target.executionKey,
-    factors: target.factors,
-    signals: target.signals,
-  }));
-}
-
 function buildReplayWarnings(log: ExplainLog, comboWarnings: string[]): string[] {
   const warnings = [
     "Runtime fields are exact only for metadata persisted in the selected call log row.",
-    "Read-only recompute is not a historical routing snapshot; it uses current combo, health, quota, and scoring state.",
   ];
 
   if (log.comboName) {
@@ -538,84 +444,14 @@ async function buildDecisionReplay(log: ExplainLog): Promise<DecisionReplay> {
   const runtime = buildDecisionReplayRuntime(log);
   const warnings = buildReplayWarnings(log, []);
 
-  if (!log.comboName) {
-    return {
-      runtime,
-      recompute: null,
-      warnings: [...warnings, "Direct routing has no combo candidate ranking to recompute."],
-    };
-  }
-
-  const combo = await getComboByName(log.comboName);
-  const comboId = comboIdFromRecord(combo);
-  if (!comboId) {
-    return {
-      runtime,
-      recompute: null,
-      warnings: [
-        ...warnings,
-        "Combo definition could not be found; runtime target is shown without recomputed candidates.",
-      ],
-    };
-  }
-
-  const inspector = await buildComboScoringInspectorResponse({
-    range: "24h",
-    horizon: "7d",
-    comboId,
-    taskType: "default",
-  });
-  const inspectorCombo = inspector.combos[0] ?? null;
-  if (!inspectorCombo) {
-    return {
-      runtime,
-      recompute: null,
-      warnings: [
-        ...warnings,
-        "Scoring inspector returned no combo data; runtime target is shown without recomputed candidates.",
-      ],
-    };
-  }
-
-  const runtimeTarget = inspectorCombo.targets.find((target) => targetMatchesRuntime(target, log));
-  const topTarget = inspectorCombo.targets[0] ?? null;
-  const alignment: DecisionReplayAlignment = runtimeTarget
-    ? topTarget?.executionKey === runtimeTarget.executionKey
-      ? "matches_recomputed_top_target"
-      : "differs_from_recomputed_top_target"
-    : "runtime_target_missing_from_recompute";
-  const recomputeWarnings = buildReplayWarnings(log, inspectorCombo.warnings);
-  if (alignment === "differs_from_recomputed_top_target") {
-    recomputeWarnings.push(
-      "Persisted runtime target differs from the target the inspector would rank first now."
-    );
-  } else if (alignment === "runtime_target_missing_from_recompute") {
-    recomputeWarnings.push(
-      "Persisted runtime target could not be matched to current combo targets; combo configuration may have changed."
-    );
-  }
+  const note = log.comboName
+    ? "Combo candidate recompute is unavailable; runtime target is shown from persisted call log metadata."
+    : "Direct routing has no combo candidate ranking to recompute.";
 
   return {
     runtime,
-    recompute: {
-      source: "comboScoringInspector",
-      method: inspector.method,
-      exactRuntimeReplay: false,
-      asOf: inspector.asOf,
-      timeRange: "24h",
-      horizon: "7d",
-      comboId: inspectorCombo.comboId,
-      comboName: inspectorCombo.comboName,
-      strategy: inspectorCombo.strategy,
-      taskType: "default",
-      recomputedSelectedExecutionKey: inspectorCombo.selectedExecutionKey,
-      runtimeSelectedRank: runtimeTarget?.rank ?? null,
-      runtimeSelectedScore: runtimeTarget?.score ?? null,
-      alignment,
-      candidates: buildReplayCandidates(inspectorCombo.targets, runtimeTarget),
-      warnings: recomputeWarnings,
-    },
-    warnings: recomputeWarnings,
+    recompute: null,
+    warnings: [...warnings, note],
   };
 }
 

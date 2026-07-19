@@ -57,17 +57,14 @@ describe("Cache Control Policy", () => {
   describe("isDeterministicStrategy", () => {
     test("identifies deterministic strategies", () => {
       assert.equal(isDeterministicStrategy("priority"), true);
-      assert.equal(isDeterministicStrategy("cost-optimized"), true);
     });
 
     test("identifies non-deterministic strategies", () => {
       assert.equal(isDeterministicStrategy("weighted"), false);
       assert.equal(isDeterministicStrategy("round-robin"), false);
-      assert.equal(isDeterministicStrategy("random"), false);
-      assert.equal(isDeterministicStrategy("fill-first"), false);
       assert.equal(isDeterministicStrategy("p2c"), false);
       assert.equal(isDeterministicStrategy("least-used"), false);
-      assert.equal(isDeterministicStrategy("strict-random"), false);
+      assert.equal(isDeterministicStrategy("cost-optimized" as never), false);
     });
 
     test("handles null/undefined", () => {
@@ -95,18 +92,6 @@ describe("Cache Control Policy", () => {
           isCombo: true,
           comboStrategy: "priority",
           targetProvider: "claude",
-        }),
-        true
-      );
-    });
-
-    test("preserves for combo with cost-optimized strategy + Claude client + caching provider", () => {
-      assert.equal(
-        shouldPreserveCacheControl({
-          userAgent: "claude-code/0.1.0",
-          isCombo: true,
-          comboStrategy: "cost-optimized",
-          targetProvider: "anthropic",
         }),
         true
       );
@@ -158,30 +143,6 @@ describe("Cache Control Policy", () => {
       );
     });
 
-    test("rejects combo with non-deterministic strategy (random)", () => {
-      assert.equal(
-        shouldPreserveCacheControl({
-          userAgent: "claude-code/0.1.0",
-          isCombo: true,
-          comboStrategy: "random",
-          targetProvider: "claude",
-        }),
-        false
-      );
-    });
-
-    test("rejects combo with fill-first strategy", () => {
-      assert.equal(
-        shouldPreserveCacheControl({
-          userAgent: "claude-code/0.1.0",
-          isCombo: true,
-          comboStrategy: "fill-first",
-          targetProvider: "claude",
-        }),
-        false
-      );
-    });
-
     test("rejects combo with p2c strategy", () => {
       assert.equal(
         shouldPreserveCacheControl({
@@ -200,18 +161,6 @@ describe("Cache Control Policy", () => {
           userAgent: "claude-code/0.1.0",
           isCombo: true,
           comboStrategy: "least-used",
-          targetProvider: "claude",
-        }),
-        false
-      );
-    });
-
-    test("rejects combo with strict-random strategy", () => {
-      assert.equal(
-        shouldPreserveCacheControl({
-          userAgent: "claude-code/0.1.0",
-          isCombo: true,
-          comboStrategy: "strict-random",
           targetProvider: "claude",
         }),
         false
@@ -466,7 +415,7 @@ describe("Cache Control Policy", () => {
       result = trackCacheMetrics({
         preserved: true,
         provider: "claude",
-        strategy: "cost-optimized",
+        strategy: "least-used",
         metrics: result,
         inputTokens: 800,
         cachedTokens: 200,
@@ -475,8 +424,8 @@ describe("Cache Control Policy", () => {
 
       assert.equal(result.byStrategy.priority.requests, 1);
       assert.equal(result.byStrategy.priority.cachedTokens, 300);
-      assert.equal(result.byStrategy["cost-optimized"].requests, 1);
-      assert.equal(result.byStrategy["cost-optimized"].cachedTokens, 200);
+      assert.equal(result.byStrategy["least-used"].requests, 1);
+      assert.equal(result.byStrategy["least-used"].cachedTokens, 200);
     });
   });
 

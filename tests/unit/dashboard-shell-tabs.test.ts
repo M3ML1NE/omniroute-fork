@@ -11,24 +11,10 @@ test("analytics page exposes the restored analytics tab shell", () => {
 
   assert.ok(source.includes('role="tablist"'));
   assert.ok(source.includes('aria-label="Analytics sections"'));
-  for (const label of [
-    "Overview",
-    "Evals",
-    "Search",
-    "Utilization",
-    "Combo Health",
-    "Route Trace",
-  ]) {
+  for (const label of ["Overview", "Evals", "Route Trace"]) {
     assert.ok(source.includes('label: "' + label + '"'));
   }
-  for (const tabId of [
-    "overview",
-    "evals",
-    "search",
-    "utilization",
-    "combo-health",
-    "route-trace",
-  ]) {
+  for (const tabId of ["overview", "evals", "route-trace"]) {
     assert.ok(source.includes('id: "' + tabId + '"'));
   }
 });

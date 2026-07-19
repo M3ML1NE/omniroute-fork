@@ -63,46 +63,6 @@ test.describe("Analytics Tabs UI", () => {
       });
     });
 
-    await page.route("**/api/usage/combo-health**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          timeRange: "24h",
-          combo: {
-            id: "test-combo",
-            name: "Test Combo",
-            models: ["openai/gpt-4", "anthropic/claude-3"],
-          },
-          quotaHealth: {
-            overall: {
-              remainingAvg: 68.5,
-              trend: "stable",
-            },
-            providers: [
-              {
-                provider: "openai",
-                remaining: 75.0,
-                trend: "stable",
-              },
-            ],
-          },
-          usageSkew: {
-            modelDistribution: [
-              { model: "openai/gpt-4", count: 45, share: 0.6 },
-              { model: "anthropic/claude-3", count: 30, share: 0.4 },
-            ],
-            gini: 0.2,
-          },
-          performance: {
-            successRate: 0.98,
-            avgLatency: 1200,
-            totalCalls: 75,
-          },
-        }),
-      });
-    });
-
     await page.route("**/api/combos", async (route) => {
       await route.fulfill({
         status: 200,
@@ -135,7 +95,7 @@ test.describe("Analytics Tabs UI", () => {
     const count = await tabButtons.count();
     expect(count).toBeGreaterThanOrEqual(4);
 
-    const tabLabels = ["overview", "evals", "search", "utilization", "combo health"];
+    const tabLabels = ["overview", "evals", "route trace"];
     for (const label of tabLabels) {
       const tabButton = page
         .locator("button")
@@ -180,35 +140,6 @@ test.describe("Analytics Tabs UI", () => {
       .locator('svg.recharts-surface, .recharts-wrapper, div[class*="recharts"]')
       .first();
     await expect(chart).toBeVisible();
-  });
-
-  test("Combo Health tab displays health cards and metrics", async ({ page }) => {
-    await gotoDashboardRoute(page, "/dashboard/analytics");
-    await waitForAnalyticsShell(page);
-
-    const comboHealthTab = page
-      .locator("button")
-      .filter({
-        hasText: /combo.*health/i,
-      })
-      .first();
-
-    await expect(async () => {
-      await comboHealthTab.click();
-      const timeRangeSelector = getTimeRangeSelector(page);
-      await expect(timeRangeSelector).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 15000 });
-
-    const mainContent = page.locator('main, [class*="dashboard"], div[class*="container"]').first();
-    await expect(mainContent).toBeVisible();
-
-    const timeRangeSelector = getTimeRangeSelector(page);
-    await expect(timeRangeSelector).toBeVisible();
-
-    const metricElements = page
-      .locator('[class*="rounded-lg"], [class*="border"], [class*="bg-black/"]')
-      .first();
-    await expect(metricElements).toBeVisible();
   });
 
   test("time range change triggers network request", async ({ page }) => {
@@ -306,29 +237,6 @@ test.describe("Analytics Tabs UI", () => {
     const chart = page
       .locator('svg.recharts-surface, .recharts-wrapper, div[class*="recharts"]')
       .first();
-    await expect(chart).toBeVisible();
-
-    const comboHealthTab = page
-      .locator("button")
-      .filter({
-        hasText: /combo.*health/i,
-      })
-      .first();
-
-    await expect(async () => {
-      await comboHealthTab.click();
-      const timeRangeSelector = getTimeRangeSelector(page);
-      await expect(timeRangeSelector).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 15000 });
-
-    const timeRangeSelector = getTimeRangeSelector(page);
-    await expect(timeRangeSelector).toBeVisible();
-
-    await expect(async () => {
-      await utilizationTab.click();
-      await expect(chart).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 15000 });
-
     await expect(chart).toBeVisible();
   });
 });

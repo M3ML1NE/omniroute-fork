@@ -26,10 +26,6 @@ type ComboMetricsResponse = {
   message?: string;
 };
 
-type ComboHealthResponse = {
-  combos?: ComboControlCenterHealth[];
-};
-
 type CallLogEntry = {
   id?: string;
   requestId?: string;
@@ -227,9 +223,7 @@ export default function ComboControlCenterClient({ comboId }: { comboId: string 
         fetchJson<ComboMetricsResponse>(
           `/api/combos/metrics?combo=${encodeURIComponent(comboData.name || "")}`
         ).catch(() => ({ metrics: null })),
-        fetchJson<ComboHealthResponse>(`/api/usage/combo-health?range=${range}&comboId=${comboId}`)
-          .then((data) => data.combos?.[0] || null)
-          .catch(() => null),
+        Promise.resolve<ComboControlCenterHealth | null>(null),
         fetchJson<CallLogEntry[]>(
           `/api/usage/call-logs?combo=1&search=${encodeURIComponent(comboData.name || "")}&limit=8`
         ).catch(() => []),
@@ -245,7 +239,7 @@ export default function ComboControlCenterClient({ comboId }: { comboId: string 
     } finally {
       setLoading(false);
     }
-  }, [comboId, range]);
+  }, [comboId]);
 
   useEffect(() => {
     void load();
@@ -513,7 +507,7 @@ export default function ComboControlCenterClient({ comboId }: { comboId: string 
             ["Combo Health", "/dashboard/analytics/combo-health"],
             ["Call Logs", "/dashboard/logs"],
             ["Costs", "/dashboard/costs"],
-            
+
             ["Providers", "/dashboard/providers"],
           ].map(([label, href]) => (
             <Link

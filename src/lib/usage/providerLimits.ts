@@ -11,8 +11,6 @@ import {
   updateSettings,
   type ProviderLimitsCacheEntry,
 } from "@/lib/localDb";
-import { syncToCloud } from "@/lib/cloudSync";
-import { getMachineId } from "@/shared/utils/machine";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { getExecutor } from "@omniroute/open-sse/executors/index.ts";
 import { getUsageForProvider } from "@omniroute/open-sse/services/usage.ts";
@@ -92,16 +90,6 @@ function isSupportedUsageConnection(connection: ProviderConnectionLike | null): 
 
 function withStatus(error: Error, status: number): Error & { status: number } {
   return Object.assign(error, { status });
-}
-
-async function syncToCloudIfEnabled() {
-  try {
-    const machineId = await getMachineId();
-    if (!machineId) return;
-    await syncToCloud(machineId);
-  } catch (error) {
-    console.error("[ProviderLimits] Error syncing refreshed credentials to cloud:", error);
-  }
 }
 
 async function refreshAndUpdateCredentials(connection: ProviderConnectionLike) {
@@ -256,15 +244,9 @@ async function fetchLiveProviderLimitsWithOptions(
   const fetchUsageWithContext = async (proxyConfig: unknown) =>
     runWithProxyContext(proxyConfig, async () => {
       let conn = connection as ProviderConnectionLike;
-      let wasRefreshed = false;
 
       const result = await refreshAndUpdateCredentials(conn);
       conn = result.connection;
-      wasRefreshed = result.refreshed;
-
-      if (wasRefreshed) {
-        await syncToCloudIfEnabled();
-      }
 
       const usageData = (await getUsageForProvider(conn, options)) as JsonRecord;
       connection = conn;

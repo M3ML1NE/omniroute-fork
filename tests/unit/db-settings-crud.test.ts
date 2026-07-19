@@ -66,11 +66,9 @@ test.after(async () => {
 test("migration 0008 purges stale tunnel key_value rows so getSettings stops returning them", async () => {
   const db = core.getDbInstance();
 
-  await db.prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
-    "settings",
-    "hideEndpointCloudflaredTunnel",
-    "true"
-  );
+  await db
+    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
+    .run("settings", "hideEndpointCloudflaredTunnel", "true");
   await db
     .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
     .run("settings", "tailscaleEnabled", "true");
@@ -84,10 +82,7 @@ test("migration 0008 purges stale tunnel key_value rows so getSettings stops ret
   assert.equal(beforePurge.tailscaleUrl, "http://stale.example");
 
   const migrationSql = fs
-    .readFileSync(
-      path.resolve("db/migrations/postgres/0008_drop_tunnel_settings.sql"),
-      "utf8"
-    )
+    .readFileSync(path.resolve("db/migrations/postgres/0008_drop_tunnel_settings.sql"), "utf8")
     .trim();
   await db.exec(migrationSql);
   // Idempotency: re-applying the same DELETE must not throw and must remain a no-op.
@@ -234,44 +229,7 @@ test("getPricingWithSources reports the winning layer for each provider/model", 
   assert.equal(sourceMap["layer-source"]["model-user"], "user");
 });
 
-test("LKGP values can be set, read and cleared", async () => {
-  assert.equal(await settingsDb.getLKGP("combo-a", "model-a"), null);
-
-  await settingsDb.setLKGP("combo-a", "model-a", "openai");
-  await settingsDb.setLKGP("combo-a", "model-b", "anthropic");
-
-  assert.deepEqual(await settingsDb.getLKGP("combo-a", "model-a"), { provider: "openai" });
-  assert.deepEqual(await settingsDb.getLKGP("combo-a", "model-b"), { provider: "anthropic" });
-
-  settingsDb.clearAllLKGP();
-
-  assert.equal(await settingsDb.getLKGP("combo-a", "model-a"), null);
-});
-
-test("LKGP stores and retrieves connectionId", async () => {
-  await settingsDb.setLKGP("combo-c", "model-c", "openai", "conn-abc123");
-
-  const record = await settingsDb.getLKGP("combo-c", "model-c");
-  assert.deepEqual(record, { provider: "openai", connectionId: "conn-abc123" });
-});
-
-test("LKGP without connectionId omits the field", async () => {
-  await settingsDb.setLKGP("combo-d", "model-d", "anthropic");
-
-  const record = await settingsDb.getLKGP("combo-d", "model-d");
-  assert.deepEqual(record, { provider: "anthropic" });
-  assert.equal("connectionId" in (record as object), false);
-});
-
-test("LKGP overwrites connectionId when updated without one", async () => {
-  await settingsDb.setLKGP("combo-e", "model-e", "openai", "conn-old");
-  await settingsDb.setLKGP("combo-e", "model-e", "openai");
-
-  const record = await settingsDb.getLKGP("combo-e", "model-e");
-  assert.deepEqual(record, { provider: "openai" });
-});
-
-test("pricing helpers ignore malformed synced data and LKGP falls back to raw values", async () => {
+test("pricing helpers ignore malformed synced data", async () => {
   const db = core.getDbInstance();
 
   await db
@@ -284,17 +242,11 @@ test("pricing helpers ignore malformed synced data and LKGP falls back to raw va
       "model-a": { prompt: 7 },
     })
   );
-  await db
-    .prepare("INSERT INTO key_value (namespace, key, value) VALUES (?, ?, ?)")
-    .run("lkgp", "combo-raw:model-raw", "raw-provider-id");
 
   const pricing = await settingsDb.getPricing();
 
   assert.equal(pricing["broken-provider"], undefined);
   assert.equal(await settingsDb.getPricingForModel("alias-provider", "missing-model"), null);
-  assert.deepEqual(await settingsDb.getLKGP("combo-raw", "model-raw"), {
-    provider: "raw-provider-id",
-  });
 });
 
 test("pricing helpers resolve stored providers and tolerate no-op resets", async () => {

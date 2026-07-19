@@ -5,18 +5,27 @@ const { buildComboTestRequestBody, extractComboTestResponseText } =
   await import("../../src/lib/combos/testHealth.ts");
 
 test("combo test helper builds a realistic smoke payload", () => {
-  const originalRandom = Math.random;
+  const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  const seededValues = [42122, 24093];
   let callCount = 0;
   let body;
   try {
-    Math.random = () => {
-      callCount += 1;
-      return callCount === 1 ? 0.4680222223 : 0.2677;
-    };
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: {
+        getRandomValues: (arr: Uint32Array) => {
+          arr[0] = seededValues[callCount];
+          callCount += 1;
+          return arr;
+        },
+      },
+    });
 
     body = buildComboTestRequestBody("openrouter/openai/gpt-5.4");
   } finally {
-    Math.random = originalRandom;
+    if (originalCrypto) {
+      Object.defineProperty(globalThis, "crypto", originalCrypto);
+    }
   }
 
   assert.equal(body.model, "openrouter/openai/gpt-5.4");

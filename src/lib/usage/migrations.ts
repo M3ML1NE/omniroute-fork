@@ -13,6 +13,7 @@ import path from "path";
 import { ZipFile } from "yazl";
 import { getDbInstance, isCloud, isBuildPhase, DATA_DIR } from "../db/core";
 import { getLegacyDotDataDir, isSamePath } from "../dataPaths";
+import { randomBase36 } from "@/shared/utils/secureRandom";
 import { protectPayloadForLog } from "../logPayloads";
 import { sanitizePII } from "../piiSanitizer";
 import { writeCallArtifact, type CallLogArtifact } from "./callLogArtifacts";
@@ -251,7 +252,7 @@ export async function archiveLegacyRequestLogs() {
   return archiveFilename;
 }
 
-export function migrateUsageJsonToSqlite() {
+export async function migrateUsageJsonToSqlite() {
   if (!shouldPersistToDisk) return;
   const db = getDbInstance();
 
@@ -273,9 +274,9 @@ export function migrateUsageJsonToSqlite() {
             @status, @success, @latencyMs, @ttftMs, @errorCode, @comboStrategy, @timestamp)
         `);
 
-        const tx = db.transaction(() => {
+        const tx = db.transaction(async () => {
           for (const entry of history) {
-            insert.run({
+            await insert.run({
               provider: entry.provider || null,
               model: entry.model || null,
               connectionId: entry.connectionId || null,
@@ -303,7 +304,7 @@ export function migrateUsageJsonToSqlite() {
             });
           }
         });
-        tx();
+        await tx();
         console.log(`[usageDb] ✓ Migrated ${history.length} usage entries`);
       }
 
@@ -324,21 +325,21 @@ export function migrateUsageJsonToSqlite() {
 
         const insert = db.prepare(`
           INSERT INTO call_logs (id, timestamp, method, path, status, model, requested_model, provider,
-            account, connection_id, duration, tokens_in, tokens_out, source_format, target_format,
+            account, connection_id, correlation_id, duration, tokens_in, tokens_out, source_format, target_format,
             api_key_id, api_key_name, combo_name, combo_step_id, combo_execution_key, error_summary,
             detail_state, artifact_relpath, artifact_size_bytes, artifact_sha256,
             has_request_body, has_response_body, has_pipeline_details, request_summary)
           VALUES (@id, @timestamp, @method, @path, @status, @model, @requestedModel, @provider,
-            @account, @connectionId, @duration, @tokensIn, @tokensOut, @sourceFormat, @targetFormat,
+            @account, @connectionId, @correlationId, @duration, @tokensIn, @tokensOut, @sourceFormat, @targetFormat,
             @apiKeyId, @apiKeyName, @comboName, @comboStepId, @comboExecutionKey, @errorSummary,
             @detailState, @artifactRelPath, @artifactSizeBytes, @artifactSha256,
             @hasRequestBody, @hasResponseBody, @hasPipelineDetails, @requestSummary)
           ON CONFLICT (id) DO NOTHING
         `);
 
-        const tx = db.transaction(() => {
+        const tx = db.transaction(async () => {
           for (const log of logs) {
-            const id = log.id || `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+            const id = log.id || `${Date.now()}-${randomBase36(4)}`;
             const timestamp = log.timestamp || new Date().toISOString();
             const protectedRequestBody = log.requestBody
               ? protectPayloadForLog(log.requestBody)
@@ -406,7 +407,7 @@ export function migrateUsageJsonToSqlite() {
               }
             }
 
-            insert.run({
+            await insert.run({
               id,
               timestamp,
               method: log.method || "POST",
@@ -417,6 +418,7 @@ export function migrateUsageJsonToSqlite() {
               provider: log.provider || null,
               account: log.account || null,
               connectionId: log.connectionId || null,
+              correlationId: log.correlationId || log.correlation_id || null,
               duration: log.duration || 0,
               tokensIn: log.tokens?.in ?? 0,
               tokensOut: log.tokens?.out ?? 0,
@@ -444,7 +446,7 @@ export function migrateUsageJsonToSqlite() {
             });
           }
         });
-        tx();
+        await tx();
         console.log(`[usageDb] ✓ Migrated ${logs.length} call log entries`);
       }
 

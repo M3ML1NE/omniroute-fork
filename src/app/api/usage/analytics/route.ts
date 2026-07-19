@@ -36,15 +36,12 @@ function getRangeStartIso(range: string): string | null {
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type PricingByProvider = Record<string, Record<string, Record<string, unknown>>>;
+type ProviderNodeInfo = { prefix: string | null; type: string | null };
+type ProviderNodeResolution = Record<string, ProviderNodeInfo>;
 type ComputeCostFromPricing = (
   pricing: Record<string, unknown> | null | undefined,
   tokens: Record<string, number | undefined> | null | undefined,
   options?: Record<string, unknown>
-) => number;
-type GetCodexFastCostMultiplier = (
-  provider: string | null | undefined,
-  model: string | null | undefined,
-  serviceTier: string | null | undefined
 ) => number;
 
 function toNumber(value: unknown): number {
@@ -62,17 +59,6 @@ function toStringValue(value: unknown, fallback = ""): string {
 
 function roundCost(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
-}
-
-function normalizeServiceTier(value: unknown): "standard" | "priority" | "flex" {
-  const tier = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (tier === "priority" || tier === "fast") return "priority";
-  if (tier === "flex") return "flex";
-  return "standard";
-}
-
-function getServiceTierLabelId(serviceTier: string): string {
-  return normalizeServiceTier(serviceTier);
 }
 
 function appendWhereCondition(whereClause: string, condition: string): string {
@@ -132,9 +118,18 @@ function getPricingModelCandidates(
   ]);
 }
 
+// Maps a dynamic compatible provider type to its generic pricing family key,
+// so a single user-set family entry applies to every connection of that type.
+function familyKeyForNodeType(type: string | null): string | null {
+  if (!type) return null;
+  if (type === "gigachat-compatible") return "gigachat";
+  return null;
+}
+
 function resolveModelPricing(
   pricingByProvider: PricingByProvider,
   providerAliasMap: Record<string, string>,
+  nodeResolution: ProviderNodeResolution,
   providerRaw: string,
   model: string,
   normalizeModelName: (model: string) => string
@@ -156,6 +151,21 @@ function resolveModelPricing(
     for (const [id, alias] of Object.entries(providerAliasMap)) {
       if (alias.toLowerCase() === pLower) {
         providerPricing = findKeyInsensitive(pricingByProvider, id);
+        if (providerPricing) break;
+      }
+    }
+  }
+
+  // Dynamic compatible providers store `provider = <type>-<uuid>` (the node id).
+  // Resolve through the node prefix, then the pricing family key, then the raw type,
+  // so user-set family pricing applies to every connection of that type.
+  if (!providerPricing) {
+    const node = nodeResolution[pLower];
+    if (node) {
+      const nodeKeys = [node.prefix, familyKeyForNodeType(node.type), node.type];
+      for (const key of nodeKeys) {
+        if (!key) continue;
+        providerPricing = findKeyInsensitive(pricingByProvider, key.toLowerCase());
         if (providerPricing) break;
       }
     }
@@ -219,17 +229,18 @@ function computeUsageRowCost(
   row: Record<string, unknown>,
   pricingByProvider: PricingByProvider,
   providerAliasMap: Record<string, string>,
+  nodeResolution: ProviderNodeResolution,
   normalizeModelName: (model: string) => string,
   computeCostFromPricing: ComputeCostFromPricing
 ): number {
   const provider = toStringValue(row.provider);
   const model = toStringValue(row.model);
   if (!provider || !model) return 0;
-  const serviceTier = normalizeServiceTier(row.serviceTier ?? row.service_tier);
 
   const pricing = resolveModelPricing(
     pricingByProvider,
     providerAliasMap,
+    nodeResolution,
     provider,
     model,
     normalizeModelName
@@ -248,43 +259,8 @@ function computeUsageRowCost(
     {
       provider,
       model,
-      serviceTier,
     }
   );
-}
-
-function computeUsageRowStandardCost(
-  row: Record<string, unknown>,
-  pricingByProvider: PricingByProvider,
-  providerAliasMap: Record<string, string>,
-  normalizeModelName: (model: string) => string,
-  computeCostFromPricing: ComputeCostFromPricing
-): number {
-  return computeUsageRowCost(
-    { ...row, serviceTier: "standard", service_tier: "standard" },
-    pricingByProvider,
-    providerAliasMap,
-    normalizeModelName,
-    computeCostFromPricing
-  );
-}
-
-function computeUsageSavingsTokens(
-  row: Record<string, unknown>,
-  serviceTier: string,
-  getCodexFastCostMultiplier: GetCodexFastCostMultiplier
-): number {
-  const provider = toStringValue(row.provider);
-  const model = toStringValue(row.model);
-  const totalTokens = toNumber(row.totalTokens);
-  if (!provider || !model || totalTokens <= 0) return 0;
-
-  const standardMultiplier = getCodexFastCostMultiplier(provider, model, "standard");
-  if (standardMultiplier <= 0) return 0;
-
-  const actualMultiplier = getCodexFastCostMultiplier(provider, model, serviceTier);
-  const savingsRatio = Math.max(0, (standardMultiplier - actualMultiplier) / standardMultiplier);
-  return totalTokens * savingsRatio;
 }
 
 function formatUtcDate(date: Date): string {
@@ -423,7 +399,6 @@ export async function GET(request: Request) {
             tokens_cache_read,
             tokens_cache_creation,
             tokens_reasoning,
-            service_tier,
             success,
             latency_ms,
             connection_id,
@@ -441,7 +416,6 @@ export async function GET(request: Request) {
             0 as tokens_cache_read,
             0 as tokens_cache_creation,
             0 as tokens_reasoning,
-            'standard' as service_tier,
             1 as success,
             0 as latency_ms,
             NULL as connection_id,
@@ -454,7 +428,7 @@ export async function GET(request: Request) {
             timestamp, provider, model,
             tokens_input, tokens_output,
             tokens_cache_read, tokens_cache_creation, tokens_reasoning,
-            service_tier, success, latency_ms,
+            success, latency_ms,
             connection_id, api_key_id, api_key_name
           FROM usage_history
           ${whereClause}
@@ -479,11 +453,24 @@ export async function GET(request: Request) {
       }
       pricingByProvider[providerKey.toLowerCase()] = lowerProvider;
     }
-    const { computeCostFromPricing, getCodexFastCostMultiplier, normalizeModelName } =
+    const { computeCostFromPricing, normalizeModelName } =
       await import("@/lib/usage/costCalculator");
     const { PROVIDER_ID_TO_ALIAS } = await import("@omniroute/open-sse/config/providerModels");
 
-    const summaryRow = await db
+    // Map each dynamic provider node id -> its prefix + type so cost resolution can
+    // fall back from `<type>-<uuid>` to the node prefix, type, and pricing family key.
+    const { getProviderNodes } = await import("@/lib/db/providers");
+    const nodeResolution: ProviderNodeResolution = {};
+    for (const node of await getProviderNodes()) {
+      const id = toStringValue((node as Record<string, unknown>).id);
+      if (!id) continue;
+      nodeResolution[id.toLowerCase()] = {
+        prefix: toStringValue((node as Record<string, unknown>).prefix) || null,
+        type: toStringValue((node as Record<string, unknown>).type) || null,
+      };
+    }
+
+    const summaryRow = (await db
       .prepare(
         `
         SELECT
@@ -502,9 +489,9 @@ export async function GET(request: Request) {
         ${unifiedWhere}
       `
       )
-      .get(params) as Record<string, unknown>;
+      .get(params)) as Record<string, unknown>;
 
-    const dailyRows = await db
+    const dailyRows = (await db
       .prepare(
         `
         SELECT
@@ -519,16 +506,15 @@ export async function GET(request: Request) {
         ORDER BY date ASC
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(params)) as Array<Record<string, unknown>>;
 
-    const dailyCostRows = await db
+    const dailyCostRows = (await db
       .prepare(
         `
         SELECT
           DATE(timestamp) as date,
           LOWER(provider) as provider,
           LOWER(model) as model,
-          COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
           COALESCE(SUM(tokens_input), 0) as promptTokens,
           COALESCE(SUM(tokens_output), 0) as completionTokens,
           COALESCE(SUM(tokens_cache_read), 0) as cacheReadTokens,
@@ -536,11 +522,11 @@ export async function GET(request: Request) {
           COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens
         FROM ${unifiedSource} AS _u
         ${unifiedWhere}
-        GROUP BY DATE(timestamp), LOWER(provider), LOWER(model), serviceTier
+        GROUP BY DATE(timestamp), LOWER(provider), LOWER(model)
         ORDER BY date ASC
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(params)) as Array<Record<string, unknown>>;
 
     const heatmapStart = new Date();
     heatmapStart.setUTCDate(heatmapStart.getUTCDate() - 364);
@@ -562,7 +548,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const heatmapRows = await db
+    const heatmapRows = (await db
       .prepare(
         `
         SELECT
@@ -574,15 +560,14 @@ export async function GET(request: Request) {
         ORDER BY date ASC
       `
       )
-      .all(heatmapParams) as Array<Record<string, unknown>>;
+      .all(heatmapParams)) as Array<Record<string, unknown>>;
 
-    const modelRows = await db
+    const modelRows = (await db
       .prepare(
         `
         SELECT
           LOWER(model) as model,
           LOWER(provider) as provider,
-          COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
           COUNT(*) as requests,
           COALESCE(SUM(tokens_input), 0) as promptTokens,
           COALESCE(SUM(tokens_output), 0) as completionTokens,
@@ -595,19 +580,18 @@ export async function GET(request: Request) {
           COALESCE(MAX(timestamp), '') as lastUsed
         FROM ${unifiedSource} AS _u
         ${unifiedWhere}
-        GROUP BY LOWER(model), LOWER(provider), serviceTier
+        GROUP BY LOWER(model), LOWER(provider)
         ORDER BY requests DESC
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(params)) as Array<Record<string, unknown>>;
 
-    const providerCostRows = await db
+    const providerCostRows = (await db
       .prepare(
         `
         SELECT
           LOWER(provider) as provider,
           LOWER(model) as model,
-          COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
           COALESCE(SUM(tokens_input), 0) as promptTokens,
           COALESCE(SUM(tokens_output), 0) as completionTokens,
           COALESCE(SUM(tokens_cache_read), 0) as cacheReadTokens,
@@ -615,12 +599,12 @@ export async function GET(request: Request) {
           COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens
         FROM ${unifiedSource} AS _u
         ${unifiedWhere}
-        GROUP BY LOWER(provider), LOWER(model), serviceTier
+        GROUP BY LOWER(provider), LOWER(model)
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(params)) as Array<Record<string, unknown>>;
 
-    const providerRows = await db
+    const providerRows = (await db
       .prepare(
         `
         SELECT
@@ -637,16 +621,15 @@ export async function GET(request: Request) {
         ORDER BY requests DESC
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(params)) as Array<Record<string, unknown>>;
 
-    const accountCostRows = await db
+    const accountCostRows = (await db
       .prepare(
         `
         SELECT
           COALESCE(NULLIF(c.display_name, ''), NULLIF(c.email, ''), NULLIF(c.name, ''), usage_history.connection_id, 'unknown') as account,
           LOWER(usage_history.provider) as provider,
           LOWER(usage_history.model) as model,
-          COALESCE(NULLIF(usage_history.service_tier, ''), 'standard') as serviceTier,
           COALESCE(SUM(usage_history.tokens_input), 0) as promptTokens,
           COALESCE(SUM(usage_history.tokens_output), 0) as completionTokens,
           COALESCE(SUM(usage_history.tokens_cache_read), 0) as cacheReadTokens,
@@ -655,12 +638,12 @@ export async function GET(request: Request) {
         FROM usage_history
         LEFT JOIN provider_connections c ON c.id = usage_history.connection_id
         ${whereClause.replace(/timestamp/g, "usage_history.timestamp").replace(/api_key_/g, "usage_history.api_key_")}
-        GROUP BY account, LOWER(usage_history.provider), LOWER(usage_history.model), serviceTier
+        GROUP BY account, LOWER(usage_history.provider), LOWER(usage_history.model)
       `
       )
-      .all(paramsForHistory) as Array<Record<string, unknown>>;
+      .all(paramsForHistory)) as Array<Record<string, unknown>>;
 
-    const accountRows = await db
+    const accountRows = (await db
       .prepare(
         `
         SELECT
@@ -679,13 +662,13 @@ export async function GET(request: Request) {
         LIMIT 50
       `
       )
-      .all(paramsForHistory) as Array<Record<string, unknown>>;
+      .all(paramsForHistory)) as Array<Record<string, unknown>>;
 
     const apiKeyWhereClause = appendWhereCondition(
       whereClause,
       "(api_key_id IS NOT NULL AND api_key_id != '') OR (api_key_name IS NOT NULL AND api_key_name != '')"
     );
-    const apiKeyRows = await db
+    const apiKeyRows = (await db
       .prepare(
         `
         SELECT
@@ -693,7 +676,6 @@ export async function GET(request: Request) {
           COALESCE(NULLIF(api_key_id, ''), NULLIF(api_key_name, ''), 'unknown') as apiKeyGroupKey,
           LOWER(provider) as provider,
           LOWER(model) as model,
-          COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
           COUNT(*) as requests,
           COALESCE(SUM(tokens_input), 0) as promptTokens,
           COALESCE(SUM(tokens_output), 0) as completionTokens,
@@ -703,34 +685,12 @@ export async function GET(request: Request) {
           COALESCE(SUM(tokens_input + tokens_output), 0) as totalTokens
         FROM usage_history
         ${apiKeyWhereClause}
-        GROUP BY COALESCE(NULLIF(api_key_id, ''), NULLIF(api_key_name, ''), 'unknown'), NULLIF(api_key_id, ''), LOWER(provider), LOWER(model), serviceTier
+        GROUP BY COALESCE(NULLIF(api_key_id, ''), NULLIF(api_key_name, ''), 'unknown'), NULLIF(api_key_id, ''), LOWER(provider), LOWER(model)
       `
       )
-      .all(paramsForHistory) as Array<Record<string, unknown>>;
+      .all(paramsForHistory)) as Array<Record<string, unknown>>;
 
-    const serviceTierRows = await db
-      .prepare(
-        `
-        SELECT
-          COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
-          LOWER(provider) as provider,
-          LOWER(model) as model,
-          COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
-          COUNT(*) as requests,
-          COALESCE(SUM(tokens_input), 0) as promptTokens,
-          COALESCE(SUM(tokens_output), 0) as completionTokens,
-          COALESCE(SUM(tokens_cache_read), 0) as cacheReadTokens,
-          COALESCE(SUM(tokens_cache_creation), 0) as cacheCreationTokens,
-          COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens,
-          COALESCE(SUM(tokens_input + tokens_output), 0) as totalTokens
-        FROM ${unifiedSource} AS _u
-        ${unifiedWhere}
-        GROUP BY serviceTier, LOWER(provider), LOWER(model)
-      `
-      )
-      .all(params) as Array<Record<string, unknown>>;
-
-    const apiKeyMetadataRows = await db
+    const apiKeyMetadataRows = (await db
       .prepare(
         `
         SELECT
@@ -744,7 +704,7 @@ export async function GET(request: Request) {
         ORDER BY lastUsed DESC
       `
       )
-      .all(paramsForHistory) as Array<Record<string, unknown>>;
+      .all(paramsForHistory)) as Array<Record<string, unknown>>;
 
     const apiKeyMetadata = new Map<string, { latestName: string; aliases: Set<string> }>();
     for (const row of apiKeyMetadataRows) {
@@ -761,7 +721,7 @@ export async function GET(request: Request) {
       apiKeyMetadata.set(groupKey, existing);
     }
 
-    const weeklyRows = await db
+    const weeklyRows = (await db
       .prepare(
         `
         SELECT
@@ -783,9 +743,9 @@ export async function GET(request: Request) {
         ORDER BY dayOfWeek ASC
       `
       )
-      .all(params) as Array<Record<string, unknown>>;
+      .all(params)) as Array<Record<string, unknown>>;
 
-    const fallbackRow = await db
+    const fallbackRow = (await db
       .prepare(
         `
         SELECT
@@ -812,7 +772,7 @@ export async function GET(request: Request) {
         ${whereClause}
       `
       )
-      .get(paramsForHistory) as Record<string, unknown>;
+      .get(paramsForHistory)) as Record<string, unknown>;
 
     const summary = {
       totalRequests: Number(summaryRow?.totalRequests || 0),
@@ -838,15 +798,6 @@ export async function GET(request: Request) {
       firstRequest: summaryRow?.firstRequest || "",
       lastRequest: summaryRow?.lastRequest || "",
       fallbackCount: Number(fallbackRow?.fallbacks || 0),
-      fastRequests: 0,
-      standardRequests: 0,
-      flexRequests: 0,
-      fastCost: 0,
-      standardCost: 0,
-      flexCost: 0,
-      flexSavings: 0,
-      flexUsageSavingsTokens: 0,
-      fastRequestSharePct: 0,
       fallbackRatePct:
         Number(fallbackRow?.fallback_eligible || 0) > 0
           ? Number(
@@ -882,6 +833,7 @@ export async function GET(request: Request) {
         row,
         pricingByProvider,
         PROVIDER_ID_TO_ALIAS,
+        nodeResolution,
         normalizeModelName,
         computeCostFromPricing
       );
@@ -920,6 +872,7 @@ export async function GET(request: Request) {
         row,
         pricingByProvider,
         PROVIDER_ID_TO_ALIAS,
+        nodeResolution,
         normalizeModelName,
         computeCostFromPricing
       );
@@ -988,6 +941,7 @@ export async function GET(request: Request) {
         row,
         pricingByProvider,
         PROVIDER_ID_TO_ALIAS,
+        nodeResolution,
         normalizeModelName,
         computeCostFromPricing
       );
@@ -1015,6 +969,7 @@ export async function GET(request: Request) {
         row,
         pricingByProvider,
         PROVIDER_ID_TO_ALIAS,
+        nodeResolution,
         normalizeModelName,
         computeCostFromPricing
       );
@@ -1077,6 +1032,7 @@ export async function GET(request: Request) {
         row,
         pricingByProvider,
         PROVIDER_ID_TO_ALIAS,
+        nodeResolution,
         normalizeModelName,
         computeCostFromPricing
       );
@@ -1085,89 +1041,6 @@ export async function GET(request: Request) {
     const byApiKey = Array.from(apiKeyMap.values())
       .map((row) => ({ ...row, cost: roundCost(row.cost) }))
       .sort((left, right) => right.cost - left.cost);
-
-    const serviceTierMap = new Map<
-      string,
-      {
-        serviceTier: "standard" | "priority" | "flex";
-        label: string;
-        requests: number;
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-        cost: number;
-        savings: number;
-        usageSavingsTokens: number;
-      }
-    >();
-    for (const row of serviceTierRows) {
-      const serviceTier = normalizeServiceTier(row.serviceTier);
-      const existing = serviceTierMap.get(serviceTier) || {
-        serviceTier,
-        label: getServiceTierLabelId(serviceTier),
-        requests: 0,
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        cost: 0,
-        savings: 0,
-        usageSavingsTokens: 0,
-      };
-      existing.requests += Number(row.requests || 0);
-      existing.promptTokens += Number(row.promptTokens || 0);
-      existing.completionTokens += Number(row.completionTokens || 0);
-      existing.totalTokens += Number(row.totalTokens || 0);
-      const actualCost = computeUsageRowCost(
-        row,
-        pricingByProvider,
-        PROVIDER_ID_TO_ALIAS,
-        normalizeModelName,
-        computeCostFromPricing
-      );
-      existing.cost += actualCost;
-      if (serviceTier === "flex") {
-        const standardCost = computeUsageRowStandardCost(
-          row,
-          pricingByProvider,
-          PROVIDER_ID_TO_ALIAS,
-          normalizeModelName,
-          computeCostFromPricing
-        );
-        existing.savings += Math.max(0, standardCost - actualCost);
-        existing.usageSavingsTokens += computeUsageSavingsTokens(
-          row,
-          serviceTier,
-          getCodexFastCostMultiplier
-        );
-      }
-      serviceTierMap.set(serviceTier, existing);
-    }
-    const byServiceTier = Array.from(serviceTierMap.values())
-      .map((row) => ({
-        ...row,
-        cost: roundCost(row.cost),
-        savings: roundCost(row.savings),
-        usageSavingsTokens: Math.round(row.usageSavingsTokens),
-      }))
-      .sort((left, right) => {
-        const order = { priority: 0, flex: 1, standard: 2 } as const;
-        return order[left.serviceTier] - order[right.serviceTier];
-      });
-    const fastTier = serviceTierMap.get("priority");
-    const flexTier = serviceTierMap.get("flex");
-    const standardTier = serviceTierMap.get("standard");
-    summary.fastRequests = fastTier?.requests || 0;
-    summary.fastCost = roundCost(fastTier?.cost || 0);
-    summary.flexRequests = flexTier?.requests || 0;
-    summary.flexCost = roundCost(flexTier?.cost || 0);
-    summary.flexSavings = roundCost(flexTier?.savings || 0);
-    summary.flexUsageSavingsTokens = Math.round(flexTier?.usageSavingsTokens || 0);
-    summary.standardRequests = standardTier?.requests || 0;
-    summary.standardCost = roundCost(standardTier?.cost || 0);
-    summary.fastRequestSharePct =
-      summary.totalRequests > 0
-        ? Number(((Number(summary.fastRequests) / Number(summary.totalRequests)) * 100).toFixed(2))
-        : 0;
 
     const weeklyTokens = [0, 0, 0, 0, 0, 0, 0];
     const weeklyCounts = [0, 0, 0, 0, 0, 0, 0];
@@ -1204,7 +1077,6 @@ export async function GET(request: Request) {
       byProvider,
       byApiKey,
       byAccount,
-      byServiceTier,
       weeklyPattern,
       weeklyTokens,
       weeklyCounts,
@@ -1266,7 +1138,7 @@ export async function GET(request: Request) {
 
         const presetUnifiedSource = presetNeedsAggregated
           ? `(
-              SELECT timestamp, provider, model, service_tier,
+              SELECT timestamp, provider, model,
                 tokens_input, tokens_output,
                 tokens_cache_read, tokens_cache_creation, tokens_reasoning
               FROM usage_history
@@ -1275,7 +1147,6 @@ export async function GET(request: Request) {
               SELECT
                 date || 'T12:00:00.000Z' as timestamp,
                 provider, model,
-                'standard' as service_tier,
                 total_input_tokens as tokens_input,
                 total_output_tokens as tokens_output,
                 0 as tokens_cache_read,
@@ -1284,30 +1155,29 @@ export async function GET(request: Request) {
               FROM daily_usage_summary
               ${presetAggWhere}
             )`
-          : `(SELECT timestamp, provider, model, service_tier,
+          : `(SELECT timestamp, provider, model,
                 tokens_input, tokens_output,
                 tokens_cache_read, tokens_cache_creation, tokens_reasoning
               FROM usage_history
               ${presetRawWhere}
             )`;
 
-        const presetModelRows = await db
+        const presetModelRows = (await db
           .prepare(
             `
             SELECT
               LOWER(model) as model,
               LOWER(provider) as provider,
-              COALESCE(NULLIF(service_tier, ''), 'standard') as serviceTier,
               COALESCE(SUM(tokens_input), 0) as promptTokens,
               COALESCE(SUM(tokens_output), 0) as completionTokens,
               COALESCE(SUM(tokens_cache_read), 0) as cacheReadTokens,
               COALESCE(SUM(tokens_cache_creation), 0) as cacheCreationTokens,
               COALESCE(SUM(tokens_reasoning), 0) as reasoningTokens
             FROM ${presetUnifiedSource} AS _pu
-            GROUP BY LOWER(model), LOWER(provider), serviceTier
+            GROUP BY LOWER(model), LOWER(provider)
           `
           )
-          .all(presetParams) as Array<Record<string, unknown>>;
+          .all(presetParams)) as Array<Record<string, unknown>>;
 
         let presetTotalCost = 0;
         for (const row of presetModelRows) {
@@ -1315,6 +1185,7 @@ export async function GET(request: Request) {
             row,
             pricingByProvider,
             PROVIDER_ID_TO_ALIAS,
+            nodeResolution,
             normalizeModelName,
             computeCostFromPricing
           );
