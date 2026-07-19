@@ -304,9 +304,9 @@ export function translateNonStreamingResponse(
 
   // Handle Gemini/Antigravity format
   else if (
-    targetFormat === FORMATS.GEMINI ||
-    targetFormat === FORMATS.ANTIGRAVITY ||
-    targetFormat === FORMATS.GEMINI_CLI
+    targetFormat === "gemini" ||
+    targetFormat === "antigravity" ||
+    targetFormat === "gemini-cli"
   ) {
     const root = toRecord(responseBody);
     const response = toRecord(root.response ?? root);
@@ -490,7 +490,7 @@ export function translateNonStreamingResponse(
   }
 
   // Handle Claude format
-  else if (targetFormat === FORMATS.CLAUDE) {
+  else if (targetFormat === "claude") {
     const root = toRecord(responseBody);
     const contentBlocks = Array.isArray(root.content) ? root.content : [];
     if (contentBlocks.length > 0) {
@@ -566,7 +566,7 @@ export function translateNonStreamingResponse(
   }
 
   // Phase 3: Translate from OpenAI back to Client Source format
-  if (sourceFormat === FORMATS.CLAUDE && sourceFormat !== targetFormat) {
+  if (sourceFormat === "claude" && sourceFormat !== targetFormat) {
     return convertOpenAINonStreamingToClaude(toRecord(intermediateOpenAI));
   }
 

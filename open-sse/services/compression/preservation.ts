@@ -1,3 +1,5 @@
+import { randomHex } from "../../../src/shared/utils/secureRandom";
+
 export interface PreservedBlock {
   placeholder: string;
   content: string;
@@ -22,7 +24,7 @@ function randomSentinelSeed(): string {
     cryptoLike.getRandomValues(bytes);
     return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   }
-  return Math.random().toString(36).slice(2);
+  return randomHex(8);
 }
 
 function ensureGlobal(pattern: RegExp): RegExp {

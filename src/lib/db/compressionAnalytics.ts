@@ -75,74 +75,78 @@ async function ensureCompressionAnalyticsColumns(): Promise<void> {
   const addColumn = async (name: string, sql: string) => {
     if (!columns.has(name)) await db.exec(sql);
   };
-  addColumn(
+  await addColumn(
     "actual_prompt_tokens",
     "ALTER TABLE compression_analytics ADD COLUMN actual_prompt_tokens INTEGER"
   );
-  addColumn(
+  await addColumn(
     "actual_completion_tokens",
     "ALTER TABLE compression_analytics ADD COLUMN actual_completion_tokens INTEGER"
   );
-  addColumn(
+  await addColumn(
     "actual_total_tokens",
     "ALTER TABLE compression_analytics ADD COLUMN actual_total_tokens INTEGER"
   );
-  addColumn(
+  await addColumn(
     "actual_cache_read_tokens",
     "ALTER TABLE compression_analytics ADD COLUMN actual_cache_read_tokens INTEGER"
   );
-  addColumn(
+  await addColumn(
     "actual_cache_write_tokens",
     "ALTER TABLE compression_analytics ADD COLUMN actual_cache_write_tokens INTEGER"
   );
-  addColumn(
+  await addColumn(
     "estimated_usd_saved",
     "ALTER TABLE compression_analytics ADD COLUMN estimated_usd_saved REAL"
   );
-  addColumn(
+  await addColumn(
     "mcp_description_tokens_saved",
     "ALTER TABLE compression_analytics ADD COLUMN mcp_description_tokens_saved INTEGER DEFAULT 0"
   );
-  addColumn(
+  await addColumn(
     "multimodal_skip_count",
     "ALTER TABLE compression_analytics ADD COLUMN multimodal_skip_count INTEGER DEFAULT 0"
   );
-  addColumn("receipt_source", "ALTER TABLE compression_analytics ADD COLUMN receipt_source TEXT");
-  addColumn(
+  await addColumn(
+    "receipt_source",
+    "ALTER TABLE compression_analytics ADD COLUMN receipt_source TEXT"
+  );
+  await addColumn(
     "validation_fallback",
     "ALTER TABLE compression_analytics ADD COLUMN validation_fallback INTEGER DEFAULT 0"
   );
-  addColumn("output_mode", "ALTER TABLE compression_analytics ADD COLUMN output_mode TEXT");
-  addColumn(
+  await addColumn("output_mode", "ALTER TABLE compression_analytics ADD COLUMN output_mode TEXT");
+  await addColumn(
     "compression_combo_id",
     "ALTER TABLE compression_analytics ADD COLUMN compression_combo_id TEXT"
   );
-  addColumn("engine", "ALTER TABLE compression_analytics ADD COLUMN engine TEXT");
-  addColumn(
+  await addColumn("engine", "ALTER TABLE compression_analytics ADD COLUMN engine TEXT");
+  await addColumn(
     "rtk_raw_output_pointer",
     "ALTER TABLE compression_analytics ADD COLUMN rtk_raw_output_pointer TEXT"
   );
-  addColumn(
+  await addColumn(
     "rtk_raw_output_bytes",
     "ALTER TABLE compression_analytics ADD COLUMN rtk_raw_output_bytes INTEGER"
   );
-  addColumn(
+  await addColumn(
     "rtk_raw_output_pointers",
     "ALTER TABLE compression_analytics ADD COLUMN rtk_raw_output_pointers TEXT"
   );
-  addColumn(
+  await addColumn(
     "rtk_raw_output_total_bytes",
     "ALTER TABLE compression_analytics ADD COLUMN rtk_raw_output_total_bytes INTEGER"
   );
   columnsEnsuredForDb = db;
 }
 
-export function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): void {
+export async function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): Promise<void> {
   if (nonCriticalDbDisabled()) return;
   const db = getDbInstance();
-  ensureCompressionAnalyticsColumns();
-  db.prepare(
-    `
+  await ensureCompressionAnalyticsColumns();
+  await db
+    .prepare(
+      `
     INSERT INTO compression_analytics (
       timestamp, combo_id, compression_combo_id, engine, provider, mode, original_tokens, compressed_tokens, tokens_saved,
       duration_ms, request_id, actual_prompt_tokens, actual_completion_tokens,
@@ -153,41 +157,42 @@ export function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): voi
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(
-    row.timestamp,
-    row.combo_id ?? null,
-    row.compression_combo_id ?? null,
-    row.engine ?? row.mode,
-    row.provider ?? null,
-    row.mode,
-    row.original_tokens,
-    row.compressed_tokens,
-    row.tokens_saved,
-    row.duration_ms ?? null,
-    row.request_id ?? null,
-    row.actual_prompt_tokens ?? null,
-    row.actual_completion_tokens ?? null,
-    row.actual_total_tokens ?? null,
-    row.actual_cache_read_tokens ?? null,
-    row.actual_cache_write_tokens ?? null,
-    row.estimated_usd_saved ?? null,
-    row.mcp_description_tokens_saved ?? 0,
-    row.multimodal_skip_count ?? 0,
-    row.receipt_source ?? null,
-    row.validation_fallback ? 1 : 0,
-    row.output_mode ?? null,
-    row.rtk_raw_output_pointer ?? null,
-    row.rtk_raw_output_bytes ?? null,
-    row.rtk_raw_output_pointers ?? null,
-    row.rtk_raw_output_total_bytes ?? null
-  );
+    )
+    .run(
+      row.timestamp,
+      row.combo_id ?? null,
+      row.compression_combo_id ?? null,
+      row.engine ?? row.mode,
+      row.provider ?? null,
+      row.mode,
+      row.original_tokens,
+      row.compressed_tokens,
+      row.tokens_saved,
+      row.duration_ms ?? null,
+      row.request_id ?? null,
+      row.actual_prompt_tokens ?? null,
+      row.actual_completion_tokens ?? null,
+      row.actual_total_tokens ?? null,
+      row.actual_cache_read_tokens ?? null,
+      row.actual_cache_write_tokens ?? null,
+      row.estimated_usd_saved ?? null,
+      row.mcp_description_tokens_saved ?? 0,
+      row.multimodal_skip_count ?? 0,
+      row.receipt_source ?? null,
+      row.validation_fallback ? 1 : 0,
+      row.output_mode ?? null,
+      row.rtk_raw_output_pointer ?? null,
+      row.rtk_raw_output_bytes ?? null,
+      row.rtk_raw_output_pointers ?? null,
+      row.rtk_raw_output_total_bytes ?? null
+    );
 }
 
-export function attachCompressionUsageReceipt(
+export async function attachCompressionUsageReceipt(
   requestId: string | null | undefined,
   usage: Record<string, unknown> | null | undefined,
   source: "provider" | "estimated" | "stream" = "provider"
-): void {
+): Promise<void> {
   if (nonCriticalDbDisabled()) return;
   if (!requestId || !usage || typeof usage !== "object") return;
   const promptTokens = toFiniteInt(usage.prompt_tokens);
@@ -207,9 +212,10 @@ export function attachCompressionUsageReceipt(
   if (promptTokens === null && completionTokens === null && totalTokens <= 0) return;
 
   const db = getDbInstance();
-  ensureCompressionAnalyticsColumns();
-  db.prepare(
-    `
+  await ensureCompressionAnalyticsColumns();
+  await db
+    .prepare(
+      `
     UPDATE compression_analytics
     SET actual_prompt_tokens = ?,
         actual_completion_tokens = ?,
@@ -225,16 +231,17 @@ export function attachCompressionUsageReceipt(
         LIMIT 1
       )
   `
-  ).run(
-    promptTokens,
-    completionTokens,
-    totalTokens,
-    cacheReadTokens,
-    cacheWriteTokens,
-    source,
-    requestId,
-    requestId
-  );
+    )
+    .run(
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      source,
+      requestId,
+      requestId
+    );
 }
 
 function toFiniteInt(value: unknown): number | null {
@@ -292,46 +299,46 @@ export async function getCompressionAnalyticsSummary(
   const whereClause = cutoff ? "WHERE timestamp >= ?" : "";
   const params = cutoff ? [cutoff] : [];
 
-  type ScalarRow = { total: number; totalSaved: number; avgPct: number; avgDur: number };
-  const scalar = await db
+  type ScalarRow = { total: number; total_saved: number; avg_pct: number; avg_dur: number };
+  const scalar = (await db
     .prepare(
       `
     SELECT
-      COUNT(*) as total,
-      COALESCE(SUM(tokens_saved), 0) as totalSaved,
-      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS REAL) / original_tokens * 100 ELSE 0 END), 0) as avgPct,
-      COALESCE(AVG(duration_ms), 0) as avgDur
+      COUNT(*)::double precision as total,
+      COALESCE(SUM(tokens_saved), 0)::double precision as total_saved,
+      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS DOUBLE PRECISION) / original_tokens * 100 ELSE 0 END), 0)::double precision as avg_pct,
+      COALESCE(AVG(duration_ms), 0)::double precision as avg_dur
     FROM compression_analytics ${whereClause}
   `
     )
-    .get(...params) as ScalarRow | undefined;
+    .get(...params)) as ScalarRow | undefined;
 
-  const modeRows = await db
+  const modeRows = (await db
     .prepare(
       `
-    SELECT mode, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved,
-      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS REAL) / original_tokens * 100 ELSE 0 END), 0) as avgPct
+    SELECT mode, COUNT(*)::integer as cnt, COALESCE(SUM(tokens_saved), 0)::integer as saved,
+      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS DOUBLE PRECISION) / original_tokens * 100 ELSE 0 END), 0)::double precision as avg_pct
     FROM compression_analytics ${whereClause}
     GROUP BY mode
   `
     )
-    .all(...params) as Array<{ mode: string; cnt: number; saved: number; avgPct: number }>;
+    .all(...params)) as Array<{ mode: string; cnt: number; saved: number; avg_pct: number }>;
 
   const byMode: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }> = {};
   for (const r of modeRows) {
-    byMode[r.mode] = { count: r.cnt, tokensSaved: r.saved, avgSavingsPct: Math.round(r.avgPct) };
+    byMode[r.mode] = { count: r.cnt, tokensSaved: r.saved, avgSavingsPct: Math.round(r.avg_pct) };
   }
 
-  const engineRows = await db
+  const engineRows = (await db
     .prepare(
       `
-    SELECT COALESCE(engine, mode) as engine, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved,
-      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS REAL) / original_tokens * 100 ELSE 0 END), 0) as avgPct
+    SELECT COALESCE(engine, mode) as engine, COUNT(*)::integer as cnt, COALESCE(SUM(tokens_saved), 0)::integer as saved,
+      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS DOUBLE PRECISION) / original_tokens * 100 ELSE 0 END), 0)::double precision as avg_pct
     FROM compression_analytics ${whereClause}
     GROUP BY COALESCE(engine, mode)
   `
     )
-    .all(...params) as Array<{ engine: string; cnt: number; saved: number; avgPct: number }>;
+    .all(...params)) as Array<{ engine: string; cnt: number; saved: number; avg_pct: number }>;
 
   const byEngine: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }> =
     {};
@@ -339,36 +346,36 @@ export async function getCompressionAnalyticsSummary(
     byEngine[r.engine] = {
       count: r.cnt,
       tokensSaved: r.saved,
-      avgSavingsPct: Math.round(r.avgPct),
+      avgSavingsPct: Math.round(r.avg_pct),
     };
   }
 
-  const compressionComboRows = await db
+  const compressionComboRows = (await db
     .prepare(
       `
-    SELECT compression_combo_id as compressionComboId, COUNT(*) as cnt,
-      COALESCE(SUM(tokens_saved), 0) as saved
+    SELECT compression_combo_id, COUNT(*)::integer as cnt,
+      COALESCE(SUM(tokens_saved), 0)::integer as saved
     FROM compression_analytics ${appendCondition(whereClause, "compression_combo_id IS NOT NULL")}
     GROUP BY compression_combo_id ORDER BY cnt DESC
   `
     )
-    .all(...params) as Array<{ compressionComboId: string | null; cnt: number; saved: number }>;
+    .all(...params)) as Array<{ compression_combo_id: string | null; cnt: number; saved: number }>;
 
   const byCompressionCombo: Record<string, { count: number; tokensSaved: number }> = {};
   for (const r of compressionComboRows) {
-    const key = r.compressionComboId ?? "unknown";
+    const key = r.compression_combo_id ?? "unknown";
     byCompressionCombo[key] = { count: r.cnt, tokensSaved: r.saved };
   }
 
-  const provRows = await db
+  const provRows = (await db
     .prepare(
       `
-    SELECT provider, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved
+    SELECT provider, COUNT(*)::integer as cnt, COALESCE(SUM(tokens_saved), 0)::integer as saved
     FROM compression_analytics ${whereClause}
     GROUP BY provider ORDER BY cnt DESC
   `
     )
-    .all(...params) as Array<{ provider: string | null; cnt: number; saved: number }>;
+    .all(...params)) as Array<{ provider: string | null; cnt: number; saved: number }>;
 
   const byProvider: Record<string, { count: number; tokensSaved: number }> = {};
   for (const r of provRows) {
@@ -384,17 +391,17 @@ export async function getCompressionAnalyticsSummary(
     last24hMap.set(hourStr, { hour: hourStr, count: 0, tokensSaved: 0 });
   }
 
-  const hourRows = await db
+  const hourRows = (await db
     .prepare(
       `
     SELECT to_char(timestamp::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:00:00"Z"') as hour,
-      COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved
+      COUNT(*)::integer as cnt, COALESCE(SUM(tokens_saved), 0)::integer as saved
     FROM compression_analytics
     WHERE timestamp >= ?
     GROUP BY hour ORDER BY hour ASC
   `
     )
-    .all(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()) as Array<{
+    .all(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())) as Array<{
     hour: string;
     cnt: number;
     saved: number;
@@ -408,29 +415,29 @@ export async function getCompressionAnalyticsSummary(
 
   const last24h = Array.from(last24hMap.values());
 
-  const receiptRows = await db
+  const receiptRows = (await db
     .prepare(
       `
-    SELECT receipt_source as source, COUNT(*) as cnt,
-      COALESCE(SUM(actual_prompt_tokens), 0) as prompt,
-      COALESCE(SUM(actual_completion_tokens), 0) as completion,
-      COALESCE(SUM(actual_total_tokens), 0) as total,
-      COALESCE(SUM(actual_cache_read_tokens), 0) as cacheRead,
-      COALESCE(SUM(actual_cache_write_tokens), 0) as cacheWrite,
-      COALESCE(SUM(estimated_usd_saved), 0) as usdSaved
+    SELECT receipt_source as source, COUNT(*)::integer as cnt,
+      COALESCE(SUM(actual_prompt_tokens), 0)::integer as prompt,
+      COALESCE(SUM(actual_completion_tokens), 0)::integer as completion,
+      COALESCE(SUM(actual_total_tokens), 0)::integer as total,
+      COALESCE(SUM(actual_cache_read_tokens), 0)::integer as cache_read,
+      COALESCE(SUM(actual_cache_write_tokens), 0)::integer as cache_write,
+      COALESCE(SUM(estimated_usd_saved), 0)::double precision as usd_saved
     FROM compression_analytics ${appendCondition(whereClause, "receipt_source IS NOT NULL")}
     GROUP BY receipt_source
   `
     )
-    .all(...params) as Array<{
+    .all(...params)) as Array<{
     source: string | null;
     cnt: number;
     prompt: number;
     completion: number;
     total: number;
-    cacheRead: number;
-    cacheWrite: number;
-    usdSaved: number;
+    cache_read: number;
+    cache_write: number;
+    usd_saved: number;
   }>;
 
   const realUsage = {
@@ -449,35 +456,35 @@ export async function getCompressionAnalyticsSummary(
     realUsage.promptTokens += row.prompt;
     realUsage.completionTokens += row.completion;
     realUsage.totalTokens += row.total;
-    realUsage.cacheReadTokens += row.cacheRead;
-    realUsage.cacheWriteTokens += row.cacheWrite;
-    realUsage.estimatedUsdSaved += row.usdSaved;
+    realUsage.cacheReadTokens += row.cache_read;
+    realUsage.cacheWriteTokens += row.cache_write;
+    realUsage.estimatedUsdSaved += row.usd_saved;
     realUsage.bySource[source] = row.cnt;
   }
 
-  const fallbackRow = await db
+  const fallbackRow = (await db
     .prepare(
       `
-    SELECT COUNT(*) as cnt
+    SELECT COUNT(*)::integer as cnt
     FROM compression_analytics ${appendCondition(whereClause, "validation_fallback = 1")}
   `
     )
-    .get(...params) as { cnt: number } | undefined;
+    .get(...params)) as { cnt: number } | undefined;
 
-  const mcpDescriptionRow = await db
+  const mcpDescriptionRow = (await db
     .prepare(
       `
-    SELECT COUNT(*) as cnt, COALESCE(SUM(mcp_description_tokens_saved), 0) as saved
+    SELECT COUNT(*)::integer as cnt, COALESCE(SUM(mcp_description_tokens_saved), 0)::integer as saved
     FROM compression_analytics ${appendCondition(whereClause, "mcp_description_tokens_saved > 0")}
   `
     )
-    .get(...params) as { cnt: number; saved: number } | undefined;
+    .get(...params)) as { cnt: number; saved: number } | undefined;
 
   return {
     totalRequests: scalar?.total ?? 0,
-    totalTokensSaved: scalar?.totalSaved ?? 0,
-    avgSavingsPct: Math.round(scalar?.avgPct ?? 0),
-    avgDurationMs: Math.round(scalar?.avgDur ?? 0),
+    totalTokensSaved: scalar?.total_saved ?? 0,
+    avgSavingsPct: Math.round(scalar?.avg_pct ?? 0),
+    avgDurationMs: Math.round(scalar?.avg_dur ?? 0),
     byMode,
     byEngine,
     byCompressionCombo,
@@ -489,5 +496,30 @@ export async function getCompressionAnalyticsSummary(
       snapshots: mcpDescriptionRow?.cnt ?? 0,
       estimatedTokensSaved: mcpDescriptionRow?.saved ?? 0,
     },
+  };
+}
+
+// Ported from OmniRoute upstream v3.8.48 (/api/context/analytics/engine). Derives the
+// per-engine shape from getCompressionAnalyticsSummary().byEngine (no new SQL). The fork
+// summary only supports discrete windows, so `days` maps to the closest 24h/7d/30d bucket.
+export async function getPerEngineAnalytics(
+  engineId: string,
+  days: number
+): Promise<{
+  engineId: string;
+  runs: number;
+  tokensSaved: number;
+  avgSavingsPercent: number;
+  days: number;
+}> {
+  const window = days <= 1 ? "24h" : days <= 7 ? "7d" : days <= 30 ? "30d" : undefined;
+  const summary = await getCompressionAnalyticsSummary(window);
+  const entry = summary.byEngine[engineId];
+  return {
+    engineId,
+    runs: entry?.count ?? 0,
+    tokensSaved: entry?.tokensSaved ?? 0,
+    avgSavingsPercent: entry?.avgSavingsPct ?? 0,
+    days,
   };
 }

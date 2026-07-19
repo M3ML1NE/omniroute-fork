@@ -33,6 +33,13 @@ export const cavemanOutputModeSchema = z
   })
   .strict();
 
+export const outputStyleSelectionSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    level: cavemanIntensitySchema,
+  })
+  .strict();
+
 export const rtkConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -49,8 +56,32 @@ export const rtkConfigSchema = z
     trustProjectFilters: z.boolean().optional(),
     rawOutputRetention: rtkRawOutputRetentionSchema.optional(),
     rawOutputMaxBytes: z.number().int().min(1024).max(10_000_000).optional(),
+    enableGrouping: z.boolean().optional(),
+    groupingThreshold: z.number().int().min(2).max(100).optional(),
+    stripCodeComments: z.boolean().optional(),
+    preserveDocstrings: z.boolean().optional(),
+    enableRenderers: z.boolean().optional(),
   })
   .strict();
+
+// mcpAccessibility tunes how the MCP server trims oversized tool outputs. The schema only enforces
+// structural validity (positive integers / booleans); the numeric floors are owned by the DB
+// normalizer on the write path. All fields optional so the sub-route can partial-merge.
+export const mcpAccessibilityConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    maxTextChars: z.number().int().min(1).optional(),
+    collapseThreshold: z.number().int().min(1).optional(),
+    collapseKeepHead: z.number().int().min(0).optional(),
+    collapseKeepTail: z.number().int().min(0).optional(),
+    minLengthToProcess: z.number().int().min(1).optional(),
+  })
+  .strict();
+
+export const engineToggleSchema = z.object({
+  enabled: z.boolean(),
+  level: z.string().optional(),
+});
 
 export const languageConfigSchema = z
   .object({
@@ -101,6 +132,15 @@ export const ultraConfigSchema = z
   })
   .strict();
 
+export const relevanceConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    overlapThreshold: z.number().min(0).max(1).optional(),
+    budgetPercent: z.number().min(0.1).max(1).optional(),
+    boilerplateWeight: z.number().min(0).max(1).optional(),
+  })
+  .strict();
+
 const noConfigSchema = z.object({}).strict();
 
 export const stackedPipelineStepSchema = z.discriminatedUnion("engine", [
@@ -139,6 +179,12 @@ export const stackedPipelineStepSchema = z.discriminatedUnion("engine", [
       config: rtkConfigSchema.optional(),
     })
     .strict(),
+  z
+    .object({
+      engine: z.literal("relevance"),
+      config: relevanceConfigSchema.optional(),
+    })
+    .strict(),
 ]);
 
 export const compressionSettingsUpdateSchema = z
@@ -149,16 +195,24 @@ export const compressionSettingsUpdateSchema = z
     autoTriggerTokens: z.number().int().min(0).optional(),
     cacheMinutes: z.number().int().min(1).max(60).optional(),
     preserveSystemPrompt: z.boolean().optional(),
+    preserveSystemPromptMode: z.enum(["always", "whenNoCache", "never"]).optional(),
     mcpDescriptionCompressionEnabled: z.boolean().optional(),
     comboOverrides: z.record(z.string(), compressionModeSchema).optional(),
     compressionComboId: z.string().trim().min(1).nullable().optional(),
     stackedPipeline: z.array(stackedPipelineStepSchema).optional(),
     cavemanConfig: cavemanConfigSchema.optional(),
     cavemanOutputMode: cavemanOutputModeSchema.optional(),
+    outputStyles: z.array(outputStyleSelectionSchema).optional(),
     rtkConfig: rtkConfigSchema.optional(),
+    relevanceConfig: relevanceConfigSchema.optional(),
     languageConfig: languageConfigSchema.optional(),
     aggressive: aggressiveConfigSchema.optional(),
     ultra: ultraConfigSchema.optional(),
+    engines: z.record(z.string(), engineToggleSchema).optional(),
+    enginesExplicit: z.boolean().optional(),
+    activeComboId: z.string().nullable().optional(),
+    targetTokens: z.number().int().min(0).optional(),
+    targetRatio: z.number().min(0).max(1).optional(),
   })
   .strict();
 

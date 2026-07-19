@@ -42,7 +42,7 @@ describe("compression DB module", () => {
     assert.equal(config.cacheMinutes, 5);
     assert.equal(config.preserveSystemPrompt, true);
     assert.ok(config.cavemanConfig);
-    assert.equal(config.cavemanConfig.enabled, true);
+    assert.equal(config.cavemanConfig.enabled, false);
     assert.deepEqual(config.cavemanConfig.compressRoles, ["user"]);
     assert.equal(config.cavemanConfig.minMessageLength, 50);
   });

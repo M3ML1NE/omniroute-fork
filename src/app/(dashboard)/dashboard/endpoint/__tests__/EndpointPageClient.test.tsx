@@ -158,7 +158,7 @@ describe("EndpointPageClient", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the endpoint shell before models finish and skips hidden tunnel probes", async () => {
+  it("renders the endpoint shell before models finish loading", async () => {
     const modelsDeferred = createDeferred<Response>();
 
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
@@ -166,11 +166,6 @@ describe("EndpointPageClient", () => {
       if (path === "/api/settings") {
         return Promise.resolve(
           jsonResponse({
-            cloudEnabled: false,
-            cloudConfigured: false,
-            hideEndpointCloudflaredTunnel: true,
-            hideEndpointTailscaleFunnel: true,
-            hideEndpointNgrokTunnel: true,
             machineId: "machine-12345678",
           })
         );
@@ -189,9 +184,6 @@ describe("EndpointPageClient", () => {
     await waitForText("Endpoint");
     expect(document.body.textContent).toContain("Loading available models...");
     expect(fetchMock).toHaveBeenCalledWith("/v1/models");
-    expect(fetchMock).not.toHaveBeenCalledWith("/api/tunnels/cloudflared", expect.anything());
-    expect(fetchMock).not.toHaveBeenCalledWith("/api/tunnels/tailscale", expect.anything());
-    expect(fetchMock).not.toHaveBeenCalledWith("/api/tunnels/ngrok", expect.anything());
 
     modelsDeferred.resolve(
       jsonResponse({
@@ -228,15 +220,7 @@ describe("EndpointPageClient", () => {
     unmount();
 
     await act(async () => {
-      settingsDeferred.resolve(
-        jsonResponse({
-          cloudEnabled: false,
-          cloudConfigured: false,
-          hideEndpointCloudflaredTunnel: false,
-          hideEndpointTailscaleFunnel: false,
-          hideEndpointNgrokTunnel: false,
-        })
-      );
+      settingsDeferred.resolve(jsonResponse({}));
       await settingsDeferred.promise;
     });
 

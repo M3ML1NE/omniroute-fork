@@ -475,8 +475,8 @@ export function isClaudeCodeSemanticPassthroughRequest({
   const isDirectClaudeCodeProvider =
     provider === "claude" || isClaudeCodeCompatibleProvider(provider);
   if (!isDirectClaudeCodeProvider) return false;
-  if (sourceFormat !== FORMATS.CLAUDE) return false;
-  if (targetFormat !== FORMATS.CLAUDE) return false;
+  if (sourceFormat !== "claude") return false;
+  if (targetFormat !== "claude") return false;
 
   const headerUserAgent = getHeaderValueCaseInsensitive(headers, "user-agent");
   const ua = `${userAgent || ""} ${headerUserAgent || ""}`.toLowerCase();
@@ -622,14 +622,14 @@ function parseNonStreamingSSEPayload(
 
   queueFormat(preferredFormat);
   queueFormat(FORMATS.OPENAI_RESPONSES);
-  queueFormat(FORMATS.CLAUDE);
+  queueFormat("claude");
   queueFormat(FORMATS.OPENAI);
 
   for (const format of formatsToTry) {
     const parsed =
       format === FORMATS.OPENAI_RESPONSES
         ? parseSSEToResponsesOutput(rawBody, fallbackModel)
-        : format === FORMATS.CLAUDE
+        : format === "claude"
           ? parseSSEToClaudeResponse(rawBody, fallbackModel)
           : parseSSEToOpenAIResponse(rawBody, fallbackModel);
     if (parsed && typeof parsed === "object") {
@@ -1119,7 +1119,7 @@ function buildClaudePromptCacheLogMeta(
   providerHeaders: Record<string, unknown> | Headers | null | undefined,
   clientHeaders?: Headers | Record<string, unknown> | null | undefined
 ) {
-  if (targetFormat !== FORMATS.CLAUDE || !finalBody || typeof finalBody !== "object") return null;
+  if (targetFormat !== "claude" || !finalBody || typeof finalBody !== "object") return null;
 
   const describeCacheControl = (cacheControl: Record<string, unknown> | undefined, extra = {}) => ({
     type:
@@ -1478,7 +1478,6 @@ export async function handleChatCore({
   let tokensCompressed: number | null = null;
   body = injectSystemPrompt(body);
 
-  const effectiveServiceTier = "standard";
   const persistFailureUsage = (statusCode: number, errorCode?: string | null) => {
     saveRequestUsage({
       provider: provider || "unknown",
@@ -1493,7 +1492,7 @@ export async function handleChatCore({
       connectionId: connectionId || undefined,
       apiKeyId: apiKeyInfo?.id || undefined,
       apiKeyName: apiKeyInfo?.name || undefined,
-      serviceTier: effectiveServiceTier,
+      serviceTier: "standard",
       comboStrategy: isCombo ? comboStrategy || undefined : undefined,
     }).catch(() => {});
   };
@@ -1567,9 +1566,7 @@ export async function handleChatCore({
             | undefined)
         : undefined;
     const idempotentCost = idempotentUsage
-      ? await calculateCost(provider, model, idempotentUsage as Record<string, number>, {
-          serviceTier: effectiveServiceTier,
-        })
+      ? await calculateCost(provider, model, idempotentUsage as Record<string, number>)
       : 0;
     return {
       success: true,
@@ -1723,8 +1720,7 @@ export async function handleChatCore({
       } catch (err) {
         log?.debug?.(
           "COMPRESSION",
-          "Compression usage receipt skipped: " +
-            (err instanceof Error ? err.message : String(err))
+          "Compression usage receipt skipped: " + (err instanceof Error ? err.message : String(err))
         );
       }
     })();
@@ -1955,9 +1951,7 @@ export async function handleChatCore({
         extractUsageFromResponse(cached as Record<string, unknown>) ||
         ((cached as Record<string, unknown>)?.usage as Record<string, unknown> | undefined);
       const cachedCost = cachedUsage
-        ? await calculateCost(provider, model, cachedUsage as Record<string, number>, {
-            serviceTier: effectiveServiceTier,
-          })
+        ? await calculateCost(provider, model, cachedUsage as Record<string, number>)
         : 0;
       persistAttemptLogs({
         status: 200,
@@ -2329,31 +2323,49 @@ export async function handleChatCore({
           );
         }
       }
-      if (config.cavemanOutputMode?.enabled) {
-        try {
-          const { applyCavemanOutputMode } = await import("../services/compression/outputMode.ts");
+      // Output Styles (Phase 4A) — supersedes the legacy caveman output mode. The back-compat shim
+      // maps an enabled `cavemanOutputMode` to `[{ terse-prose, <intensity> }]`, so existing installs
+      // inject byte-identically until they opt into other styles.
+      try {
+        const { resolveOutputStyleSelection } =
+          await import("../services/compression/outputStyles/backCompat.ts");
+        const selection = resolveOutputStyleSelection(config);
+        if (selection.length > 0) {
+          const { applyOutputStyles } =
+            await import("../services/compression/outputStyles/apply.ts");
           const outputModeLanguage =
             config.languageConfig?.enabled === true ? config.languageConfig.defaultLanguage : "en";
-          const outputMode = applyCavemanOutputMode(
-            body as Parameters<typeof applyCavemanOutputMode>[0],
-            config.cavemanOutputMode,
+          const outputStyleResult = applyOutputStyles(
+            body as Parameters<typeof applyOutputStyles>[0],
+            selection,
             outputModeLanguage
           );
-          if (outputMode.applied) {
-            body = outputMode.body as typeof body;
+          if (outputStyleResult.applied) {
+            body = outputStyleResult.body as typeof body;
             cavemanOutputModeApplied = true;
-            cavemanOutputModeIntensity = config.cavemanOutputMode.intensity;
+            cavemanOutputModeIntensity = selection[0]?.level ?? null;
             estimatedTokens = estimateTokens(JSON.stringify(body?.messages ?? body?.input ?? []));
-            log?.debug?.("COMPRESSION", "Caveman output mode instruction applied");
-          } else if (outputMode.skippedReason && outputMode.skippedReason !== "disabled") {
-            log?.debug?.("COMPRESSION", `Caveman output mode skipped: ${outputMode.skippedReason}`);
+            log?.debug?.(
+              "COMPRESSION",
+              `Output styles applied: ${
+                outputStyleResult.appliedStyles?.map((s) => `${s.id}:${s.level}`).join(",") ?? ""
+              }`
+            );
+          } else if (
+            outputStyleResult.skippedReason &&
+            outputStyleResult.skippedReason !== "no_styles"
+          ) {
+            log?.debug?.(
+              "COMPRESSION",
+              `Output styles skipped: ${outputStyleResult.skippedReason}`
+            );
           }
-        } catch (err) {
-          log?.debug?.(
-            "COMPRESSION",
-            "Caveman output mode skipped: " + (err instanceof Error ? err.message : String(err))
-          );
         }
+      } catch (err) {
+        log?.debug?.(
+          "COMPRESSION",
+          "Output styles skipped: " + (err instanceof Error ? err.message : String(err))
+        );
       }
       const compressionInputBody = body as Record<string, unknown>;
       const mode = selectCompressionStrategy(
@@ -2398,8 +2410,7 @@ export async function handleChatCore({
                   effectiveModel ?? "",
                   {
                     input: tokensSaved,
-                  },
-                  { serviceTier: effectiveServiceTier }
+                  }
                 );
                 await insertCompressionAnalyticsRow({
                   timestamp: new Date().toISOString(),
@@ -2621,7 +2632,7 @@ export async function handleChatCore({
   }
 
   let translatedBody = body;
-  const isClaudePassthrough = sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.CLAUDE;
+  const isClaudePassthrough = sourceFormat === "claude" && targetFormat === "claude";
   const isClaudeCodeCompatible = isClaudeCodeCompatibleProvider(provider);
   const isClaudeCodeSemanticPassthrough = isClaudeCodeSemanticPassthroughRequest({
     provider,
@@ -2806,7 +2817,7 @@ export async function handleChatCore({
 
       // Claude Code-compatible providers expect Anthropic Messages-shaped payloads,
       // but we extract only role/text/max_tokens/effort from an OpenAI-like view first.
-      if (sourceFormat === FORMATS.CLAUDE && isClaudeCodeSemanticPassthrough) {
+      if (sourceFormat === "claude" && isClaudeCodeSemanticPassthrough) {
         log?.debug?.("FORMAT", "claude-code semantic passthrough enabled for compatible bridge");
       } else if (sourceFormat !== FORMATS.OPENAI) {
         const normalizeToolCallId = await getModelNormalizeToolCallId(
@@ -2841,14 +2852,14 @@ export async function handleChatCore({
       translatedBody = buildClaudeCodeCompatibleRequest({
         sourceBody: body,
         normalizedBody: normalizedForCc,
-        claudeBody: sourceFormat === FORMATS.CLAUDE ? body : null,
+        claudeBody: sourceFormat === "claude" ? body : null,
         model,
         stream: upstreamStream,
         sessionId: ccSessionId,
         cwd: process.cwd(),
         now: new Date(),
         preserveCacheControl,
-        preserveClaudeMessages: sourceFormat === FORMATS.CLAUDE && isClaudeCodeSemanticPassthrough,
+        preserveClaudeMessages: sourceFormat === "claude" && isClaudeCodeSemanticPassthrough,
       });
       log?.debug?.("FORMAT", "claude-code-compatible bridge enabled");
 
@@ -2934,7 +2945,7 @@ export async function handleChatCore({
       // conflicts with Claude OAuth tools, but in the passthrough path the tools
       // are already in Claude format. Applying the prefix turns "Bash" into
       // "proxy_Bash", which Claude rejects ("No such tool available: proxy_Bash").
-      if (targetFormat === FORMATS.CLAUDE) {
+      if (targetFormat === "claude") {
         translatedBody._disableToolPrefix = true;
         normalizeClaudeUpstreamMessages(translatedBody);
       }
@@ -4503,7 +4514,7 @@ export async function handleChatCore({
       (finalBody as Record<string, unknown> | null | undefined) ?? null
     );
 
-    if (sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.CLAUDE) {
+    if (sourceFormat === "claude" && targetFormat === "claude") {
       responseBody = restoreClaudePassthroughToolNames(responseBody, responseToolNameMap);
     }
     reqLogger.logProviderResponse(
@@ -4558,7 +4569,7 @@ export async function handleChatCore({
         connectionId: connectionId || undefined,
         apiKeyId: apiKeyInfo?.id || undefined,
         apiKeyName: apiKeyInfo?.name || undefined,
-        serviceTier: effectiveServiceTier,
+        serviceTier: "standard",
         comboStrategy: isCombo ? comboStrategy || undefined : undefined,
       }).catch((err) => {
         console.error("Failed to save usage stats:", err.message);
@@ -4747,9 +4758,7 @@ export async function handleChatCore({
       (translatedResponse?.usage && typeof translatedResponse.usage === "object"
         ? translatedResponse.usage
         : null);
-    const estimatedCost = responseUsage
-      ? await calculateCost(provider, model, responseUsage, { serviceTier: effectiveServiceTier })
-      : 0;
+    const estimatedCost = responseUsage ? await calculateCost(provider, model, responseUsage) : 0;
 
     if (postCallGuardrails.blocked) {
       const guardrailMessage = postCallGuardrails.message || "Response blocked by guardrail";
@@ -4978,7 +4987,7 @@ export async function handleChatCore({
         connectionId: connectionId || undefined,
         apiKeyId: apiKeyInfo?.id || undefined,
         apiKeyName: apiKeyInfo?.name || undefined,
-        serviceTier: effectiveServiceTier,
+        serviceTier: "standard",
         comboStrategy: isCombo ? comboStrategy || undefined : undefined,
       }).catch((err) => {
         console.error("Failed to save usage stats:", err.message);
@@ -5008,7 +5017,7 @@ export async function handleChatCore({
     });
 
     if (apiKeyInfo?.id && streamUsage) {
-      calculateCost(provider, model, streamUsage, { serviceTier: effectiveServiceTier })
+      calculateCost(provider, model, streamUsage)
         .then((estimatedCost) => {
           if (estimatedCost > 0) recordCost(apiKeyInfo.id, estimatedCost);
         })

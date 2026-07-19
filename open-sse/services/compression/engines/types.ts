@@ -35,6 +35,12 @@ export interface CompressionEngineApplyOptions {
   config?: CompressionConfig;
   compressionComboId?: string | null;
   stepConfig?: Record<string, unknown>;
+  /**
+   * Authenticated principal id used by store-backed engines (ccr, session-dedup
+   * fuzzy pass) to scope their content-addressed store per tenant. Ported from
+   * OmniRoute upstream v3.8.48 (ccr / session-dedup engines).
+   */
+  principalId?: string;
 }
 
 export interface CompressionEngine {

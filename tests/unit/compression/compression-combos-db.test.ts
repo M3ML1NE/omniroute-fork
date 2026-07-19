@@ -31,8 +31,8 @@ test.after(() => {
   }
 });
 
-test("creates default compression combo automatically", () => {
-  const combos = combosDb.listCompressionCombos();
+test("creates default compression combo automatically", async () => {
+  const combos = await combosDb.listCompressionCombos();
   const combo = combos.find((item) => item.id === "default-caveman");
 
   assert.equal(combo?.isDefault, true);
@@ -43,21 +43,23 @@ test("creates default compression combo automatically", () => {
   ]);
 });
 
-test("upgrades the legacy seeded default compression combo pipeline", () => {
+test("upgrades the legacy seeded default compression combo pipeline", async () => {
   const db = core.getDbInstance();
-  db.prepare(
-    `
+  await db
+    .prepare(
+      `
     UPDATE compression_combos
     SET description = ?, pipeline = ?
     WHERE id = ?
   `
-  ).run(
-    "Default Caveman compression pipeline",
-    JSON.stringify([{ engine: "caveman", intensity: "full" }]),
-    "default-caveman"
-  );
+    )
+    .run(
+      "Default Caveman compression pipeline",
+      JSON.stringify([{ engine: "caveman", intensity: "full" }]),
+      "default-caveman"
+    );
 
-  const combo = combosDb.getDefaultCompressionCombo();
+  const combo = await combosDb.getDefaultCompressionCombo();
   assert.equal(combo?.id, "default-caveman");
   assert.equal(combo?.description, "Default RTK + Caveman compression pipeline");
   assert.deepEqual(combo?.pipeline, [
@@ -66,30 +68,32 @@ test("upgrades the legacy seeded default compression combo pipeline", () => {
   ]);
 });
 
-test("does not overwrite a customized default compression combo", () => {
+test("does not overwrite a customized default compression combo", async () => {
   const db = core.getDbInstance();
-  db.prepare(
-    `
+  await db
+    .prepare(
+      `
     UPDATE compression_combos
     SET name = ?, description = ?, pipeline = ?
     WHERE id = ?
   `
-  ).run(
-    "Custom Default",
-    "User changed",
-    JSON.stringify([{ engine: "caveman", intensity: "lite" }]),
-    "default-caveman"
-  );
+    )
+    .run(
+      "Custom Default",
+      "User changed",
+      JSON.stringify([{ engine: "caveman", intensity: "lite" }]),
+      "default-caveman"
+    );
 
-  const combo = combosDb.getDefaultCompressionCombo();
+  const combo = await combosDb.getDefaultCompressionCombo();
   assert.equal(combo?.id, "default-caveman");
   assert.equal(combo?.name, "Custom Default");
   assert.equal(combo?.description, "User changed");
   assert.deepEqual(combo?.pipeline, [{ engine: "caveman", intensity: "lite" }]);
 });
 
-test("creates, updates and protects default compression combos", () => {
-  const combo = combosDb.createCompressionCombo({
+test("creates, updates and protects default compression combos", async () => {
+  const combo = await combosDb.createCompressionCombo({
     name: "RTK first",
     pipeline: [{ engine: "rtk", intensity: "standard" }],
     languagePacks: ["en", "pt-BR"],
@@ -97,19 +101,19 @@ test("creates, updates and protects default compression combos", () => {
   assert.equal(combo.name, "RTK first");
   assert.equal(combo.pipeline[0].engine, "rtk");
 
-  const updated = combosDb.updateCompressionCombo(combo.id, {
+  const updated = await combosDb.updateCompressionCombo(combo.id, {
     description: "Updated",
     isDefault: true,
   });
   assert.equal(updated?.description, "Updated");
-  assert.equal(combosDb.getDefaultCompressionCombo()?.id, combo.id);
+  assert.equal((await combosDb.getDefaultCompressionCombo())?.id, combo.id);
 
-  assert.equal(combosDb.deleteCompressionCombo("default-caveman"), true);
-  assert.equal(combosDb.deleteCompressionCombo(combo.id), false);
+  assert.equal(await combosDb.deleteCompressionCombo("default-caveman"), true);
+  assert.equal(await combosDb.deleteCompressionCombo(combo.id), false);
 });
 
-test("assigns routing combos to compression combos", () => {
-  const combo = combosDb.createCompressionCombo({
+test("assigns routing combos to compression combos", async () => {
+  const combo = await combosDb.createCompressionCombo({
     name: "Stacked",
     pipeline: [
       { engine: "rtk", intensity: "standard" },
@@ -117,16 +121,16 @@ test("assigns routing combos to compression combos", () => {
     ],
   });
 
-  assert.equal(combosDb.assignRoutingCombo(combo.id, "routing-a"), true);
-  assert.equal(combosDb.getCompressionComboForRoutingCombo("routing-a")?.id, combo.id);
+  assert.equal(await combosDb.assignRoutingCombo(combo.id, "routing-a"), true);
+  assert.equal((await combosDb.getCompressionComboForRoutingCombo("routing-a"))?.id, combo.id);
   assert.deepEqual(
-    combosDb
-      .getAssignmentsForCompressionCombo(combo.id)
-      .map((assignment) => assignment.routingComboId),
+    (await combosDb.getAssignmentsForCompressionCombo(combo.id)).map(
+      (assignment) => assignment.routingComboId
+    ),
     ["routing-a"]
   );
 
-  assert.equal(combosDb.updateAssignments(combo.id, ["routing-b", "routing-c"]), true);
-  assert.equal(combosDb.getCompressionComboForRoutingCombo("routing-a"), null);
-  assert.equal(combosDb.getCompressionComboForRoutingCombo("routing-b")?.id, combo.id);
+  assert.equal(await combosDb.updateAssignments(combo.id, ["routing-b", "routing-c"]), true);
+  assert.equal(await combosDb.getCompressionComboForRoutingCombo("routing-a"), null);
+  assert.equal((await combosDb.getCompressionComboForRoutingCombo("routing-b"))?.id, combo.id);
 });
