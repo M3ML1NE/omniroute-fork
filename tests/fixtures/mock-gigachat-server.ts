@@ -22,6 +22,8 @@ export interface MockGigachatOptions {
   streamArgsMode?: MockGigachatStreamArgsMode;
   precachedPromptTokens?: number;
   reasoningContent?: string;
+  streamFinishReason?: string;
+  nonStreamFinishReason?: string;
 }
 
 export interface MockGigachatCapturedRequest {
@@ -39,6 +41,8 @@ export interface MockGigachatServer {
   streamArgsMode: MockGigachatStreamArgsMode;
   precachedPromptTokens: number;
   reasoningContent: string;
+  streamFinishReason: string;
+  nonStreamFinishReason: string;
 }
 
 const MOCK_STATE_ID = "0e2a1b3c-4d5e-6f70-8a9b-mockstate0001";
@@ -51,7 +55,12 @@ function writeSseHeaders(res: http.ServerResponse): void {
   });
 }
 
-function respondPlainTextStream(res: http.ServerResponse, reasoningContent?: string): void {
+function respondPlainTextStream(
+  res: http.ServerResponse,
+  reasoningContent?: string,
+  precachedPromptTokens?: number,
+  finishReason = "stop",
+): void {
   writeSseHeaders(res);
   const chunks = ["Hello", " from", " mock", " GigaChat"];
   let i = 0;
@@ -71,12 +80,30 @@ function respondPlainTextStream(res: http.ServerResponse, reasoningContent?: str
       );
       i++;
     } else {
+      // Real GigaChat v1 puts usage on the penultimate SSE event, one event
+      // before the finish_reason-bearing final chunk.
+      if (typeof precachedPromptTokens === "number") {
+        res.write(
+          `data: ${JSON.stringify({
+            id: "mock-stream-1",
+            object: "chat.completion.chunk",
+            model: "GigaChat",
+            choices: [{ index: 0, delta: {}, finish_reason: null }],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              total_tokens: 15,
+              precached_prompt_tokens: precachedPromptTokens,
+            },
+          })}\n\n`,
+        );
+      }
       res.write(
         `data: ${JSON.stringify({
           id: "mock-stream-1",
           object: "chat.completion.chunk",
           model: "GigaChat",
-          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
         })}\n\n`,
       );
       res.write("data: [DONE]\n\n");
@@ -93,6 +120,7 @@ function respondGigachatNonStream(
   functions?: unknown[],
   precachedPromptTokens = 4,
   reasoningContent = "mock reasoning: deciding what to do",
+  finishReason?: string,
 ): void {
   let message: Record<string, unknown> = {
     role: "assistant",
@@ -119,7 +147,7 @@ function respondGigachatNonStream(
         {
           index: 0,
           message,
-          finish_reason: functions?.length ? "function_call" : "stop",
+          finish_reason: finishReason ?? (functions?.length ? "function_call" : "stop"),
         },
       ],
       usage: {
@@ -243,7 +271,12 @@ function handleRequest(
         if (serverRef.wire === "gigachat" && hasFunctions) {
           respondGigachatFunctionStream(res, functions, serverRef.streamArgsMode, serverRef.reasoningContent);
         } else {
-          respondPlainTextStream(res, serverRef.wire === "gigachat" ? serverRef.reasoningContent : undefined);
+          respondPlainTextStream(
+            res,
+            serverRef.wire === "gigachat" ? serverRef.reasoningContent : undefined,
+            serverRef.wire === "gigachat" ? serverRef.precachedPromptTokens : undefined,
+            serverRef.streamFinishReason,
+          );
         }
         return;
       }
@@ -253,6 +286,7 @@ function handleRequest(
         hasFunctions ? functions : undefined,
         serverRef.precachedPromptTokens,
         serverRef.reasoningContent,
+        serverRef.nonStreamFinishReason || undefined,
       );
       return;
     }
@@ -274,6 +308,8 @@ export async function startMockGigachat(
     streamArgsMode: opts.streamArgsMode ?? "whole",
     precachedPromptTokens: opts.precachedPromptTokens ?? 4,
     reasoningContent: opts.reasoningContent ?? "mock reasoning: deciding what to do",
+    streamFinishReason: opts.streamFinishReason ?? "stop",
+    nonStreamFinishReason: opts.nonStreamFinishReason ?? "",
   };
 
   const requestHandler = (req: http.IncomingMessage, res: http.ServerResponse) =>

@@ -8,6 +8,7 @@ import { normalizeGigaChatToolSchema } from "./gigachatSchema.ts";
 import {
   GigaChat400Error,
   buildToolCallIdNameMap,
+  mapGigaChatV1BlacklistFinishReason,
   sanitizeGigaChatName,
 } from "./gigachatShared.ts";
 import {
@@ -20,7 +21,7 @@ const GIGACHAT_COMPATIBLE_PREFIX = "gigachat-compatible-";
 
 export { GigaChat400Error };
 
-function isGigaChatV2(credentials: unknown): boolean {
+export function isGigaChatV2(credentials: unknown): boolean {
   const psd = (credentials as { providerSpecificData?: Record<string, unknown> } | null)
     ?.providerSpecificData;
   return psd?.apiVersion === "v2";
@@ -140,6 +141,16 @@ function convertGigaChatNonStreamResponse(
     if (!message || typeof message !== "object") continue;
     const messageRecord = message as Record<string, unknown>;
     const hasStateId = typeof messageRecord["functions_state_id"] === "string";
+
+    // Map GigaChat v1's `finish_reason: "blacklist"` (content-safety/censorship
+    // signal) onto the OpenAI equivalent `content_filter`. Applies regardless of
+    // whether this choice also carries a function_call.
+    const mappedFinishReason = mapGigaChatV1BlacklistFinishReason(choiceRecord["finish_reason"]);
+    if (mappedFinishReason && mappedFinishReason !== choiceRecord["finish_reason"]) {
+      choiceRecord["finish_reason"] = mappedFinishReason;
+      mutated = true;
+    }
+
     const functionCall = messageRecord["function_call"];
     if (!functionCall || typeof functionCall !== "object" || Array.isArray(functionCall)) {
       if (hasStateId) mutated = true;
@@ -380,17 +391,21 @@ export class DefaultExecutor extends BaseExecutor {
         }
       }
 
-      // T4.3: GigaChat X-Session-ID is client-passthrough only — forward the
-      // incoming client header verbatim; never generate one server-side.
+      // T4.3: GigaChat X-Session-ID/X-Client-ID/X-Request-ID are client-passthrough
+      // only — forward the incoming client header verbatim; never generate one
+      // server-side.
       const isGigachat =
         this.provider === "gigachat" ||
         this.provider?.startsWith?.(GIGACHAT_COMPATIBLE_PREFIX) === true;
       if (isGigachat) {
-        const sessionId = Object.entries(clientHeaders).find(
-          ([key]) => key.toLowerCase() === "x-session-id"
-        )?.[1];
-        if (sessionId) {
-          headers["X-Session-ID"] = sessionId;
+        const passthroughHeaders = ["X-Session-ID", "X-Client-ID", "X-Request-ID"];
+        for (const headerName of passthroughHeaders) {
+          const value = Object.entries(clientHeaders).find(
+            ([key]) => key.toLowerCase() === headerName.toLowerCase()
+          )?.[1];
+          if (value) {
+            headers[headerName] = value;
+          }
         }
       }
     }

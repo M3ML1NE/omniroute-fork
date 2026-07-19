@@ -30,6 +30,7 @@ import {
   extractThinkingFromContent,
 } from "../handlers/responseSanitizer.ts";
 import { buildErrorBody } from "./error.ts";
+import { mapGigaChatV1BlacklistFinishReason } from "../executors/gigachatShared.ts";
 
 /**
  * Race a response body read against a timeout.
@@ -1561,18 +1562,59 @@ export function createSSEStream(options: StreamOptions = {}) {
                     !parsed.choices[0].delta.reasoning_content
                   );
 
+                  const isGigachatCompatible = provider?.startsWith("gigachat-compatible-");
+
+                  // v1 streaming: capture GigaChat's usage.precached_prompt_tokens (cached
+                  // prompt tokens, arrives in the penultimate SSE event) BEFORE sanitization,
+                  // since sanitizeStreamingChunk's usage allowlist would otherwise silently
+                  // drop this non-standard field.
+                  const precachedPromptTokens =
+                    isGigachatCompatible &&
+                    parsed.usage &&
+                    typeof parsed.usage === "object" &&
+                    typeof parsed.usage.precached_prompt_tokens === "number"
+                      ? parsed.usage.precached_prompt_tokens
+                      : undefined;
+
                   parsed = sanitizeStreamingChunk(parsed);
 
                   const idFixed = fixInvalidId(parsed);
 
                   const delta = parsed.choices?.[0]?.delta;
                   let textualToolCallConverted = false;
-                  let gigachatToolCallConverted = false;
+                  let gigachatStreamMutated = false;
+
+                  // v1 streaming: map the captured precached_prompt_tokens onto the OpenAI
+                  // usage.prompt_tokens_details.cached_tokens shape, mirroring the non-stream
+                  // conversion in default.ts::convertGigaChatNonStreamResponse.
+                  if (precachedPromptTokens !== undefined) {
+                    if (!parsed.usage) parsed.usage = {};
+                    if (!parsed.usage.prompt_tokens_details) {
+                      parsed.usage.prompt_tokens_details = {};
+                    }
+                    if (parsed.usage.prompt_tokens_details.cached_tokens === undefined) {
+                      parsed.usage.prompt_tokens_details.cached_tokens = precachedPromptTokens;
+                    }
+                    gigachatStreamMutated = true;
+                  }
+
+                  // v1 streaming: map finish_reason "blacklist" (content-safety signal)
+                  // onto the OpenAI equivalent "content_filter", mirroring the non-stream
+                  // conversion and the existing v2 mapping in gigachatShared.ts.
+                  if (isGigachatCompatible && parsed.choices?.[0]) {
+                    const mappedFinishReason = mapGigaChatV1BlacklistFinishReason(
+                      parsed.choices[0].finish_reason
+                    );
+                    if (mappedFinishReason && mappedFinishReason !== parsed.choices[0].finish_reason) {
+                      parsed.choices[0].finish_reason = mappedFinishReason;
+                      gigachatStreamMutated = true;
+                    }
+                  }
 
                   // GigaChat compatibility: translate function_call back to tool_calls
                   // because we translated tools to functions in the request.
                   if (
-                    provider?.startsWith("gigachat-compatible-") &&
+                    isGigachatCompatible &&
                     delta?.function_call &&
                     !delta?.tool_calls
                   ) {
@@ -1604,7 +1646,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                     ];
                     delete delta.function_call;
                     passthroughHasToolCalls = true;
-                    gigachatToolCallConverted = true;
+                    gigachatStreamMutated = true;
                   }
 
                   if (!hasValuableContent(parsed, FORMATS.OPENAI)) {
@@ -1646,7 +1688,7 @@ export function createSSEStream(options: StreamOptions = {}) {
                   // Track whether we need to re-serialize (separate from injectedUsage
                   // to avoid blocking subsequent finish_reason / usage mutations)
                   const needsReserialization =
-                    hadReasoningAlias || (delta?.content === "" && delta?.reasoning_content) || gigachatToolCallConverted;
+                    hadReasoningAlias || (delta?.content === "" && delta?.reasoning_content) || gigachatStreamMutated;
 
                   // T18: Track if we saw tool calls & accumulate for call log
                   if (delta?.tool_calls && delta.tool_calls.length > 0) {
@@ -1735,6 +1777,26 @@ export function createSSEStream(options: StreamOptions = {}) {
                     output = `data: ${JSON.stringify(parsed)}\n`;
                     injectedUsage = true;
                   } else if (idFixed || needsReserialization) {
+                    output = `data: ${JSON.stringify(parsed)}\n`;
+                    injectedUsage = true;
+                  }
+
+                  // filterUsageForFormat re-flattens usage from the accumulated (flat)
+                  // extractUsage() shape, which would otherwise drop the
+                  // prompt_tokens_details.cached_tokens nesting applied above. Re-nest it
+                  // so the standard OpenAI usage shape survives on the emitted chunk.
+                  if (
+                    isGigachatCompatible &&
+                    precachedPromptTokens !== undefined &&
+                    parsed.usage &&
+                    typeof parsed.usage === "object" &&
+                    parsed.usage.prompt_tokens_details?.cached_tokens === undefined
+                  ) {
+                    if (!parsed.usage.prompt_tokens_details) {
+                      parsed.usage.prompt_tokens_details = {};
+                    }
+                    parsed.usage.prompt_tokens_details.cached_tokens =
+                      parsed.usage.cached_tokens ?? precachedPromptTokens;
                     output = `data: ${JSON.stringify(parsed)}\n`;
                     injectedUsage = true;
                   }

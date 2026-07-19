@@ -91,3 +91,17 @@ export function mapGigaChatV2FinishReason(reason: unknown): string | undefined {
   }
   return reason;
 }
+
+/**
+ * Map a GigaChat v1 `finish_reason` value onto the OpenAI equivalent. Per the
+ * official v1 API, `finish_reason` is one of `stop|length|function_call|blacklist|error`.
+ * `blacklist` is GigaChat's content-safety/censorship signal — the OpenAI
+ * equivalent is `content_filter`. `function_call` is handled separately by the
+ * tool-call conversion (mapped to `tool_calls`); `error` is left untouched
+ * (GigaChat uses it for invalid function arguments, with no clean OpenAI
+ * equivalent); everything else passes through unchanged.
+ */
+export function mapGigaChatV1BlacklistFinishReason(reason: unknown): string | undefined {
+  if (typeof reason !== "string") return undefined;
+  return reason === "blacklist" ? "content_filter" : reason;
+}
