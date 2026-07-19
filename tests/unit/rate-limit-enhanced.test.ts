@@ -164,11 +164,11 @@ test("checkFallbackError: server error has reason", () => {
   assert.equal(result.reason, RateLimitReason.SERVER_ERROR);
 });
 
-test("checkFallbackError: transient errors now apply exponential backoff", () => {
+test("checkFallbackError: 5xx falls over with no cooldown (no provider/model block)", () => {
   const result = checkFallbackError(502, "", 5);
   assert.equal(result.shouldFallback, true);
-  assert.equal(result.newBackoffLevel, 6); // Backoff now increments for transients
-  assert.ok(result.cooldownMs > 0, "cooldownMs should be positive");
+  assert.equal(result.reason, "server_error");
+  assert.equal(result.cooldownMs, 0, "5xx must not persist a cooldown");
 });
 
 // ─── Backoff Steps Tests ────────────────────────────────────────────────────

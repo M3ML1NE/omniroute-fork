@@ -1349,16 +1349,14 @@ export async function markAccountUnavailable(
       isPerModelQuotaProvider &&
       provider &&
       model &&
-      (status === 404 || status === 429 || status >= 500)
+      (status === 404 || status === 429)
     ) {
       const reason =
         status === 404
           ? "not_found"
           : status === 429 && looksLikeQuotaExhausted(errorText)
             ? "quota_exhausted"
-            : status === 429
-              ? "rate_limited"
-              : "server_error";
+            : "rate_limited";
       const lockout = recordModelLockoutFailure(
         provider,
         connectionId,

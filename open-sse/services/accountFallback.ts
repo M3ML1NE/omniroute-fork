@@ -74,12 +74,17 @@ function toJsonRecord(value: unknown): JsonRecord {
 }
 
 // Provider-level failure tracking for circuit breaker behavior
-// Error codes that count toward provider-level failure threshold
+// Error codes that count toward provider-level failure threshold.
 // 429 (rate limit) is intentionally excluded: rate limits are connection-scoped
 // and handled via Connection Cooldown, not provider-wide circuit breaker.
 // Counting 429 toward provider failure causes cascading provider trips at scale
 // when many connections hit rate limits simultaneously (Issue #1846).
-const PROVIDER_FAILURE_ERROR_CODES = new Set([408, 500, 502, 503, 504]);
+// 5xx (500/502/503/504) is likewise intentionally excluded: upstream server errors
+// should fail over to the next combo target for the current request only, and must
+// NOT open the provider-wide circuit breaker (which would block all connections and
+// models under that provider). Only 429 causes a short temporary cooldown; 5xx never
+// blocks. 408 (request timeout) is kept as the sole breaker-eligible code here.
+const PROVIDER_FAILURE_ERROR_CODES = new Set([408]);
 
 // Per-connection failure deduplication: prevents rapid-fire failures from the
 // same connection from counting multiple times toward the provider breaker.
@@ -1330,6 +1335,17 @@ export function checkFallbackError(
     ) {
       return buildRetryableFallback(RateLimitReason.AUTH_ERROR);
     }
+  }
+
+  // 5xx: fail over this request but persist NO cooldown (cooldownMs: 0) so no model/
+  // connection lockout is written. Placed AFTER the errorText checks (deactivation/quota
+  // in a 5xx body still honored) and BEFORE configuredRule (which would apply a backoff).
+  if (status >= 500 && status <= 599) {
+    return {
+      shouldFallback: true,
+      cooldownMs: 0,
+      reason: RateLimitReason.SERVER_ERROR,
+    };
   }
 
   const configuredRule =

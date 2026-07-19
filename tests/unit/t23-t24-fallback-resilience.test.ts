@@ -63,9 +63,12 @@ test("T24: combo awaits short 503 cooldown before falling through to next model"
       config: { fallbackDelayMs: 2000, maxRetries: 1 },
     },
     // Two transient failures on first model, then success on fallback model.
+    // Uses the embedded-supervisor connection_cooldown 503 (G-02), which is the
+    // 503 variant that still yields a short non-zero cooldown after the 5xx fix —
+    // a generic upstream 5xx now returns cooldownMs:0 and would not trigger a wait.
     handleSingleModel: createStatusSequenceHandler([
-      { status: 503 },
-      { status: 503 },
+      { status: 503, headers: { "content-type": "application/json", "x-omni-fallback-hint": "connection_cooldown" } },
+      { status: 503, headers: { "content-type": "application/json", "x-omni-fallback-hint": "connection_cooldown" } },
       { status: 200 },
     ]),
     isModelAvailable: () => true,

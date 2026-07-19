@@ -106,7 +106,10 @@ function intersectAllowedConnectionIds(primary: unknown, secondary: unknown): st
   return first || second || null;
 }
 
-const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408, 500, 502, 503, 504]);
+// 5xx (500/502/503/504) intentionally excluded — upstream server errors fail over per
+// request but must not open the shared provider breaker (matches PROVIDER_FAILURE_ERROR_CODES
+// in accountFallback.ts). Only 429 causes a short cooldown; 408 stays breaker-eligible.
+const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408]);
 
 /**
  * Handle chat completion request
