@@ -4,13 +4,8 @@ import {
   getProviderAuditTarget,
   summarizeProviderConnectionForAudit,
 } from "@/lib/compliance/providerAudit";
-import { createProviderConnection, getProviderNodeById, isCloudEnabled } from "@/models";
-import {
-  isOpenAICompatibleProvider,
-  supportsBulkApiKey,
-} from "@/shared/constants/providers";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { syncToCloud } from "@/lib/cloudSync";
+import { createProviderConnection, getProviderNodeById } from "@/models";
+import { isOpenAICompatibleProvider, supportsBulkApiKey } from "@/shared/constants/providers";
 import { bulkCreateProviderSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import {
@@ -56,8 +51,7 @@ export async function POST(request: Request) {
   } = validation.data;
 
   const isManagedOrCompatible =
-    isManagedProviderConnectionId(provider) ||
-    isOpenAICompatibleProvider(provider);
+    isManagedProviderConnectionId(provider) || isOpenAICompatibleProvider(provider);
 
   if (!isManagedOrCompatible) {
     return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -83,7 +77,7 @@ export async function POST(request: Request) {
       baseUrl: node.baseUrl,
       nodeName: node.name,
       ...(node.chatPath ? { chatPath: node.chatPath } : {}),
-      ...(node.modelsPath ? { modelsPath: node.modelsPath } : {}),
+      ...(node.apiVersion ? { apiVersion: node.apiVersion } : {}),
     };
   }
 
@@ -165,10 +159,6 @@ export async function POST(request: Request) {
     }
   }
 
-  if (created.length > 0) {
-    await syncToCloudIfEnabled();
-  }
-
   logAuditEvent({
     action: "provider.credentials.bulk_created",
     actor: "admin",
@@ -194,15 +184,4 @@ export async function POST(request: Request) {
     },
     { status: 200 }
   );
-}
-
-async function syncToCloudIfEnabled() {
-  try {
-    const cloudEnabled = await isCloudEnabled();
-    if (!cloudEnabled) return;
-    const machineId = await getConsistentMachineId();
-    await syncToCloud(machineId);
-  } catch (error) {
-    console.log("Error syncing providers to cloud:", error);
-  }
 }

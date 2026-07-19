@@ -3,6 +3,7 @@ import {
   replaceSyncedAvailableModelsForConnection,
   type SyncedAvailableModel,
 } from "@/lib/db/models";
+import { scheduleCapabilityCacheRefresh } from "@/lib/providerModels/capabilityCache";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -81,5 +82,6 @@ export async function persistDiscoveredModels(
 ): Promise<SyncedAvailableModel[]> {
   const normalized = normalizeDiscoveredModels(models);
   await replaceSyncedAvailableModelsForConnection(providerId, connectionId, normalized);
+  scheduleCapabilityCacheRefresh();
   return normalized;
 }

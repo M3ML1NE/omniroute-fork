@@ -79,7 +79,6 @@ export async function POST(request) {
         baseUrl: bodyBaseUrl || node.baseUrl,
         apiType: node.apiType,
         chatPath: node.chatPath,
-        modelsPath: node.modelsPath,
         ...(node.mtls ? { mtls: node.mtls } : {}),
       };
     }

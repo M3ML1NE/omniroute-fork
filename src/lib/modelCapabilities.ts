@@ -4,7 +4,8 @@ import {
 } from "@omniroute/open-sse/config/providerModels.ts";
 import { parseModel, resolveCanonicalProviderModel } from "@omniroute/open-sse/services/model.ts";
 import { MODEL_SPECS, getModelSpec, type ModelSpec } from "@/shared/constants/modelSpecs";
-// modelsDevSync removed (GigaChat fork) — stub returns null
+import { getSyncedCapabilitySync } from "@/lib/providerModels/capabilityCache";
+// Sole-source: capabilities come from the live discovery cache; unknown fields stay undefined (fail-open).
 interface ModelCapabilityEntry {
   tool_call: boolean | null;
   reasoning: boolean | null;
@@ -24,8 +25,28 @@ interface ModelCapabilityEntry {
   limit_output: number | null;
   interleaved_field: string | null;
 }
-function getSyncedCapability(_provider: string, _model: string): ModelCapabilityEntry | null {
-  return null;
+function getSyncedCapability(provider: string, model: string): ModelCapabilityEntry | null {
+  const synced = getSyncedCapabilitySync(provider, model);
+  if (!synced) return null;
+  return {
+    tool_call: null,
+    reasoning: synced.reasoning ?? null,
+    attachment: null,
+    structured_output: null,
+    temperature: null,
+    modalities_input: "",
+    modalities_output: "",
+    knowledge_cutoff: null,
+    release_date: null,
+    last_updated: null,
+    status: null,
+    family: null,
+    open_weights: null,
+    limit_context: null,
+    limit_input: synced.limit_input ?? null,
+    limit_output: synced.limit_output ?? null,
+    interleaved_field: null,
+  };
 }
 
 const TOOL_CALLING_UNSUPPORTED_PATTERNS: string[] = [];

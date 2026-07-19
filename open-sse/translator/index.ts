@@ -225,8 +225,8 @@ export async function translateRequest(
   // Preserve cache_control when:
   // 1. Claude passthrough mode (Claude → Claude), OR
   // 2. Explicitly requested via options (for caching-aware clients like Claude Code)
-  if (targetFormat === FORMATS.CLAUDE) {
-    const isClaudePassthrough = sourceFormat === FORMATS.CLAUDE;
+  if (targetFormat === "claude") {
+    const isClaudePassthrough = sourceFormat === "claude";
     const preserveCache = isClaudePassthrough || options?.preserveCacheControl === true;
     result = prepareClaudeRequest(result, provider, preserveCache);
   }

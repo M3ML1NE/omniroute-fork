@@ -39,7 +39,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { name, prefix, apiType, baseUrl, chatPath, modelsPath, mtls } = validation.data;
+    const { name, prefix, apiType, baseUrl, chatPath, apiVersion, mtls } = validation.data;
     const node: any = await getProviderNodeById(id);
 
     if (!node) {
@@ -59,6 +59,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
     }
 
+    if (node.type === "openai-compatible" && apiVersion !== undefined) {
+      return NextResponse.json(
+        { error: "apiVersion is only supported on GigaChat-compatible providers" },
+        { status: 400 }
+      );
+    }
+
     const sanitizedBaseUrl = baseUrl.trim();
 
     const updates: Record<string, unknown> = {
@@ -66,14 +73,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       prefix: prefix.trim(),
       baseUrl: sanitizedBaseUrl,
       chatPath: chatPath || null,
-      modelsPath: modelsPath || null,
     };
 
     if (node.type === "openai-compatible") {
       updates.apiType = apiType;
     }
-    if (node.type === "gigachat-compatible" && mtls) {
-      updates.mtls = mtls;
+    if (node.type === "gigachat-compatible") {
+      if (mtls) {
+        updates.mtls = mtls;
+      }
+      updates.apiVersion = apiVersion || null;
     }
 
     const updated = await updateProviderNode(id, updates);
@@ -92,16 +101,19 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           nodeName: updated.name,
           chatPath: updated.chatPath || undefined,
         } as JsonRecord;
-        if (updated.modelsPath) {
-          providerSpecificData.modelsPath = updated.modelsPath;
-        } else {
-          delete providerSpecificData.modelsPath;
-        }
+        delete providerSpecificData.modelsPath;
         if (node.type === "openai-compatible") {
           providerSpecificData.apiType = apiType;
         }
         if (updated.mtls) {
           providerSpecificData.mtls = updated.mtls;
+        }
+        if (node.type === "gigachat-compatible") {
+          if (updated.apiVersion) {
+            providerSpecificData.apiVersion = updated.apiVersion;
+          } else {
+            delete providerSpecificData.apiVersion;
+          }
         }
 
         return [

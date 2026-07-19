@@ -161,12 +161,6 @@ export async function createProviderConnection(data: JsonRecord) {
           "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'apikey' AND name = ?"
         )
         .get(data.provider, data.name)) as JsonRecord | undefined) || null;
-  } else if (data.provider === "mlproxy") {
-    // mlproxy enforces exactly one connection — upsert the existing row
-    existing =
-      ((await db
-        .prepare("SELECT * FROM provider_connections WHERE provider = 'mlproxy'")
-        .get()) as JsonRecord | undefined) || null;
   }
 
   if (existing) {
@@ -200,10 +194,14 @@ export async function createProviderConnection(data: JsonRecord) {
   // Auto-increment priority
   let connectionPriority = data.priority;
   if (!connectionPriority) {
+    // Postgres lowercases unquoted identifiers, so an "AS maxP" alias comes
+    // back as `maxp`, not `maxP` — the SELECT below uses the lowercase form
+    // so the JS reader below actually finds the value instead of silently
+    // defaulting to 0 on every call.
     const max = (await db
-      .prepare("SELECT MAX(priority) as maxP FROM provider_connections WHERE provider = ?")
+      .prepare("SELECT MAX(priority) as maxp FROM provider_connections WHERE provider = ?")
       .get(data.provider)) as JsonRecord | undefined;
-    const maxPriority = toNumberOrZero(toRecord(max).maxP);
+    const maxPriority = toNumberOrZero(toRecord(max).maxp);
     connectionPriority = maxPriority + 1;
   }
 
@@ -246,6 +244,8 @@ export async function createProviderConnection(data: JsonRecord) {
     "group",
     "maxConcurrent",
     "quotaWindowThresholds",
+    "expiredRetryCount",
+    "expiredRetryAt",
   ];
   for (const field of optionalFields) {
     if (data[field] !== undefined && data[field] !== null) {
@@ -294,7 +294,7 @@ async function _insertConnectionRow(conn: JsonRecord) {
       last_tested, api_key, id_token, provider_specific_data,
       expires_in, display_name, global_priority, default_model,
       token_type, consecutive_use_count, rate_limit_protection, last_used_at, "group", max_concurrent,
-      quota_window_thresholds_json,
+      quota_window_thresholds_json, expired_retry_count, expired_retry_at,
       created_at, updated_at
     ) VALUES (
       @id, @provider, @authType, @name, @email, @priority, @isActive,
@@ -305,7 +305,7 @@ async function _insertConnectionRow(conn: JsonRecord) {
       @lastTested, @apiKey, @idToken, @providerSpecificData,
       @expiresIn, @displayName, @globalPriority, @defaultModel,
       @tokenType, @consecutiveUseCount, @rateLimitProtection, @lastUsedAt, @group, @maxConcurrent,
-      @quotaWindowThresholdsJson,
+      @quotaWindowThresholdsJson, @expiredRetryCount, @expiredRetryAt,
       @createdAt, @updatedAt
     )
   `
@@ -332,7 +332,10 @@ async function _insertConnectionRow(conn: JsonRecord) {
       lastErrorSource: conn.lastErrorSource || null,
       backoffLevel: conn.backoffLevel || 0,
       rateLimitedUntil: conn.rateLimitedUntil || null,
-      healthCheckInterval: conn.healthCheckInterval || null,
+      // `?? null` (not `|| null`) — 0 is a valid, meaningful value here
+      // ("health check disabled"), and `||` would coerce it to null and
+      // silently fall back to the 60-minute default.
+      healthCheckInterval: conn.healthCheckInterval ?? null,
       lastHealthCheckAt: conn.lastHealthCheckAt || null,
       lastTested: conn.lastTested || null,
       apiKey: conn.apiKey || null,
@@ -352,6 +355,8 @@ async function _insertConnectionRow(conn: JsonRecord) {
       group: conn.group || null,
       maxConcurrent: conn.maxConcurrent ?? null,
       quotaWindowThresholdsJson: serializeQuotaWindowThresholds(conn.quotaWindowThresholds),
+      expiredRetryCount: conn.expiredRetryCount ?? null,
+      expiredRetryAt: conn.expiredRetryAt || null,
       createdAt: conn.createdAt,
       updatedAt: conn.updatedAt,
     });
@@ -381,6 +386,8 @@ async function _updateConnectionRow(id: string, data: JsonRecord) {
       "group" = @group,
       max_concurrent = @maxConcurrent,
       quota_window_thresholds_json = @quotaWindowThresholdsJson,
+      expired_retry_count = @expiredRetryCount,
+      expired_retry_at = @expiredRetryAt,
       updated_at = @updatedAt
     WHERE id = @id
   `
@@ -407,7 +414,7 @@ async function _updateConnectionRow(id: string, data: JsonRecord) {
       lastErrorSource: data.lastErrorSource || null,
       backoffLevel: data.backoffLevel || 0,
       rateLimitedUntil: data.rateLimitedUntil || null,
-      healthCheckInterval: data.healthCheckInterval || null,
+      healthCheckInterval: data.healthCheckInterval ?? null,
       lastHealthCheckAt: data.lastHealthCheckAt || null,
       lastTested: data.lastTested || null,
       apiKey: data.apiKey || null,
@@ -427,6 +434,8 @@ async function _updateConnectionRow(id: string, data: JsonRecord) {
       group: data.group || null,
       maxConcurrent: data.maxConcurrent ?? null,
       quotaWindowThresholdsJson: serializeQuotaWindowThresholds(data.quotaWindowThresholds),
+      expiredRetryCount: data.expiredRetryCount ?? null,
+      expiredRetryAt: data.expiredRetryAt || null,
       updatedAt: now,
     });
 }
@@ -479,7 +488,6 @@ export async function deleteProviderConnection(id: string) {
     .get(id);
   if (!existing) return false;
 
-  await db.prepare("DELETE FROM quota_snapshots WHERE connection_id = ?").run(id);
   await db.prepare("DELETE FROM provider_connections WHERE id = ?").run(id);
   const existingRecord = toRecord(existing);
   const providerId =
@@ -497,7 +505,6 @@ export async function deleteProviderConnections(ids: string[]): Promise<number> 
 
   const deletedCount = await withTransaction(async (client) => {
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
-    await client.query(`DELETE FROM quota_snapshots WHERE connection_id IN (${placeholders})`, ids);
     const result = await client.query(
       `DELETE FROM provider_connections WHERE id IN (${placeholders})`,
       ids
@@ -512,23 +519,6 @@ export async function deleteProviderConnections(ids: string[]): Promise<number> 
 
 export async function deleteProviderConnectionsByProvider(providerId: string) {
   const db = getDbInstance();
-  const rows = await db
-    .prepare("SELECT id FROM provider_connections WHERE provider = ?")
-    .all(providerId);
-  const connectionIds = rows
-    .map((row) => {
-      const record = toRecord(row);
-      return typeof record.id === "string" ? record.id : null;
-    })
-    .filter((id): id is string => id !== null);
-
-  if (connectionIds.length > 0) {
-    const deleteSnapshots = db.prepare("DELETE FROM quota_snapshots WHERE connection_id = ?");
-    for (const connectionId of connectionIds) {
-      await deleteSnapshots.run(connectionId);
-    }
-  }
-
   const result = await db
     .prepare("DELETE FROM provider_connections WHERE provider = ?")
     .run(providerId);
@@ -678,7 +668,8 @@ export async function createProviderNode(data: JsonRecord) {
     apiType: data.apiType || null,
     baseUrl: data.baseUrl || null,
     chatPath: data.chatPath || null,
-    modelsPath: data.modelsPath || null,
+    modelsPath: null,
+    apiVersion: data.apiVersion || null,
     mtls: data.mtls ?? null,
     createdAt: now,
     updatedAt: now,
@@ -687,8 +678,8 @@ export async function createProviderNode(data: JsonRecord) {
   await db
     .prepare(
       `
-    INSERT INTO provider_nodes (id, type, name, prefix, api_type, base_url, chat_path, models_path, mtls_json, created_at, updated_at)
-    VALUES (@id, @type, @name, @prefix, @apiType, @baseUrl, @chatPath, @modelsPath, @mtlsJson, @createdAt, @updatedAt)
+    INSERT INTO provider_nodes (id, type, name, prefix, api_type, base_url, chat_path, models_path, api_version, mtls_json, created_at, updated_at)
+    VALUES (@id, @type, @name, @prefix, @apiType, @baseUrl, @chatPath, @modelsPath, @apiVersion, @mtlsJson, @createdAt, @updatedAt)
   `
     )
     .run({
@@ -716,7 +707,7 @@ export async function updateProviderNode(id: string, data: JsonRecord) {
       `
     UPDATE provider_nodes SET type = @type, name = @name, prefix = @prefix,
     api_type = @apiType, base_url = @baseUrl, chat_path = @chatPath,
-    models_path = @modelsPath, mtls_json = @mtlsJson, updated_at = @updatedAt
+    models_path = @modelsPath, api_version = @apiVersion, mtls_json = @mtlsJson, updated_at = @updatedAt
     WHERE id = @id
   `
     )
@@ -728,7 +719,8 @@ export async function updateProviderNode(id: string, data: JsonRecord) {
       apiType: merged["apiType"] || null,
       baseUrl: merged["baseUrl"] || null,
       chatPath: merged["chatPath"] || null,
-      modelsPath: merged["modelsPath"] || null,
+      modelsPath: null,
+      apiVersion: merged["apiVersion"] || null,
       mtlsJson: merged["mtls"] ? JSON.stringify(merged["mtls"]) : null,
       updatedAt: merged["updatedAt"],
     });
@@ -798,8 +790,39 @@ export async function getRateLimitedConnections(
     .prepare(
       "SELECT id, rate_limited_until FROM provider_connections WHERE provider = ? AND rate_limited_until > ?"
     )
-    .all(provider, now)) as Array<{ id: string; rate_limited_until: number }>;
-  return rows.map((r) => ({ id: r.id, rateLimitedUntil: r.rate_limited_until }));
+    .all(provider, now)) as Array<{ id: string; rate_limited_until: number | string }>;
+  // node-postgres returns BIGINT columns as strings to avoid precision loss
+  // outside the JS safe-integer range — coerce back to number here so the
+  // documented return type actually holds for callers.
+  return rows.map((r) => ({ id: r.id, rateLimitedUntil: Number(r.rate_limited_until) }));
+}
+
+export async function clearProviderConnectionCooldowns(): Promise<number> {
+  const db = getDbInstance();
+  const result = await db
+    .prepare(
+      `UPDATE provider_connections
+       SET rate_limited_until = NULL,
+           test_status = 'active',
+           backoff_level = 0,
+           last_error = NULL,
+           last_error_type = NULL,
+           last_error_source = NULL,
+           error_code = NULL,
+           last_error_at = NULL,
+           updated_at = ?
+       WHERE rate_limited_until IS NOT NULL
+          OR test_status != 'active'
+          OR backoff_level != 0
+          OR last_error IS NOT NULL
+          OR last_error_type IS NOT NULL
+          OR last_error_source IS NOT NULL
+          OR error_code IS NOT NULL
+          OR last_error_at IS NOT NULL`
+    )
+    .run(new Date().toISOString());
+  invalidateDbCache("connections");
+  return result.changes;
 }
 
 // ──────────────── T13: Stale Quota Display Fix ─────────────────────────────

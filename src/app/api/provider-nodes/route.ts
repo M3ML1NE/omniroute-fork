@@ -48,7 +48,7 @@ export async function POST(request) {
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { name, prefix, apiType, baseUrl, type, chatPath, modelsPath, mtls } = validation.data;
+    const { name, prefix, apiType, baseUrl, type, chatPath, apiVersion, mtls } = validation.data;
 
     // Determine type
     const nodeType = type || "openai-compatible";
@@ -62,7 +62,6 @@ export async function POST(request) {
         baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
         name: name.trim(),
         chatPath: chatPath || null,
-        modelsPath: modelsPath || null,
       });
       return NextResponse.json({ node }, { status: 201 });
     }
@@ -79,7 +78,7 @@ export async function POST(request) {
         baseUrl: (baseUrl || GIGACHAT_COMPATIBLE_DEFAULTS.baseUrl).trim(),
         name: name.trim(),
         chatPath: chatPath || null,
-        modelsPath: modelsPath || null,
+        apiVersion: apiVersion || null,
         mtls,
       });
       return NextResponse.json({ node }, { status: 201 });

@@ -9,18 +9,7 @@ let _MODERATION_PROVIDERS: Record<string, any> | null = null;
 
 function getOrCreateModerationProviders(): Record<string, any> {
   if (!_MODERATION_PROVIDERS) {
-    _MODERATION_PROVIDERS = {
-  openai: {
-    id: "openai",
-    baseUrl: "https://api.openai.com/v1/moderations",
-    authType: "apikey",
-    authHeader: "bearer",
-    models: [
-      { id: "omni-moderation-latest", name: "Omni Moderation Latest" },
-      { id: "text-moderation-latest", name: "Text Moderation Latest" },
-    ],
-  },
-  };
+    _MODERATION_PROVIDERS = {};
   }
   return _MODERATION_PROVIDERS;
 }

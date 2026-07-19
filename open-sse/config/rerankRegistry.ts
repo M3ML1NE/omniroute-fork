@@ -12,71 +12,8 @@ let _RERANK_PROVIDERS: Record<string, any> | null = null;
 
 function getOrCreateRerankProviders(): Record<string, any> {
   if (!_RERANK_PROVIDERS) {
-    _RERANK_PROVIDERS = {
-  cohere: {
-    id: "cohere",
-    baseUrl: "https://api.cohere.com/v2/rerank",
-    authType: "apikey",
-    authHeader: "bearer",
-    models: [
-      { id: "rerank-v4.0-pro", name: "Rerank v4.0 Pro" },
-      { id: "rerank-v4.0-fast", name: "Rerank v4.0 Fast" },
-      { id: "rerank-v3.5", name: "Rerank v3.5" },
-      { id: "rerank-multilingual-v3.0", name: "Rerank Multilingual v3.0" },
-    ],
-  },
-
-  together: {
-    id: "together",
-    baseUrl: "https://api.together.xyz/v1/rerank",
-    authType: "apikey",
-    authHeader: "bearer",
-    models: [{ id: "Salesforce/Llama-Rank-V2", name: "Llama Rank V2" }],
-  },
-
-  nvidia: {
-    id: "nvidia",
-    baseUrl: "https://integrate.api.nvidia.com/v1/ranking",
-    authType: "apikey",
-    authHeader: "bearer",
-    format: "nvidia", // NVIDIA uses slightly different field names
-    models: [{ id: "nvidia/nv-rerankqa-mistral-4b-v3", name: "NV RerankQA Mistral 4B v3" }],
-  },
-
-  fireworks: {
-    id: "fireworks",
-    baseUrl: "https://api.fireworks.ai/inference/v1/rerank",
-    authType: "apikey",
-    authHeader: "bearer",
-    models: [
-      { id: "accounts/fireworks/models/nomic-rerank-v1", name: "Nomic Rerank v1" },
-      { id: "accounts/fireworks/models/qwen3-reranker-8b", name: "Qwen3 Reranker 8B" },
-    ],
-  },
-
-  "voyage-ai": {
-    id: "voyage-ai",
-    baseUrl: "https://api.voyageai.com/v1/rerank",
-    authType: "apikey",
-    authHeader: "bearer",
-    models: [
-      { id: "rerank-2.5", name: "Rerank 2.5" },
-      { id: "rerank-2.5-lite", name: "Rerank 2.5 Lite" },
-    ],
-  },
-
-  "jina-ai": {
-    id: "jina-ai",
-    baseUrl: "https://api.jina.ai/v1/rerank",
-    authType: "apikey",
-    authHeader: "bearer",
-    models: [
-      { id: "jina-reranker-v3", name: "Jina Reranker v3" },
-      { id: "jina-reranker-m0", name: "Jina Reranker m0" },
-    ],
-  },
-  };
-}
+    _RERANK_PROVIDERS = {};
+  }
   return _RERANK_PROVIDERS;
 }
 

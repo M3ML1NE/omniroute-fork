@@ -27,17 +27,7 @@ export interface ProviderRiskNoticeFields {
 export const FREE_PROVIDERS = {};
 
 // No-auth Providers
-export const NOAUTH_PROVIDERS = {
-  mlproxy: {
-    id: "mlproxy",
-    name: "ML Proxy",
-    alias: "mlproxy",
-    icon: "proxy",
-    color: "#6B7280",
-    format: "openai",
-    requiresApiKey: false,
-  },
-};
+export const NOAUTH_PROVIDERS = {};
 
 export const FREE_APIKEY_PROVIDER_IDS = new Set<string>([]);
 
@@ -87,10 +77,6 @@ export function isGigachatCompatibleProvider(providerId: unknown): providerId is
   return typeof providerId === "string" && providerId.startsWith(GIGACHAT_COMPATIBLE_PREFIX);
 }
 
-export function isMlproxyProvider(providerId: unknown): providerId is string {
-  return providerId === "mlproxy";
-}
-
 // Both prefixes are custom DB-node providers that speak the OpenAI wire format
 // (baseUrl in providerSpecificData, /chat/completions + /models). They share all
 // routing/validation/discovery plumbing; GigaChat nodes additionally apply the
@@ -124,8 +110,7 @@ export function providerAllowsOptionalApiKey(providerId: unknown): boolean {
   return (
     isLocalProvider(providerId) ||
     isSelfHostedChatProvider(providerId) ||
-    isOpenAICompatibleProvider(providerId) ||
-    isMlproxyProvider(providerId)
+    isOpenAICompatibleProvider(providerId)
   );
 }
 

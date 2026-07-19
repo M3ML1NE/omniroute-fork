@@ -1,4 +1,3 @@
-import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import {
   AI_PROVIDERS,
   NOAUTH_PROVIDERS,
@@ -19,10 +18,8 @@ import { getAllAudioModels } from "@omniroute/open-sse/config/audioRegistry";
 import { getAllModerationModels } from "@omniroute/open-sse/config/moderationRegistry";
 import { getAllVideoModels } from "@omniroute/open-sse/config/videoRegistry";
 import { getAllMusicModels } from "@omniroute/open-sse/config/musicRegistry";
-import { REGISTRY } from "@omniroute/open-sse/config/providerRegistry";
 import { resolveNestedComboTargets } from "@omniroute/open-sse/services/combo";
 import { getAllSyncedAvailableModels, type SyncedAvailableModel } from "@/lib/db/models";
-import { getCompatibleFallbackModels } from "@/lib/providers/managedAvailableModels";
 import { hasEligibleConnectionForModel } from "@/domain/connectionModelRules";
 import {
   INTERNAL_PROXY_ERROR,
@@ -46,7 +43,6 @@ interface ModelCapabilityEntry {
 function getSyncedCapability(_provider: string, _model: string): ModelCapabilityEntry | null {
   return null;
 }
-import { getModelSpec } from "@/shared/constants/modelSpecs";
 import { isAuthRequired, isDashboardSessionAuthenticated } from "@/shared/utils/apiAuth";
 import { parseModel } from "@omniroute/open-sse/services/model";
 import { getTokenLimit } from "@omniroute/open-sse/services/contextManager";
@@ -218,27 +214,6 @@ function buildAliasMaps() {
     }
   }
 
-  for (const [left, right] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
-    // Handle both possible directions:
-    // - providerId -> alias
-    // - alias -> providerId
-    if (PROVIDER_MODELS[left]) {
-      aliasToProviderId[left] = aliasToProviderId[left] || right;
-      continue;
-    }
-    if (PROVIDER_MODELS[right]) {
-      aliasToProviderId[right] = aliasToProviderId[right] || left;
-      continue;
-    }
-    aliasToProviderId[right] = aliasToProviderId[right] || left;
-  }
-
-  for (const alias of Object.keys(PROVIDER_MODELS)) {
-    if (!aliasToProviderId[alias]) {
-      aliasToProviderId[alias] = alias;
-    }
-  }
-
   for (const [alias, providerId] of Object.entries(aliasToProviderId)) {
     if (!providerIdToAlias[providerId]) {
       providerIdToAlias[providerId] = alias;
@@ -393,12 +368,6 @@ export async function getUnifiedModelsResponse(
       );
     };
 
-    const getRegistryModel = (providerId: string, modelId: string) => {
-      const alias = providerIdToAlias[providerId] || PROVIDER_ID_TO_ALIAS[providerId] || providerId;
-      const providerModels = PROVIDER_MODELS[alias] || PROVIDER_MODELS[providerId] || [];
-      return providerModels.find((model) => model?.id === modelId) || null;
-    };
-
     const getProviderPrefixes = (providerId: string, rawProvider: string) => {
       const prefixes = new Set<string>([providerId, rawProvider, providerIdToAlias[providerId]]);
       for (const [alias, mappedProviderId] of Object.entries(aliasToProviderId)) {
@@ -446,29 +415,18 @@ export async function getUnifiedModelsResponse(
       const providerId = canonical.provider || targetModel.providerId;
       const modelId = canonical.model || targetModel.modelId;
       const synced = getSyncedCapability(providerId, modelId);
-      const spec = getModelSpec(modelId);
-      const registryModel = getRegistryModel(providerId, modelId);
       const syncedInputModalities = parseJsonStringArray(synced?.modalities_input);
       const syncedOutputModalities = parseJsonStringArray(synced?.modalities_output);
 
-      const syncedContext = isPositiveFiniteNumber(synced?.limit_context)
+      const contextLength = isPositiveFiniteNumber(synced?.limit_context)
         ? synced.limit_context
         : undefined;
-      const registryContext = isPositiveFiniteNumber(registryModel?.contextLength)
-        ? registryModel.contextLength
-        : undefined;
-      const specContext = isPositiveFiniteNumber(spec?.contextWindow)
-        ? spec.contextWindow
-        : undefined;
-      const contextLength = syncedContext ?? registryContext ?? specContext;
       const maxInputTokens = isPositiveFiniteNumber(synced?.limit_input)
         ? synced.limit_input
         : contextLength;
       const maxOutputTokens = isPositiveFiniteNumber(synced?.limit_output)
         ? synced.limit_output
-        : isPositiveFiniteNumber(spec?.maxOutputTokens)
-          ? spec.maxOutputTokens
-          : undefined;
+        : undefined;
 
       const syncedVision =
         typeof synced?.attachment === "boolean"
@@ -478,13 +436,7 @@ export async function getUnifiedModelsResponse(
                 entry.toLowerCase().includes("image")
               )
             : undefined;
-      const registryVision =
-        typeof registryModel?.supportsVision === "boolean"
-          ? registryModel.supportsVision
-          : undefined;
-      const specVision =
-        typeof spec?.supportsVision === "boolean" ? spec.supportsVision : undefined;
-      const knownVision = syncedVision ?? registryVision ?? specVision;
+      const knownVision = syncedVision;
 
       const inputModalities =
         syncedInputModalities.length > 0
@@ -502,17 +454,9 @@ export async function getUnifiedModelsResponse(
       const capabilities: Record<string, boolean> = {};
       if (typeof synced?.tool_call === "boolean") {
         capabilities.tool_calling = synced.tool_call;
-      } else if (typeof registryModel?.toolCalling === "boolean") {
-        capabilities.tool_calling = registryModel.toolCalling;
-      } else if (typeof spec?.supportsTools === "boolean") {
-        capabilities.tool_calling = spec.supportsTools;
       }
       if (typeof synced?.reasoning === "boolean") {
         capabilities.reasoning = synced.reasoning;
-      } else if (typeof registryModel?.supportsReasoning === "boolean") {
-        capabilities.reasoning = registryModel.supportsReasoning;
-      } else if (typeof spec?.supportsThinking === "boolean") {
-        capabilities.reasoning = spec.supportsThinking;
       }
       if (typeof knownVision === "boolean") capabilities.vision = knownVision;
       if (typeof synced?.attachment === "boolean") capabilities.attachment = synced.attachment;
@@ -522,8 +466,6 @@ export async function getUnifiedModelsResponse(
       if (typeof synced?.temperature === "boolean") capabilities.temperature = synced.temperature;
       if (typeof synced?.reasoning === "boolean") {
         capabilities.thinking = synced.reasoning;
-      } else if (typeof spec?.supportsThinking === "boolean") {
-        capabilities.thinking = spec.supportsThinking;
       }
 
       return {
@@ -621,76 +563,14 @@ export async function getUnifiedModelsResponse(
       });
     }
 
-    // Resolve synced available models (from auto-sync) — used to skip static
-    // PROVIDER_MODELS entries for providers that have a live, API-fresh list.
+    // Sole source of provider-owned models: per-connection live discovery cache.
+    // There is no static provider model list.
     let syncedModelsByProvider: Record<string, SyncedAvailableModel[]> = {};
     try {
       syncedModelsByProvider = await getAllSyncedAvailableModels();
     } catch (e) {
-      // DB unavailable — log and fall through; static models remain as defaults.
+      // DB unavailable — log and fall through; provider models will be empty.
       console.log("[catalog] Could not fetch synced available models:", e);
-    }
-    const providersWithSyncedModels = new Set(
-      Object.keys(syncedModelsByProvider).filter((pid) => {
-        const models = syncedModelsByProvider[pid];
-        return Array.isArray(models) && models.length > 0;
-      })
-    );
-
-    // Add provider models (chat)
-    for (const [alias, providerModels] of Object.entries(PROVIDER_MODELS)) {
-      const providerId = aliasToProviderId[alias] || alias;
-      const canonicalProviderId = resolveCanonicalProviderId(alias, providerId);
-
-      // Skip blocked providers (Issue #96)
-      if (isBlocked(alias) || isBlocked(canonicalProviderId)) continue;
-
-      // Only include models from providers with active connections
-      if (!activeAliases.has(alias) && !activeAliases.has(canonicalProviderId)) {
-        continue;
-      }
-
-      // Skip static models for providers that have synced available models
-      // (auto-sync provides the authoritative, up-to-date list from the API).
-      if (providersWithSyncedModels.has(canonicalProviderId)) continue;
-
-      for (const model of providerModels) {
-        if (!providerSupportsModel(canonicalProviderId, model.id)) continue;
-        const aliasId = `${alias}/${model.id}`;
-        if (await getModelIsHidden(canonicalProviderId, model.id)) continue;
-
-        const visionFields =
-          getVisionCapabilityFields(aliasId) || getVisionCapabilityFields(model.id);
-
-        models.push({
-          id: aliasId,
-          object: "model",
-          created: timestamp,
-          owned_by: canonicalProviderId,
-          permission: [],
-          root: model.id,
-          parent: null,
-          ...(visionFields || {}),
-        });
-
-        // Add provider-id prefix in addition to short alias (ex: kiro/model + kr/model).
-        // This improves compatibility for clients that expect full provider names.
-        if (canonicalProviderId !== alias) {
-          const providerIdModel = `${canonicalProviderId}/${model.id}`;
-          const providerVisionFields =
-            getVisionCapabilityFields(providerIdModel) || getVisionCapabilityFields(model.id);
-          models.push({
-            id: providerIdModel,
-            object: "model",
-            created: timestamp,
-            owned_by: canonicalProviderId,
-            permission: [],
-            root: model.id,
-            parent: aliasId,
-            ...(providerVisionFields || {}),
-          });
-        }
-      }
     }
 
     try {
@@ -719,13 +599,7 @@ export async function getUnifiedModelsResponse(
           if (!providerSupportsModel(canonicalProviderId, sm.id)) continue;
           if (await getModelIsHidden(providerId, sm.id)) continue;
 
-          // Strip modelIdPrefix (e.g. "accounts/fireworks/models/") from display ID
-          // so synced model IDs match the short IDs from static registry.
-          const registryEntry = REGISTRY[providerId];
-          const displayModelId =
-            registryEntry?.modelIdPrefix && sm.id.startsWith(registryEntry.modelIdPrefix)
-              ? sm.id.slice(registryEntry.modelIdPrefix.length)
-              : sm.id;
+          const displayModelId = sm.id;
 
           const aliasId = `${alias}/${displayModelId}`;
           const endpoints = Array.isArray(sm.supportedEndpoints) ? sm.supportedEndpoints : ["chat"];
@@ -1076,46 +950,6 @@ export async function getUnifiedModelsResponse(
       console.log("Could not fetch custom models");
     }
 
-    // Add managed fallback models for compatible providers that don't import a model list.
-    for (const conn of connections) {
-      const providerId = typeof conn.provider === "string" ? conn.provider : null;
-      if (!providerId) continue;
-      if (isBlocked(providerId)) continue;
-
-      const fallbackModels = getCompatibleFallbackModels(providerId);
-      if (!Array.isArray(fallbackModels) || fallbackModels.length === 0) continue;
-
-      const prefix = providerIdToPrefix[providerId];
-      const alias = prefix || providerIdToAlias[providerId] || providerId;
-
-      for (const model of fallbackModels) {
-        const modelId = typeof model.id === "string" ? model.id : null;
-        if (!modelId) continue;
-        if (await getModelIsHidden(providerId, modelId)) continue;
-        if (!hasEligibleConnectionForModel([conn], modelId)) continue;
-
-        const aliasId = `${alias}/${modelId}`;
-        if (models.some((m) => m.id === aliasId)) continue;
-
-        const visionFields =
-          getVisionCapabilityFields(aliasId) || getVisionCapabilityFields(modelId);
-        const contextLength =
-          typeof model.contextLength === "number" ? model.contextLength : undefined;
-
-        models.push({
-          id: aliasId,
-          object: "model",
-          created: timestamp,
-          owned_by: providerId,
-          permission: [],
-          root: modelId,
-          parent: null,
-          ...(contextLength ? { context_length: contextLength } : {}),
-          ...(visionFields || {}),
-        });
-      }
-    }
-
     // Filter by API key permissions if requested
     const apiKey = extractBearer(request.headers);
     let finalModels = models;
@@ -1144,9 +978,6 @@ export async function getUnifiedModelsResponse(
       const provider = typeof model.owned_by === "string" ? model.owned_by : null;
       if (!provider) return undefined;
       const canonicalId = aliasToProviderId[provider] || provider;
-
-      const registryFallback = REGISTRY[canonicalId]?.defaultContextLength;
-      if (registryFallback) return registryFallback;
 
       const modelId =
         model.root || (typeof model.id === "string" ? model.id.split("/").pop() : undefined);

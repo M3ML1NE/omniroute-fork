@@ -1,7 +1,6 @@
 import {
   APIKEY_PROVIDERS,
   AUDIO_ONLY_PROVIDERS,
-  CLOUD_AGENT_PROVIDERS,
   LOCAL_PROVIDERS,
   NOAUTH_PROVIDERS,
   OAUTH_PROVIDERS,
@@ -22,8 +21,7 @@ export type StaticProviderCatalogCategory =
   | "search"
   | "audio"
   | "upstream-proxy"
-  | "apikey"
-  | "cloud-agent";
+  | "apikey";
 
 export interface ProviderCatalogMetadata {
   id: string;
@@ -135,12 +133,6 @@ export const STATIC_PROVIDER_CATALOG_GROUPS: Record<
     displayAuthType: "apikey",
     toggleAuthType: "apikey",
   },
-  "cloud-agent": {
-    category: "cloud-agent",
-    providers: CLOUD_AGENT_PROVIDERS as ProviderRecord,
-    displayAuthType: "apikey",
-    toggleAuthType: "apikey",
-  },
 };
 
 export const STATIC_PROVIDER_CATALOG_RESOLUTION_ORDER: StaticProviderCatalogCategory[] = [
@@ -151,7 +143,6 @@ export const STATIC_PROVIDER_CATALOG_RESOLUTION_ORDER: StaticProviderCatalogCate
   "search",
   "audio",
   "upstream-proxy",
-  "cloud-agent",
   "apikey",
 ];
 
@@ -161,7 +152,6 @@ const MANAGED_PROVIDER_CONNECTION_CATEGORIES = new Set<StaticProviderCatalogCate
   "local",
   "search",
   "audio",
-  "cloud-agent",
 ]);
 
 export function getStaticProviderCatalogGroup(

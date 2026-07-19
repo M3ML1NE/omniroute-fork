@@ -158,51 +158,6 @@ test("v1 models catalog accepts bearer API keys and filters the list by allowed 
   );
 });
 
-test("v1 models catalog hides models excluded by every active connection while keeping models served by at least one account", async () => {
-  const first = await seedConnection("gigachat", {
-    name: "gigachat-first",
-    providerSpecificData: {
-      excludedModels: ["GigaChat-2-Pro*"],
-    },
-  });
-  const second = await seedConnection("gigachat", {
-    name: "gigachat-second",
-    providerSpecificData: {
-      excludedModels: ["GigaChat-2-Lite*"],
-    },
-  });
-
-  let response = await v1ModelsCatalog.getUnifiedModelsResponse(
-    new Request("http://localhost/api/v1/models")
-  );
-  let body = (await response.json()) as any;
-  let ids = new Set(body.data.map((item) => item.id));
-
-  assert.equal(response.status, 200);
-  assert.equal(ids.has("gigachat/GigaChat-2-Pro"), true);
-
-  await providersDb.updateProviderConnection((second as any).id, {
-    providerSpecificData: {
-      excludedModels: ["GigaChat-2-Pro*"],
-    },
-  });
-
-  response = await v1ModelsCatalog.getUnifiedModelsResponse(
-    new Request("http://localhost/api/v1/models")
-  );
-  body = (await response.json()) as any;
-  ids = new Set(body.data.map((item) => item.id));
-
-  assert.equal(response.status, 200);
-  assert.equal(ids.has("gigachat/GigaChat-2-Pro"), false);
-
-  await providersDb.updateProviderConnection((first as any).id, {
-    providerSpecificData: {
-      excludedModels: [],
-    },
-  });
-});
-
 test("v1 models catalog includes combos and custom models while excluding hidden models and blocked providers", async () => {
   await settingsDb.updateSettings({
     blockedProviders: ["gigachat"],
@@ -412,116 +367,6 @@ test("v1 models catalog includes synced provider models from discovery cache", a
   assert.equal(syncedModel.context_length, 262144);
 });
 
-test("v1 models catalog returns 500 when model compatibility lookup crashes", async () => {
-  await seedConnection("gigachat", { name: "gigachat-compat-crash" });
-
-  const db = core.getDbInstance();
-  const originalPrepare = db.prepare.bind(db);
-  const originalLog = console.log;
-  const logs = [];
-
-  db.prepare = (sql) => {
-    const statement = originalPrepare(sql);
-    if (String(sql) !== "SELECT value FROM key_value WHERE namespace = ? AND key = ?") {
-      return statement;
-    }
-
-    return new Proxy(statement, {
-      get(target, prop, receiver) {
-        if (prop === "get") {
-          return (...args) => {
-            if (args[0] === "modelCompatOverrides") {
-              throw new Error("compat lookup boom");
-            }
-            return target.get(...args);
-          };
-        }
-        return Reflect.get(target, prop, receiver);
-      },
-    });
-  };
-  console.log = (...args) => {
-    logs.push(args.map((arg) => String(arg)).join(" "));
-  };
-
-  try {
-    const response = await v1ModelsCatalog.getUnifiedModelsResponse(
-      new Request("http://localhost/api/v1/models")
-    );
-    const body = (await response.json()) as any;
-
-    assert.equal(response.status, 500);
-    assert.equal(body.error.type, "server_error");
-    assert.match(body.error.message, /compat lookup boom/i);
-    assert.ok(logs.some((entry) => entry.includes("Error fetching models:")));
-  } finally {
-    db.prepare = originalPrepare;
-    console.log = originalLog;
-  }
-});
-
-test("v1 models catalog skips duplicate built-ins and custom models from inactive providers", async () => {
-  await seedConnection("gigachat", { name: "gigachat-duplicate" });
-  await providersDb.createProviderNode({
-    id: "openai-compatible-inactive",
-    type: "openai-compatible",
-    name: "Compatible Inactive",
-    prefix: "ci",
-    baseUrl: "https://proxy.example.com",
-    chatPath: "/v1/chat/completions",
-    modelsPath: "/v1/models",
-  });
-  await seedConnection("openai-compatible-inactive", {
-    name: "compat-inactive-custom",
-    isActive: false,
-    providerSpecificData: {
-      baseUrl: "https://proxy.example.com",
-      chatPath: "/v1/chat/completions",
-      modelsPath: "/v1/models",
-    },
-  });
-
-  await modelsDb.addCustomModel("gigachat", "GigaChat-2-Max", "Duplicate Builtin");
-  await modelsDb.addCustomModel("openai-compatible-inactive", "inactive-only", "Inactive Only");
-
-  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
-    new Request("http://localhost/api/v1/models")
-  );
-  const body = (await response.json()) as any;
-  const duplicateBuiltins = body.data.filter((item) => item.id === "gigachat/GigaChat-2-Max");
-
-  assert.equal(response.status, 200);
-  assert.equal(duplicateBuiltins.length, 1);
-  assert.equal(duplicateBuiltins[0].custom === true, false);
-  assert.equal(
-    body.data.some(
-      (item) =>
-        item.id === "ci/inactive-only" || item.id === "openai-compatible-inactive/inactive-only"
-    ),
-    false
-  );
-});
-
-test("v1 models catalog includes context_length for individual chat models", async () => {
-  await seedConnection("gigachat", { name: "gigachat-context" });
-
-  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
-    new Request("http://localhost/api/v1/models")
-  );
-  const body = (await response.json()) as any;
-  const chatModels = body.data.filter((item) => !item.type || item.type === "chat");
-
-  assert.equal(response.status, 200);
-  assert.ok(chatModels.length > 0, "should have at least one chat model");
-
-  for (const model of chatModels) {
-    assert.ok(
-      typeof model.context_length === "number" && model.context_length > 0,
-      `chat model ${model.id} should have a positive context_length, got ${model.context_length}`
-    );
-  }
-});
-
 test("v1 models catalog falls back to getTokenLimit for models without registry defaultContextLength", async () => {
   await providersDb.createProviderNode({
     id: "openai-compatible-ctxfallback",
@@ -591,3 +436,72 @@ test("v1 models catalog prefers manual combo context_length over auto-calculated
 
 // Regression test for Issue #2798: noAuth providers (opencode/oc) have no DB connection rows
 // but their models must still appear in /v1/models.
+
+test("v1 models catalog never emits a model owned_by a non-live provider (sole-source contract)", async () => {
+  await providersDb.createProviderNode({
+    id: "openai-compatible-solesource",
+    type: "openai-compatible",
+    name: "Sole Source",
+    prefix: "ss",
+    baseUrl: "https://proxy.example.com",
+    chatPath: "/v1/chat/completions",
+    modelsPath: "/v1/models",
+  });
+  const connection = await seedConnection("openai-compatible-solesource", {
+    name: "compat-sole-source",
+    providerSpecificData: {
+      baseUrl: "https://proxy.example.com",
+      chatPath: "/v1/chat/completions",
+      modelsPath: "/v1/models",
+    },
+  });
+  await modelsDb.replaceSyncedAvailableModelsForConnection(
+    "openai-compatible-solesource",
+    (connection as any).id,
+    [
+      {
+        id: "live-model",
+        name: "Live Model",
+        source: "imported",
+        supportedEndpoints: ["chat"],
+        inputTokenLimit: 128000,
+      },
+    ]
+  );
+  await combosDb.createCombo({
+    name: "sole-source-combo",
+    strategy: "priority",
+    models: ["openai-compatible-solesource/live-model"],
+  });
+
+  const response = await v1ModelsCatalog.getUnifiedModelsResponse(
+    new Request("http://localhost/api/v1/models")
+  );
+  const body = (await response.json()) as any;
+
+  assert.equal(response.status, 200);
+
+  const liveProviders = new Set(
+    (await providersDb.getProviderConnections()).map((c: any) => c.provider)
+  );
+  const allowedOwners = new Set<string>([...liveProviders, "ss", "combo"]);
+
+  for (const model of body.data) {
+    assert.ok(
+      allowedOwners.has(model.owned_by),
+      `model ${model.id} has owned_by="${model.owned_by}" which is neither a live provider connection nor "combo"`
+    );
+  }
+
+  const ids = new Set(body.data.map((item: any) => item.id));
+  assert.ok(ids.has("ss/live-model"), "live synced model must appear");
+  assert.ok(ids.has("sole-source-combo"), "combo must appear");
+
+  // No static named-provider model must ever leak into the catalog.
+  const staticLeak = body.data.find(
+    (m: any) =>
+      typeof m.owned_by === "string" &&
+      ["openai", "anthropic", "gemini", "openrouter", "reka", "deepgram"].includes(m.owned_by)
+  );
+  assert.equal(staticLeak, undefined, "no static named-provider model may be emitted");
+});

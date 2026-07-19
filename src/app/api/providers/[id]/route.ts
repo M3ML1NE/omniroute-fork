@@ -8,10 +8,7 @@ import {
   getProviderConnectionById,
   updateProviderConnection,
   deleteProviderConnection,
-  isCloudEnabled,
 } from "@/models";
-import { getConsistentMachineId } from "@/shared/utils/machineId";
-import { syncToCloud } from "@/lib/cloudSync";
 import { updateProviderConnectionSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import {
@@ -235,9 +232,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       );
     }
 
-    // Auto sync to Cloud if enabled
-    await syncToCloudIfEnabled();
-
     logAuditEvent({
       action: "provider.credentials.updated",
       actor: "admin",
@@ -293,9 +287,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       );
     }
 
-    // Auto sync to Cloud if enabled
-    await syncToCloudIfEnabled();
-
     logAuditEvent({
       action: "provider.credentials.revoked",
       actor: "admin",
@@ -314,20 +305,5 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   } catch (error) {
     console.log("Error deleting connection:", error);
     return NextResponse.json({ error: "Failed to delete connection" }, { status: 500 });
-  }
-}
-
-/**
- * Sync to Cloud if enabled
- */
-async function syncToCloudIfEnabled() {
-  try {
-    const cloudEnabled = await isCloudEnabled();
-    if (!cloudEnabled) return;
-
-    const machineId = await getConsistentMachineId();
-    await syncToCloud(machineId);
-  } catch (error) {
-    console.log("Error syncing providers to cloud:", error);
   }
 }

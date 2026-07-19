@@ -1,19 +1,15 @@
 // Tool call helper functions for translator
 
-const ALPHANUM9 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+import { randomAlphaNumeric, randomBase36 } from "../../../src/shared/utils/secureRandom";
 
 // Generate unique tool call ID (default long form)
 export function generateToolCallId() {
-  return `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+  return `call_${Date.now().toString(36)}_${randomBase36(7)}`;
 }
 
 // Generate 9-char [a-zA-Z0-9] id for providers that require it (e.g. Mistral)
 function generateToolCallId9(): string {
-  let s = "";
-  for (let i = 0; i < 9; i++) {
-    s += ALPHANUM9[Math.floor(Math.random() * ALPHANUM9.length)];
-  }
-  return s;
+  return randomAlphaNumeric(9);
 }
 
 /** @param options.use9CharId - When true, normalize ids to 9-char [a-zA-Z0-9] (e.g. Mistral); when false, only fix type/arguments, leave ids as-is */

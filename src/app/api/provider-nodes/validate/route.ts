@@ -50,10 +50,11 @@ export async function POST(request) {
     if (isValidationFailure(validation)) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-    const { baseUrl, apiKey, modelsPath } = validation.data;
+    const { baseUrl, apiKey } = validation.data;
 
-    // OpenAI Compatible Validation (Default)
-    const modelsUrl = `${baseUrl.replace(/\/$/, "")}${modelsPath || "/models"}`;
+    // Probe path is hardcoded to /v1/models (sole-source contract; no modelsPath override).
+    const normalizedBase = baseUrl.replace(/\/$/, "").replace(/\/v1$/, "");
+    const modelsUrl = `${normalizedBase}/v1/models`;
     const res = await safeOutboundFetch(modelsUrl, {
       ...SAFE_OUTBOUND_FETCH_PRESETS.validationRead,
       guard: getProviderOutboundGuard(),

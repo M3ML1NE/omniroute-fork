@@ -510,22 +510,6 @@ const evalRoutingSchema = z
 
 export const comboStrategySchema = z.enum(ROUTING_STRATEGY_VALUES);
 
-const scoringWeightsSchema = z
-  .object({
-    quota: z.number().min(0).max(1),
-    health: z.number().min(0).max(1),
-    costInv: z.number().min(0).max(1),
-    latencyInv: z.number().min(0).max(1),
-    taskFit: z.number().min(0).max(1),
-    stability: z.number().min(0).max(1),
-    tierPriority: z.number().min(0).max(1).optional().default(0.05),
-    tierAffinity: z.number().min(0).max(1).optional().default(0.05),
-    specificityMatch: z.number().min(0).max(1).optional().default(0.05),
-    contextAffinity: z.number().min(0).max(1).optional().default(0.08),
-    resetWindowAffinity: z.number().min(0).max(1).optional().default(0),
-  })
-  .optional();
-
 const compositeTierEntrySchema = z
   .object({
     stepId: z.string().trim().min(1).max(200),
@@ -552,15 +536,6 @@ const compressionModeSchema = z.enum([
   "stacked",
 ]);
 const comboCompressionOverrideSchema = z.union([z.literal(""), compressionModeSchema]);
-
-const slaRoutingPolicySchema = z
-  .object({
-    targetP95Ms: z.coerce.number().int().positive().max(300000).optional(),
-    maxErrorRate: z.coerce.number().min(0).max(1).optional(),
-    maxCostPer1MTokens: z.coerce.number().positive().max(1000000).optional(),
-    hardConstraints: z.boolean().optional(),
-  })
-  .strict();
 
 const comboRuntimeConfigSchema = z
   .object({
@@ -590,18 +565,6 @@ const comboRuntimeConfigSchema = z
     fallbackCompressionMode: compressionModeSchema.optional(),
     fallbackCompressionThreshold: z.coerce.number().int().min(0).max(2_000_000).optional(),
     predictiveTtftMs: z.coerce.number().int().min(0).max(300000).optional(),
-    // Auto-Combo / LKGP Extensions
-    candidatePool: z.array(z.string().min(1)).optional(),
-    weights: scoringWeightsSchema.optional(),
-    modePack: z.string().max(100).optional(),
-    budgetCap: z.number().positive().optional(),
-    explorationRate: z.number().min(0).max(1).optional(),
-    routerStrategy: z.string().optional(),
-    slaTargetP95Ms: z.coerce.number().int().positive().max(300000).optional(),
-    slaMaxErrorRate: z.coerce.number().min(0).max(1).optional(),
-    slaMaxCostPer1MTokens: z.coerce.number().positive().max(1000000).optional(),
-    slaHardConstraints: z.boolean().optional(),
-    sla: slaRoutingPolicySchema.optional(),
     compositeTiers: compositeTiersSchema.optional(),
     resetAwareSessionWeight: z.coerce.number().min(0).max(100).optional(),
     resetAwareWeeklyWeight: z.coerce.number().min(0).max(100).optional(),
@@ -677,15 +640,11 @@ export const updateSettingsSchema = z.object({
   enableSocks5Proxy: z.boolean().optional(),
   instanceName: z.string().max(100).optional(),
   corsOrigins: z.string().max(500).optional(),
-  cloudUrl: z.string().max(500).optional(),
   baseUrl: z.string().max(500).optional(),
   setupComplete: z.boolean().optional(),
   blockedProviders: z.array(z.string().max(100)).optional(),
   disableGigachatCompatible: z.boolean().optional(),
   hideHealthCheckLogs: z.boolean().optional(),
-  hideEndpointCloudflaredTunnel: z.boolean().optional(),
-  hideEndpointTailscaleFunnel: z.boolean().optional(),
-  hideEndpointNgrokTunnel: z.boolean().optional(),
   pinProviderQuotaToHome: z.boolean().optional(),
   showQuickStartOnHome: z.boolean().optional(),
   showProviderTopologyOnHome: z.boolean().optional(),
@@ -1595,41 +1554,9 @@ export const kiroSocialExchangeSchema = z.object({
   provider: z.enum(["google", "github"]),
 });
 
-export const cloudCredentialUpdateSchema = z.object({
-  provider: z.string().trim().min(1, "Provider is required"),
-  credentials: z
-    .object({
-      accessToken: z.string().optional(),
-      refreshToken: z.string().optional(),
-      expiresIn: z.coerce.number().positive().optional(),
-    })
-    .strict()
-    .superRefine((value, ctx) => {
-      if (
-        value.accessToken === undefined &&
-        value.refreshToken === undefined &&
-        value.expiresIn === undefined
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "At least one credential field must be provided",
-          path: [],
-        });
-      }
-    }),
-});
-
-export const cloudResolveAliasSchema = z.object({
-  alias: z.string().trim().min(1, "Missing alias"),
-});
-
 export const cloudModelAliasUpdateSchema = z.object({
   model: z.string().trim().min(1, "Model and alias required"),
   alias: z.string().trim().min(1, "Model and alias required"),
-});
-
-export const cloudSyncActionSchema = z.object({
-  action: z.enum(["enable", "sync", "disable"]),
 });
 
 export const updateComboSchema = z
@@ -1844,7 +1771,8 @@ export const createProviderNodeSchema = z
     baseUrl: z.string().trim().min(1).optional(),
     type: z.enum(["openai-compatible", "gigachat-compatible"]).optional(),
     chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
-    modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
+    // GigaChat-only: selects the upstream API contract ("v1" default | "v2").
+    apiVersion: z.enum(["v1", "v2"]).optional(),
     mtls: mtlsConfigSchema.optional(),
   })
   .superRefine((value, ctx) => {
@@ -1854,6 +1782,13 @@ export const createProviderNodeSchema = z
         code: z.ZodIssueCode.custom,
         message: "Invalid OpenAI compatible API type",
         path: ["apiType"],
+      });
+    }
+    if (nodeType === "openai-compatible" && value.apiVersion !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "apiVersion is only supported on GigaChat-compatible providers",
+        path: ["apiVersion"],
       });
     }
     if (nodeType === "gigachat-compatible" && !value.mtls) {
@@ -1880,7 +1815,7 @@ export const updateProviderNodeSchema = z.object({
     .optional(),
   baseUrl: z.string().trim().min(1, "Base URL is required"),
   chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
-  modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
+  apiVersion: z.enum(["v1", "v2"]).optional(),
   mtls: mtlsConfigSchema.optional(),
 });
 
@@ -1889,7 +1824,6 @@ export const providerNodeValidateSchema = z.object({
   apiKey: z.string().trim().optional(),
   type: z.enum(["openai-compatible"]).optional(),
   chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
-  modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
 });
 
 export const updateProviderConnectionSchema = z
@@ -1962,7 +1896,6 @@ export const providersBatchTestSchema = z
       "audio",
       "local",
       "upstream-proxy",
-      "cloud-agent",
       "ide",
     ]),
     // Frontend may send null when mode != 'provider' — accept and treat as missing
