@@ -644,7 +644,7 @@ async function saveCallLogInternal(entry: any) {
 
   try {
     const apiKeyId = entry.apiKeyId || null;
-    const noLogEnabled = Boolean(entry.noLog) || (apiKeyId ? isNoLog(apiKeyId) : false);
+    const noLogEnabled = Boolean(entry.noLog) || (apiKeyId ? await isNoLog(apiKeyId) : false);
 
     const protectedRequestBody = noLogEnabled ? null : protectPayloadForLog(entry.requestBody);
     const protectedResponseBody = noLogEnabled ? null : protectPayloadForLog(entry.responseBody);
