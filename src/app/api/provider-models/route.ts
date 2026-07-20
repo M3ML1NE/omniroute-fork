@@ -15,10 +15,7 @@ import {
   deleteManagedAvailableModelAliasesForProvider,
   syncManagedAvailableModelAliases,
 } from "@/lib/providerModels/managedAvailableModels";
-import {
-  AI_PROVIDERS,
-  isOpenAICompatibleProvider,
-} from "@/shared/constants/providers";
+import { AI_PROVIDERS, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
 import { providerModelMutationSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
@@ -56,7 +53,7 @@ export async function GET(request) {
     const provider = searchParams.get("provider");
 
     const models = provider ? await getCustomModels(provider) : await getAllCustomModels();
-    const modelCompatOverrides = provider ? getModelCompatOverrides(provider) : [];
+    const modelCompatOverrides = provider ? await getModelCompatOverrides(provider) : [];
 
     return Response.json({ models, modelCompatOverrides });
   } catch {
@@ -222,11 +219,11 @@ export async function PUT(request) {
               : undefined;
         }
         if (Object.keys(patch).length > 0) {
-          mergeModelCompatOverride(provider, modelId, patch);
+          await mergeModelCompatOverride(provider, modelId, patch);
         }
         return Response.json({
           ok: true,
-          modelCompatOverrides: getModelCompatOverrides(provider),
+          modelCompatOverrides: await getModelCompatOverrides(provider),
         });
       }
       return Response.json(
@@ -305,7 +302,7 @@ export async function PATCH(request) {
     for (const modelId of modelIds) {
       const updatedModel = await updateCustomModel(provider, modelId, { isHidden: body.isHidden });
       if (!updatedModel) {
-        mergeModelCompatOverride(provider, modelId, { isHidden: body.isHidden });
+        await mergeModelCompatOverride(provider, modelId, { isHidden: body.isHidden });
       }
     }
 
@@ -324,7 +321,7 @@ export async function PATCH(request) {
       updated: modelIds.length,
       aliasChanges,
       models: await getCustomModels(provider),
-      modelCompatOverrides: getModelCompatOverrides(provider),
+      modelCompatOverrides: await getModelCompatOverrides(provider),
     });
   } catch (error) {
     console.error("Error patching provider models:", error);

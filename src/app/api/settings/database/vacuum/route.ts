@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = runManualVacuum();
+    const result = await runManualVacuum();
 
     if (result.success) {
       return NextResponse.json({
