@@ -57,7 +57,7 @@ export async function POST(request) {
     const modelsUrl = `${normalizedBase}/v1/models`;
     const res = await safeOutboundFetch(modelsUrl, {
       ...SAFE_OUTBOUND_FETCH_PRESETS.validationRead,
-      guard: getProviderOutboundGuard(),
+      guard: await getProviderOutboundGuard(),
       headers: { Authorization: `Bearer ${apiKey}` },
     });
 

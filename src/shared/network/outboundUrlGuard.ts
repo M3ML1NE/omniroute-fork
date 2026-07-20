@@ -130,14 +130,14 @@ function isTrueValue(raw: unknown): boolean {
   return TRUE_ENV_VALUES.has(raw.trim().toLowerCase());
 }
 
-export function arePrivateProviderUrlsAllowed() {
+export async function arePrivateProviderUrlsAllowed() {
   // 1) DB override takes precedence — it represents an explicit user toggle in
   //    the dashboard ("Allow Private Provider URLs"). This is critical for the
   //    Electron build (#2575) where the server is spawned with the env value
   //    captured at boot, so subsequent UI toggles only land in the DB and the
   //    env-first ordering would otherwise mask them.
   try {
-    const dbValue = resolveFeatureFlag(PRIVATE_PROVIDER_URLS_ENV);
+    const dbValue = await resolveFeatureFlag(PRIVATE_PROVIDER_URLS_ENV);
     if (isTrueValue(dbValue)) return true;
   } catch {
     // DB not initialized yet — fall through to env-only check.
@@ -159,6 +159,6 @@ export function arePrivateProviderUrlsAllowed() {
   return false;
 }
 
-export function getProviderOutboundGuard(): OutboundUrlGuardMode {
-  return arePrivateProviderUrlsAllowed() ? "none" : "public-only";
+export async function getProviderOutboundGuard(): Promise<OutboundUrlGuardMode> {
+  return (await arePrivateProviderUrlsAllowed()) ? "none" : "public-only";
 }

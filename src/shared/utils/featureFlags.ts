@@ -8,8 +8,8 @@ import {
  * Resolve the effective value of a feature flag.
  * Priority: DB override > process.env > definition.defaultValue
  */
-export function resolveFeatureFlag(key: string): string {
-  const dbOverride = getFeatureFlagOverride(key);
+export async function resolveFeatureFlag(key: string): Promise<string> {
+  const dbOverride = await getFeatureFlagOverride(key);
   if (dbOverride !== undefined) return dbOverride;
 
   const envValue = process.env[key];
@@ -23,36 +23,48 @@ export function resolveFeatureFlag(key: string): string {
  * Check if a boolean feature flag is enabled.
  * Treats "true", "1", "yes" as enabled.
  */
-export function isFeatureFlagEnabled(key: string): boolean {
-  const value = resolveFeatureFlag(key);
+export async function isFeatureFlagEnabled(key: string): Promise<boolean> {
+  const value = await resolveFeatureFlag(key);
   return value === "true" || value === "1" || value === "yes";
 }
 
 /**
  * Resolve all feature flags with their effective values and sources.
  */
-export function resolveAllFeatureFlags(): Array<{
-  key: string;
-  effectiveValue: string;
-  source: "db" | "env" | "default";
-  definition: FeatureFlagDefinition;
-}> {
-  return FEATURE_FLAG_DEFINITIONS.map((definition) => {
-    const dbOverride = getFeatureFlagOverride(definition.key);
-    if (dbOverride !== undefined) {
-      return { key: definition.key, effectiveValue: dbOverride, source: "db", definition };
-    }
-    const envValue = process.env[definition.key];
-    if (envValue !== undefined && envValue !== "") {
-      return { key: definition.key, effectiveValue: envValue, source: "env", definition };
-    }
-    return {
-      key: definition.key,
-      effectiveValue: definition.defaultValue,
-      source: "default",
-      definition,
-    };
-  });
+export async function resolveAllFeatureFlags(): Promise<
+  Array<{
+    key: string;
+    effectiveValue: string;
+    source: "db" | "env" | "default";
+    definition: FeatureFlagDefinition;
+  }>
+> {
+  return Promise.all(
+    FEATURE_FLAG_DEFINITIONS.map(async (definition) => {
+      const dbOverride = await getFeatureFlagOverride(definition.key);
+      if (dbOverride !== undefined) {
+        return {
+          key: definition.key,
+          effectiveValue: dbOverride,
+          source: "db" as const,
+          definition,
+        };
+      }
+      const envValue = process.env[definition.key];
+      if (envValue !== undefined && envValue !== "") {
+        return {
+          key: definition.key,
+          effectiveValue: envValue,
+          source: "env" as const,
+          definition,
+        };
+      }
+      return {
+        key: definition.key,
+        effectiveValue: definition.defaultValue,
+        source: "default" as const,
+        definition,
+      };
+    })
+  );
 }
-
-

@@ -156,7 +156,7 @@ export async function GET(
       try {
         const response = await safeOutboundFetch(modelsUrl, {
           ...SAFE_OUTBOUND_FETCH_PRESETS.modelsProbe,
-          guard: getProviderOutboundGuard(),
+          guard: await getProviderOutboundGuard(),
           proxyConfig: proxy,
           method: "GET",
           headers: buildOptionalBearerHeaders(token),

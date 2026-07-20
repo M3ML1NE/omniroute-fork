@@ -102,7 +102,7 @@ function buildImageProviderValidationHeaders(
 async function validationRead(url: string, init: RequestInit) {
   return safeOutboundFetch(url, {
     ...SAFE_OUTBOUND_FETCH_PRESETS.validationRead,
-    guard: getProviderOutboundGuard(),
+    guard: await getProviderOutboundGuard(),
     ...init,
   });
 }

@@ -110,7 +110,7 @@ function buildBearerHeaders(apiKey: string, providerSpecificData: any = {}) {
 async function validationRead(url: string, init: RequestInit, isLocal: boolean = false) {
   return safeOutboundFetch(url, {
     ...SAFE_OUTBOUND_FETCH_PRESETS.validationRead,
-    guard: isLocal ? "none" : getProviderOutboundGuard(),
+    guard: isLocal ? "none" : await getProviderOutboundGuard(),
     ...init,
   });
 }
@@ -118,7 +118,7 @@ async function validationRead(url: string, init: RequestInit, isLocal: boolean =
 async function validationWrite(url: string, init: RequestInit, isLocal: boolean = false) {
   return safeOutboundFetch(url, {
     ...SAFE_OUTBOUND_FETCH_PRESETS.validationWrite,
-    guard: isLocal ? "none" : getProviderOutboundGuard(),
+    guard: isLocal ? "none" : await getProviderOutboundGuard(),
     ...init,
   });
 }

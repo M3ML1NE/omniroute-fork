@@ -78,7 +78,7 @@ export async function fetchRemoteImage(
   options: RemoteImageFetchOptions = {}
 ): Promise<RemoteImageFetchResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const guard = options.guard ?? getProviderOutboundGuard();
+  const guard = options.guard ?? (await getProviderOutboundGuard());
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_REMOTE_IMAGE_BYTES;
   const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
   const signal = combineSignals(options.signal, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
